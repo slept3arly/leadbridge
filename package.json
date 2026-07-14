@@ -6,9 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "pnpm exec prisma generate",
+    "db:migrate": "pnpm exec prisma migrate dev",
+    "db:push": "pnpm exec prisma db push"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
@@ -17,6 +22,7 @@
     "date-fns": "^4.4.0",
     "gsap": "^3.15.0",
     "next": "16.2.10",
+    "pg": "^8.22.0",
     "pino": "^10.3.1",
     "prisma": "^7.8.0",
     "react": "19.2.4",
@@ -35,6 +41,7 @@
     "prettier": "^3.9.5",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }

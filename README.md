@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LeadBridge
+
+LeadBridge is the Version 1.0 foundation for an internal CRM lead aggregation platform. The codebase focuses on long-term architecture instead of feature sprawl: authentication, role-protected dashboards, lead CRUD, Prisma data modeling, service boundaries, and extension points for future connectors and parsers.
+
+## Stack
+
+- Next.js App Router
+- TypeScript
+- pnpm
+- Tailwind CSS
+- GSAP
+- PostgreSQL (Neon-ready)
+- Prisma
+- Better Auth (credentials only)
+- Zod
+- Axios
+- Pino
+- Vercel-oriented deployment model
+
+## Current Foundation
+
+- Credentials-only login flow with Better Auth
+- Admin and Sales protected dashboard shells
+- Admin-managed user creation
+- Lead CRUD API and admin UI
+- Prisma schema designed for extensibility
+- Reusable services for leads, users, assignment, duplicates, connectors, parsers, audit, and automation stubs
+- Connector abstraction and parser registry for future lead ingestion pipelines
+- Placeholder APIs for connectors, sync, reports, and settings
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env
+pnpm db:generate
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `DATABASE_URL`: PostgreSQL connection string
+- `BETTER_AUTH_SECRET`: 32+ character secret for Better Auth
+- `BETTER_AUTH_URL`: canonical app URL for auth callbacks and cookies
+- `NEXT_PUBLIC_APP_URL`: client-side base URL for the auth client
+- `LOG_LEVEL`: Pino logging level
 
-## Learn More
+## Suggested First Admin
 
-To learn more about Next.js, take a look at the following resources:
+Use the admin dashboard once an admin account exists. For first-time setup, create an initial admin user via Prisma Studio or a small seed script with role `ADMIN`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Folder Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `src/app`: routes, layouts, and API handlers
+- `src/components`: reusable UI and feature components
+- `src/connectors`: connector contracts and future integrations
+- `src/lib`: auth, Prisma, validation, logging, navigation, shared helpers
+- `src/parsers`: parser base classes, registry, and examples
+- `src/services`: business logic and data access orchestration
+- `src/types`: shared domain types
+- `prisma`: schema and migrations
 
-## Deploy on Vercel
+## Development Workflow
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+pnpm lint
+pnpm typecheck
+pnpm build
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Roadmap
+
+- Connector implementations for source systems
+- Lead import jobs and queue workers
+- richer analytics and reporting
+- notes, attachments, and activity UI
+- custom fields and configurable pipelines
+- R2-backed document storage
