@@ -10,12 +10,10 @@ import { MoreHorizontal } from "lucide-react";
 import { adminPrimaryOrder, salesPrimaryOrder } from "@/lib/navigation";
 
 /**
- * SSR-safe media query hook.
- *
- * Contract:
- *  - Server render:  useState(true)           → isDesktop = true  (desktop layout)
- *  - Client hydrate:  useState(true)           → isDesktop = true  (matches server → no mismatch)
- *  - After mount:     useEffect corrects value → isDesktop = actual viewport
+ * SSR-safe media query hook — used ONLY for logical computations
+ * (activeIndex, menu filtering).  Visual bifurcation (item show/hide,
+ * label visibility, radii) is driven by CSS media queries to
+ * eliminate FOUC.
  */
 function useIsDesktop() {
   const [isDesktop, setIsDesktop] = useState(true);
@@ -42,28 +40,33 @@ export function BottomNavigation() {
   const isDesktop = useIsDesktop();
   const dockRef = useRef<HTMLDivElement | null>(null);
   const indicatorRef = useRef<HTMLDivElement | null>(null);
+  const indicatorCtx = useRef<gsap.Context | null>(null);
   const uid = useId();
 
   const primaryOrder = role === "ADMIN" ? adminPrimaryOrder : salesPrimaryOrder;
-  const visibleCount = isDesktop ? 5 : 3;
 
-  const visible = useMemo(() => {
+  // RENDER: always render all primaryOrder items — CSS handles show/hide per viewport.
+  const domItems = useMemo(() => {
     const itemMap = new Map(flattened.map((i) => [i.href, i]));
     return primaryOrder
       .filter((href) => itemMap.has(href))
-      .map((href) => itemMap.get(href)!)
-      .slice(0, visibleCount);
-  }, [flattened, primaryOrder, visibleCount]);
+      .map((href) => itemMap.get(href)!);
+  }, [flattened, primaryOrder]);
 
+  // LOGICAL: viewport-aware "visible" set for active-index tracking and menu filtering.
+  const visibleCount = isDesktop ? 5 : 3;
+  const visible = useMemo(() => domItems.slice(0, visibleCount), [domItems, visibleCount]);
   const overflowCount = flattened.length - visible.length;
 
-  // Is the active path a visible item?
+  // Items at index >= 3 are CSS-hidden on mobile (hidden md:flex).
+  // The More button is always the last [data-nav-item] in the DOM.
+  const moreButtonIndex = domItems.length;
+
   const visActiveIdx = useMemo(
     () => visible.findIndex((item) => isRouteActive(activePath, item.href)),
     [visible, activePath],
   );
 
-  // Is the active path an overflow (hidden) item?
   const hasOverflowActive = useMemo(
     () =>
       overflowCount > 0 &&
@@ -72,19 +75,11 @@ export function BottomNavigation() {
     [overflowCount, visActiveIdx, flattened, activePath],
   );
 
-  // The index in the [data-nav-item] NodeList that the pill should track.
-  // Visible items occupy indices 0 … visible.length-1.
-  // The More button (if present) is always the last data-nav-item.
-  const activeIndex = visActiveIdx >= 0 ? visActiveIdx : hasOverflowActive ? visible.length : 0;
+  const activeIndex = visActiveIdx >= 0 ? visActiveIdx : hasOverflowActive ? moreButtonIndex : 0;
 
-  // single sliding indicator — GSAP tracks active element via getBoundingClientRect
-  //
-  // IMPORTANT: we use .kill() (not .revert()) when the index changes so that
-  // GSAP reads the current animated transform as the starting point for the
-  // next tween.  revert() would undo the transform back to x=0, making every
-  // slide appear to originate from the left edge.
-  const indicatorCtx = useRef<gsap.Context | null>(null);
-
+  // Single sliding indicator — GSAP tracks active element via getBoundingClientRect.
+  // Uses .kill() (not .revert()) so the current transform is preserved as the
+  // starting point for the next directional tween.
   useEffect(() => {
     if (!indicatorRef.current || !dockRef.current) return;
 
@@ -141,30 +136,33 @@ export function BottomNavigation() {
     <>
       <BottomNavigationMenu />
       <div className="fixed bottom-3 left-1/2 z-40 flex w-auto -translate-x-1/2 items-center justify-center md:bottom-4">
+        {/* Dock radius is CSS-responsive — no JS conditional, no FOUC */}
         <div
           ref={dockRef}
           className={cn(
-            "relative flex items-center justify-center bg-white/85 px-3 py-2 backdrop-blur-2xl shadow-[0_8px_40px_rgba(0,0,0,0.06),0_2px_12px_rgba(0,0,0,0.04)]",
-            isDesktop ? "rounded-[24px]" : "rounded-[28px]",
+            "relative flex items-center justify-center bg-white/85 px-3 py-2 backdrop-blur-2xl",
+            "shadow-[0_1px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06),0_24px_56px_rgba(0,0,0,0.08)]",
+            "rounded-[28px] md:rounded-[24px]",
           )}
           role="navigation"
           aria-label="Main navigation"
         >
-          {/* single sliding active indicator — inset-y matches dock py-2 so it fills the content
-              area perfectly; GSAP animates x + width (no CSS transform to conflict with) */}
+          {/* single sliding active indicator — inset-y matches dock py-2 */}
           <div
             ref={indicatorRef}
             className="pointer-events-none absolute inset-y-2 left-0 rounded-[20px] bg-black/[0.04]"
             aria-hidden="true"
           />
 
-          {visible.map((item) => (
+          {domItems.map((item, i) => (
             <BottomNavigationItem
               key={`${uid}-${item.href}`}
               href={item.href}
               label={item.label}
               icon={item.icon}
-              showLabel={isDesktop}
+              // Items at index >= 3 are hidden on mobile via pure CSS —
+              // no JS state dependency, no hydration mismatch, no FOUC.
+              hiddenUntilDesktop={i >= 3}
             />
           ))}
 
@@ -174,7 +172,7 @@ export function BottomNavigation() {
               data-nav-item
               className={cn(
                 "relative z-[1] flex flex-col items-center justify-center rounded-[20px] py-2.5 text-center outline-hidden",
-                isDesktop ? "w-20" : "px-4",
+                "px-3 md:w-20 md:px-1",
                 "focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/30 focus-visible:ring-offset-1",
                 menuOpen || hasOverflowActive
                   ? "text-[var(--color-ink)]"
@@ -188,11 +186,10 @@ export function BottomNavigation() {
               <span className="relative shrink-0">
                 <MoreHorizontal size={20} strokeWidth={1.5} />
               </span>
-              {isDesktop && (
-                <span className="relative mt-1.5 max-w-[4.5rem] truncate text-[11px] font-medium leading-tight tracking-tight">
-                  More
-                </span>
-              )}
+              {/* "More" label is CSS-hidden on mobile — no FOUC */}
+              <span className="relative mt-1.5 max-w-[4.5rem] truncate text-[11px] font-medium leading-tight tracking-tight hidden md:block">
+                More
+              </span>
             </button>
           )}
         </div>

@@ -18,7 +18,7 @@
 }
 
 html {
-  background: #14141a;
+  background: var(--color-surface);
 }
 
 body {
@@ -26,7 +26,6 @@ body {
   color: var(--color-ink);
   font-family: "Segoe UI", sans-serif;
   min-height: 100vh;
-  background: transparent;
 }
 
 a {
