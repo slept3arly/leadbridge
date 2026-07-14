@@ -3,9 +3,9 @@
 import { useState } from "react";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { FormField } from "@/components/ui/form-field";
 
 export function CreateUserForm() {
   const [pending, setPending] = useState(false);
@@ -37,31 +37,31 @@ export function CreateUserForm() {
         }
       }}
     >
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Name</label>
-        <Input name="name" required />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Email</label>
-        <Input name="email" type="email" required />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Password</label>
-        <Input name="password" type="password" minLength={8} required />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Role</label>
-        <Select name="role" defaultValue="SALES">
+      <FormField label="Name" htmlFor="user-name" required>
+        <Input id="user-name" name="name" required />
+      </FormField>
+      <FormField label="Email" htmlFor="user-email" required>
+        <Input id="user-email" name="email" type="email" required />
+      </FormField>
+      <FormField label="Password" htmlFor="user-password" required>
+        <Input id="user-password" name="password" type="password" minLength={8} required />
+      </FormField>
+      <FormField label="Role" htmlFor="user-role">
+        <Select id="user-role" name="role" defaultValue="SALES">
           <option value="SALES">Sales</option>
           <option value="ADMIN">Admin</option>
         </Select>
-      </div>
+      </FormField>
       <div className="md:col-span-2 flex justify-end">
-        <Button disabled={pending} type="submit">
+        <Button isLoading={pending} type="submit">
           {pending ? "Creating..." : "Create user"}
         </Button>
       </div>
-      {error ? <div className="md:col-span-2"><ErrorState message={error} /></div> : null}
+      {error ? (
+        <div className="md:col-span-2">
+          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>
+        </div>
+      ) : null}
     </form>
   );
 }

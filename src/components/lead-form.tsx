@@ -3,10 +3,10 @@
 import { useState } from "react";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { FormField } from "@/components/ui/form-field";
 
 export function LeadForm() {
   const [pending, setPending] = useState(false);
@@ -45,63 +45,57 @@ export function LeadForm() {
         }
       }}
     >
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Name</label>
-        <Input name="name" required />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Company</label>
-        <Input name="company" />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Email</label>
-        <Input name="email" type="email" />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Phone</label>
-        <Input name="phone" />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">City</label>
-        <Input name="city" />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">State</label>
-        <Input name="state" />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Product</label>
-        <Input name="product" />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Status</label>
-        <Select name="status" defaultValue="NEW">
+      <FormField label="Name" htmlFor="lead-name" required>
+        <Input id="lead-name" name="name" required />
+      </FormField>
+      <FormField label="Company" htmlFor="lead-company">
+        <Input id="lead-company" name="company" />
+      </FormField>
+      <FormField label="Email" htmlFor="lead-email">
+        <Input id="lead-email" name="email" type="email" />
+      </FormField>
+      <FormField label="Phone" htmlFor="lead-phone">
+        <Input id="lead-phone" name="phone" />
+      </FormField>
+      <FormField label="City" htmlFor="lead-city">
+        <Input id="lead-city" name="city" />
+      </FormField>
+      <FormField label="State" htmlFor="lead-state">
+        <Input id="lead-state" name="state" />
+      </FormField>
+      <FormField label="Product" htmlFor="lead-product">
+        <Input id="lead-product" name="product" />
+      </FormField>
+      <FormField label="Status" htmlFor="lead-status">
+        <Select id="lead-status" name="status" defaultValue="NEW">
           <option value="NEW">NEW</option>
           <option value="CONTACTED">CONTACTED</option>
           <option value="QUALIFIED">QUALIFIED</option>
           <option value="WON">WON</option>
           <option value="LOST">LOST</option>
         </Select>
-      </div>
-      <div className="space-y-2 md:col-span-2">
-        <label className="text-sm font-medium">Requirement</label>
-        <Textarea name="requirement" rows={4} />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Priority</label>
-        <Select name="priority" defaultValue="MEDIUM">
+      </FormField>
+      <FormField label="Requirement" htmlFor="lead-requirement" className="md:col-span-2">
+        <Textarea id="lead-requirement" name="requirement" rows={4} />
+      </FormField>
+      <FormField label="Priority" htmlFor="lead-priority">
+        <Select id="lead-priority" name="priority" defaultValue="MEDIUM">
           <option value="LOW">LOW</option>
           <option value="MEDIUM">MEDIUM</option>
           <option value="HIGH">HIGH</option>
           <option value="URGENT">URGENT</option>
         </Select>
-      </div>
+      </FormField>
       <div className="flex items-end justify-end">
-        <Button disabled={pending} type="submit">
+        <Button isLoading={pending} type="submit">
           {pending ? "Saving..." : "Create lead"}
         </Button>
       </div>
-      {error ? <div className="md:col-span-2"><ErrorState message={error} /></div> : null}
+      {error ? (
+        <div className="md:col-span-2">
+          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>
+        </div>
+      ) : null}
     </form>
   );
 }

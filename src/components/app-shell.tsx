@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Sidebar } from "@/components/sidebar";
+import { NavigationProvider } from "@/components/navigation/NavigationProvider";
+import { BottomNavigation } from "@/components/navigation/BottomNavigation";
 
 export function AppShell({
   children,
@@ -9,11 +10,13 @@ export function AppShell({
   role: "ADMIN" | "SALES";
 }) {
   return (
-    <div className="min-h-screen p-4 md:p-6">
-      <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-[18rem_minmax(0,1fr)]">
-        <Sidebar role={role} />
-        <main className="space-y-6">{children}</main>
+    <NavigationProvider role={role}>
+      <div className="min-h-screen p-4 pb-24 md:p-6 md:pb-24">
+        <div className="mx-auto max-w-7xl">
+          <main className="space-y-6">{children}</main>
+        </div>
+        <BottomNavigation />
       </div>
-    </div>
+    </NavigationProvider>
   );
 }

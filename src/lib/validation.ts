@@ -70,3 +70,33 @@ export const noteSchema = z.object({
 export const assignmentSchema = z.object({
   assignedUserId: z.string().min(1).nullable(),
 });
+
+export const providerSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  slug: z.string().trim().min(2).max(120).regex(/^[a-z0-9-]+$/),
+  sourceType: z.string().trim().min(2).max(60),
+  description: z.string().trim().max(500).optional().nullable(),
+  active: z.boolean().optional(),
+});
+
+export const routingRuleSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  recipientGmailAccount: z.string().trim().max(120).optional().nullable(),
+  senderEmail: z.email().optional().nullable(),
+  senderDomain: z.string().trim().max(120).optional().nullable(),
+  subjectContains: z.string().trim().max(250).optional().nullable(),
+  gmailLabel: z.string().trim().max(120).optional().nullable(),
+  priority: z.number().int().min(0).max(10000).optional(),
+  fallback: z.boolean().optional(),
+  active: z.boolean().optional(),
+  providerId: z.string().min(1),
+  parserId: z.string().min(1),
+  connectorId: z.string().optional().nullable(),
+});
+
+export const unmatchedActionSchema = z.object({
+  action: z.enum(["ASSIGN", "CREATE_PROVIDER", "IGNORE", "SPAM", "REQUEST_PARSER"]),
+  providerId: z.string().optional(),
+  vendorName: z.string().optional(),
+  developerNotes: z.string().max(2000).optional(),
+});
