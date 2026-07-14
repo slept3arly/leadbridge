@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "better-auth/crypto";
-import { PrismaClient } from "../src/generated/prisma/client";
+import { PrismaClient, UserRole } from "../src/generated/prisma/client";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -15,7 +15,7 @@ const prisma = new PrismaClient({
 
 async function main() {
   const existingAdmin = await prisma.user.findFirst({
-    where: { role: "ADMIN" },
+    where: { role: UserRole.ADMIN, isDeleted: false },
     select: { email: true },
   });
 
@@ -50,7 +50,7 @@ async function main() {
       id: userId,
       name: adminName,
       email: adminEmail,
-      role: "ADMIN",
+      role: UserRole.ADMIN,
       accounts: {
         create: {
           id: randomUUID(),

@@ -1,22 +1,23 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/session";
+import { withApiAuthorization, apiError } from "@/lib/api";
 import { leadSchema } from "@/lib/validation";
+import { parseListQuery } from "@/lib/query-builder";
 import { leadService } from "@/services/lead.service";
 
-export async function GET() {
-  const { user } = await requireSession();
-  const leads = await leadService.list(user.role === "SALES" ? user.id : undefined);
-  return NextResponse.json(leads);
-}
+export const GET = withApiAuthorization(undefined, async (request, _context, session) => {
+  const query = parseListQuery(new URL(request.url).searchParams);
+  return NextResponse.json(await leadService.listPage(query, session.user));
+});
 
-export async function POST(request: Request) {
-  const { user } = await requireSession();
-  const parsed = leadSchema.safeParse(await request.json());
+export const POST = withApiAuthorization(undefined, async (request, _context, session) => {
+  let body: unknown;
+  try { body = await request.json(); } catch { return apiError("Invalid JSON body.", 400); }
+  const parsed = leadSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const lead = await leadService.create(parsed.data, user.id);
+  const lead = await leadService.create(parsed.data, session.user);
   return NextResponse.json(lead, { status: 201 });
-}
+});

@@ -7,6 +7,11 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UserRole {
+  ADMIN
+  SALES
+}
+
 enum LeadStatus {
   NEW
   CONTACTED
@@ -27,30 +32,58 @@ enum ActivityType {
   UPDATED
   ASSIGNED
   NOTE_ADDED
+  NOTE_EDITED
   IMPORTED
   STATUS_CHANGED
+  FOLLOW_UP
+  DELETED
+  RESTORED
+  ATTACHMENT_ADDED
+}
+
+enum ConnectorStatus {
+  INACTIVE
+  ACTIVE
+  ERROR
 }
 
 model User {
-  id            String         @id @default(cuid())
-  name          String
-  email         String         @unique
-  emailVerified Boolean        @default(false)
-  image         String?
-  role          String         @default("SALES")
-  active        Boolean        @default(true)
-  banned        Boolean        @default(false)
-  banReason     String?
-  banExpires    DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  accounts      Account[]
-  sessions      Session[]
-  assignedLeads Lead[]         @relation("AssignedLeads")
-  activities    LeadActivity[] @relation("ActivityActor")
-  notes         Note[]
-  auditLogs     AuditLog[]
+  id                  String         @id @default(cuid())
+  name                String
+  email               String         @unique
+  emailVerified       Boolean        @default(false)
+  image               String?
+  role                UserRole       @default(SALES)
+  active              Boolean        @default(true)
+  banned              Boolean        @default(false)
+  banReason           String?
+  banExpires          DateTime?
+  phone               String?
+  employeeCode        String?        @unique
+  designation         String?
+  lastLoginAt         DateTime?
+  lastSeenAt          DateTime?
+  createdById         String?
+  createdBy           User?          @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdUsers        User[]         @relation("UserCreatedBy")
+  deletedAt           DateTime?
+  isDeleted           Boolean        @default(false)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  accounts            Account[]
+  sessions            Session[]
+  assignedLeads       Lead[]         @relation("AssignedLeads")
+  createdLeads        Lead[]         @relation("LeadCreatedBy")
+  updatedLeads        Lead[]         @relation("LeadUpdatedBy")
+  deletedLeads        Lead[]         @relation("LeadDeletedBy")
+  activities          LeadActivity[] @relation("ActivityActor")
+  notes               Note[]
+  uploadedAttachments Attachment[]
+  auditLogs           AuditLog[]
+  updatedSettings     Setting[]
 
+  @@index([role, active, isDeleted])
+  @@index([isDeleted, deletedAt])
   @@map("users")
 }
 
@@ -70,7 +103,7 @@ model Session {
 }
 
 model Account {
-  id                    String   @id
+  id                    String    @id
   accountId             String
   providerId            String
   userId                String
@@ -81,10 +114,11 @@ model Account {
   refreshTokenExpiresAt DateTime?
   scope                 String?
   password              String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, providerId])
   @@map("accounts")
 }
 
@@ -96,24 +130,32 @@ model Verification {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  @@index([identifier])
   @@map("verifications")
 }
 
 model LeadSource {
   id          String      @id @default(cuid())
   name        String      @unique
-  type        String
+  slug        String      @unique
+  sourceType  String      @map("type")
   active      Boolean     @default(true)
   description String?
+  icon        String?
+  color       String?
+  priority    Int         @default(0)
   connectors  Connector[]
   leads       Lead[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+
+  @@index([active, priority])
 }
 
 model Lead {
   id                String         @id @default(cuid())
-  name              String
+  leadNumber        String         @unique @default(cuid())
+  displayName       String         @map("name")
   company           String?
   email             String?
   phone             String?
@@ -124,24 +166,63 @@ model Lead {
   country           String?
   product           String?
   requirement       String?
+  industry          String?
+  website           String?
+  jobTitle          String?
+  budget            Decimal?       @db.Decimal(14, 2)
+  expectedValue     Decimal?       @db.Decimal(14, 2)
+  currency          String?        @db.VarChar(3)
+  campaign          String?
+  campaignId        String?
+  utmSource         String?
+  utmMedium         String?
+  utmCampaign       String?
+  utmContent        String?
+  utmTerm           String?
+  firstContactedAt  DateTime?
+  lastContactedAt   DateTime?
+  nextFollowUpAt    DateTime?
+  closedAt          DateTime?
+  convertedAt       DateTime?
+  lostReason        String?
+  wonAmount         Decimal?       @db.Decimal(14, 2)
   sourceReferenceId String?
+  sourceName        String?
+  sourceType        String?
+  parserVersion     String?
+  receivedAt        DateTime?
+  importedAt        DateTime?
   status            LeadStatus     @default(NEW)
   priority          LeadPriority   @default(MEDIUM)
   customFields      Json?
+  rawPayload        Json?
   sourceId          String?
   connectorId       String?
-  source            LeadSource?    @relation(fields: [sourceId], references: [id])
-  connector         Connector?     @relation(fields: [connectorId], references: [id])
+  source            LeadSource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  connector         Connector?     @relation(fields: [connectorId], references: [id], onDelete: SetNull)
   assignedUserId    String?
-  assignedUser      User?          @relation("AssignedLeads", fields: [assignedUserId], references: [id])
+  assignedUser      User?          @relation("AssignedLeads", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  createdById       String?
+  createdBy         User?          @relation("LeadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById       String?
+  updatedBy         User?          @relation("LeadUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  deletedById       String?
+  deletedBy         User?          @relation("LeadDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  isArchived        Boolean        @default(false)
+  isDeleted         Boolean        @default(false)
+  deletedAt         DateTime?
   activities        LeadActivity[]
   notes             Note[]
   attachments       Attachment[]
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
-  @@index([assignedUserId, status])
+  @@index([assignedUserId, status, isDeleted])
+  @@index([status, isArchived, isDeleted])
+  @@index([nextFollowUpAt, isDeleted])
   @@index([connectorId, sourceId])
+  @@index([connectorId, sourceReferenceId])
+  @@index([createdById, createdAt])
   @@index([email])
   @@index([phone])
 }
@@ -154,57 +235,106 @@ model LeadActivity {
   leadId    String
   lead      Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
   actorId   String?
-  actor     User?        @relation("ActivityActor", fields: [actorId], references: [id])
+  actor     User?        @relation("ActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
   createdAt DateTime     @default(now())
 
   @@index([leadId, createdAt])
+  @@index([leadId, type, createdAt])
 }
 
 model Note {
-  id        String   @id @default(cuid())
-  content   String
-  leadId    String
-  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  content    String
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  editedAt   DateTime @updatedAt
+  isPinned   Boolean  @default(false)
+  visibility String   @default("INTERNAL")
+  createdAt  DateTime @default(now())
+
+  @@index([leadId, createdAt])
+  @@index([leadId, isPinned])
 }
 
 model Attachment {
-  id        String   @id @default(cuid())
-  name      String
-  key       String
-  mimeType  String
-  size      Int
-  leadId    String
-  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  name            String
+  key             String
+  mimeType        String
+  size            Int
+  checksum        String?
+  storageProvider String   @default("local")
+  leadId          String
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  uploadedById    String?
+  uploadedBy      User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+
+  @@index([leadId, createdAt])
+  @@index([checksum])
 }
 
 model Connector {
-  id            String         @id @default(cuid())
-  name          String         @unique
-  type          String
-  enabled       Boolean        @default(false)
-  configuration Json?
-  lastSyncedAt  DateTime?
-  sourceId      String?
-  source        LeadSource?    @relation(fields: [sourceId], references: [id])
-  fieldMappings FieldMapping[]
-  leads         Lead[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id              String             @id @default(cuid())
+  name            String             @unique
+  type            String
+  enabled         Boolean            @default(false)
+  status          ConnectorStatus    @default(INACTIVE)
+  configuration   Json?
+  runtimeMetadata Json?
+  lastSyncedAt    DateTime?
+  lastSuccessAt   DateTime?
+  lastFailureAt   DateTime?
+  lastError       String?
+  pollInterval    Int?
+  sourceId        String?
+  source          LeadSource?        @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  parserId        String?
+  parser          Parser?            @relation(fields: [parserId], references: [id], onDelete: SetNull)
+  fieldMappings   FieldMapping[]
+  leads           Lead[]
+  syncRuns        ConnectorSyncRun[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([enabled, status])
+  @@index([sourceId, enabled])
+  @@index([parserId])
 }
 
 model Parser {
-  id            String   @id @default(cuid())
-  name          String   @unique
+  id            String      @id @default(cuid())
+  name          String      @unique
   type          String
+  version       String?
+  description   String?
   configuration Json?
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  active        Boolean     @default(true)
+  connectors    Connector[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([type, active])
+}
+
+model ConnectorSyncRun {
+  id             String          @id @default(cuid())
+  connectorId    String
+  connector      Connector       @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  status         ConnectorStatus
+  startedAt      DateTime        @default(now())
+  completedAt    DateTime?
+  recordsSeen    Int             @default(0)
+  recordsCreated Int             @default(0)
+  recordsUpdated Int             @default(0)
+  recordsSkipped Int             @default(0)
+  errorMessage   String?
+  metadata       Json?
+
+  @@index([connectorId, startedAt])
+  @@index([status, startedAt])
 }
 
 model FieldMapping {
@@ -218,6 +348,7 @@ model FieldMapping {
   updatedAt   DateTime   @updatedAt
 
   @@unique([connectorId, sourceField])
+  @@index([connectorId, targetField])
 }
 
 model AuditLog {
@@ -226,18 +357,31 @@ model AuditLog {
   entityType String
   entityId   String?
   metadata   Json?
+  oldData    Json?
+  newData    Json?
+  ipAddress  String?
+  userAgent  String?
+  requestId  String?
   actorId    String?
-  actor      User?    @relation(fields: [actorId], references: [id])
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([requestId])
+  @@index([actorId, createdAt])
 }
 
 model Setting {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  value     Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  category    String?
+  description String?
+  updatedById String?
+  updatedBy   User?    @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
 }

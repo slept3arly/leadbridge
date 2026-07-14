@@ -1,19 +1,19 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { requireSession } from "@/lib/session";
+import { withApiAuthorization, apiError } from "@/lib/api";
 import { userSchema } from "@/lib/validation";
 import { userService } from "@/services/user.service";
 
-export async function GET() {
-  await requireSession("ADMIN");
-  const users = await userService.list();
+export const GET = withApiAuthorization("ADMIN", async (request) => {
+  const users = await userService.listPage(new URL(request.url).searchParams);
   return NextResponse.json(users);
-}
+});
 
-export async function POST(request: Request) {
-  await requireSession("ADMIN");
-  const parsed = userSchema.safeParse(await request.json());
+export const POST = withApiAuthorization("ADMIN", async (request, _context, session) => {
+  let body: unknown;
+  try { body = await request.json(); } catch { return apiError("Invalid JSON body.", 400); }
+  const parsed = userSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -24,5 +24,7 @@ export async function POST(request: Request) {
     body: parsed.data,
   });
 
+  await userService.markCreated(created.user.id, session.user.id);
+
   return NextResponse.json(created, { status: 201 });
-}
+});

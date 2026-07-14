@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/session";
+import { withApiAuthorization } from "@/lib/api";
+import { parseListQuery } from "@/lib/query-builder";
 import { connectorService } from "@/services/connector.service";
 
-export async function GET() {
-  await requireSession("ADMIN");
-  const connectors = await connectorService.list();
-  return NextResponse.json({ data: connectors });
-}
+export const GET = withApiAuthorization("ADMIN", async (request) => {
+  const connectors = await connectorService.listPage(parseListQuery(new URL(request.url).searchParams));
+  return NextResponse.json(connectors);
+});

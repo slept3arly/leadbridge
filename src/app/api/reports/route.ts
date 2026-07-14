@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/session";
+import { withApiAuthorization } from "@/lib/api";
 
-export async function GET() {
-  await requireSession("ADMIN");
-
+export const GET = withApiAuthorization("ADMIN", async () => {
   return NextResponse.json({
     status: "stub",
     message: "Reporting endpoints are reserved for the analytics milestone.",
   });
-}
+});

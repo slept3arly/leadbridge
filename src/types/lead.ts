@@ -19,4 +19,9 @@ export type NormalizedLead = {
   status?: LeadStatus;
   priority?: LeadPriority;
   customFields?: Record<string, unknown>;
+  rawPayload?: Record<string, unknown>;
+  sourceType?: string;
+  parserVersion?: string;
+  receivedAt?: Date;
+  importedAt?: Date;
 };

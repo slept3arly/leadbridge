@@ -1,26 +1,9 @@
-import { prisma } from "@/lib/prisma";
-import { auditService } from "@/services/audit.service";
+import type { UserRole } from "@/generated/prisma/client";
+import { leadService } from "@/services/lead.service";
 
 export class AssignmentService {
-  async assign(leadId: string, userId: string, actorId: string) {
-    const lead = await prisma.lead.update({
-      where: { id: leadId },
-      data: { assignedUserId: userId },
-    });
-
-    await prisma.leadActivity.create({
-      data: {
-        leadId,
-        actorId,
-        type: "ASSIGNED",
-        message: "Lead assigned",
-        metadata: { userId },
-      },
-    });
-
-    await auditService.log("lead.assigned", "Lead", leadId, actorId, { userId });
-
-    return lead;
+  async assign(leadId: string, userId: string | null, actor: { id: string; role: UserRole }) {
+    return leadService.assign(leadId, userId, actor);
   }
 }
 

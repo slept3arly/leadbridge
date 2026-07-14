@@ -1,31 +1,25 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/session";
+import { withApiAuthorization, apiError } from "@/lib/api";
 import { leadSchema } from "@/lib/validation";
 import { leadService } from "@/services/lead.service";
 
-export async function PATCH(
-  request: Request,
-  context: { params: Promise<{ id: string }> },
-) {
-  const { user } = await requireSession();
-  const parsed = leadSchema.partial().safeParse(await request.json());
+export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (request, context, session) => {
+  let body: unknown;
+  try { body = await request.json(); } catch { return apiError("Invalid JSON body.", 400); }
+  const parsed = leadSchema.partial().safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   const { id } = await context.params;
-  const lead = await leadService.update(id, parsed.data, user.id);
+  const lead = await leadService.update(id, parsed.data, session.user);
 
   return NextResponse.json(lead);
-}
+});
 
-export async function DELETE(
-  _request: Request,
-  context: { params: Promise<{ id: string }> },
-) {
-  const { user } = await requireSession("ADMIN");
+export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>("ADMIN", async (_request, context, session) => {
   const { id } = await context.params;
-  await leadService.remove(id, user.id);
+  await leadService.remove(id, session.user);
   return new NextResponse(null, { status: 204 });
-}
+});

@@ -9,6 +9,7 @@ export type AppSession = Awaited<ReturnType<typeof auth.api.getSession>> & {
     id: string;
     role: AppRole;
     active: boolean;
+    isDeleted: boolean;
     banned?: boolean;
     name: string;
     email: string;

@@ -9,6 +9,7 @@ export class DuplicateService {
 
     return prisma.lead.findMany({
       where: {
+        isDeleted: false,
         OR: [
           data.email ? { email: data.email } : undefined,
           data.phone ? { phone: data.phone } : undefined,
@@ -16,7 +17,7 @@ export class DuplicateService {
       },
       select: {
         id: true,
-        name: true,
+        displayName: true,
         email: true,
         phone: true,
       },

@@ -7,3 +7,5 @@ export interface Connector {
   normalize(record: unknown): NormalizedLead;
   sync(): Promise<{ created: number; skipped: number }>;
 }
+
+export type ConnectorStatus = "INACTIVE" | "ACTIVE" | "ERROR";
