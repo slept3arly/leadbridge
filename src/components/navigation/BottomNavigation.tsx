@@ -98,8 +98,8 @@ export function BottomNavigation() {
       gsap.to(indicatorRef.current, {
         x: targetRect.left - dockRect.left,
         width: targetRect.width,
-        duration: 0.35,
-        ease: "power3.out",
+        duration: 0.48,
+        ease: "elastic.out(0.75, 0.8)",
         overwrite: "auto",
       });
     });
@@ -111,22 +111,6 @@ export function BottomNavigation() {
       }
     };
   }, [activeIndex]);
-
-  // cascade mount on initial render only
-  useEffect(() => {
-    const items = dockRef.current?.querySelectorAll<HTMLElement>("[data-nav-item]");
-    if (!items?.length) return;
-
-    const ctx = gsap.context(() => {
-      gsap.fromTo(
-        items,
-        { opacity: 0, y: 8 },
-        { opacity: 1, y: 0, duration: 0.2, stagger: 0.04, ease: "power2.out" },
-      );
-    });
-
-    return () => ctx.revert();
-  }, []);
 
   const handleMoreClick = useCallback(() => {
     openMenu();

@@ -57,28 +57,39 @@ export function BottomNavigationMenu() {
       document.body.style.overflow = "hidden";
 
       const ctx = gsap.context(() => {
-        const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+        const tl = gsap.timeline();
 
+        // Fade in the backdrop
         tl.fromTo(
           overlayRef.current,
-          { opacity: 0 },
-          { opacity: 1, duration: 0.2 },
-        ).fromTo(
-          panelRef.current,
-          { y: 60, opacity: 0, scale: 0.97 },
-          { y: 0, opacity: 1, scale: 1, duration: 0.3 },
-          "-=0.1",
+          {
+            opacity: 0,
+          },
+          {
+            opacity: 1,
+            duration: 0.3,
+            ease: "power2.out",
+          }
         );
 
-        const items = panelRef.current?.querySelectorAll<HTMLElement>("[data-menu-item]");
-        if (items?.length) {
-          tl.fromTo(
-            items,
-            { opacity: 0, y: 8 },
-            { opacity: 1, y: 0, duration: 0.18, stagger: 0.04 },
-            "-=0.1",
-          );
-        }
+        // Then bring in the menu, slightly overlapping the backdrop fade
+        tl.fromTo(
+          panelRef.current,
+          {
+            opacity: 0,
+            y: 6,
+            scale: 0.985,
+          },
+          {
+            opacity: 1,
+            y: 0,
+            scale: 1,
+            duration: 0.42,
+            ease: "power4.out",
+            overwrite: "auto",
+          },
+          "-=0.18"
+        );
       });
 
       requestAnimationFrame(() => {
@@ -92,11 +103,12 @@ export function BottomNavigationMenu() {
       const ctx = gsap.context(() => {
         gsap.to(overlayRef.current, { opacity: 0, duration: 0.12 });
         gsap.to(panelRef.current, {
-          y: 60,
           opacity: 0,
-          scale: 0.97,
-          duration: 0.15,
-          ease: "power2.in",
+          y: 8,
+          scale: 0.99,
+          duration: 0.28,
+          ease: "power3.in",
+          overwrite: "auto",
         });
       });
       previousFocusRef.current?.focus();
@@ -141,7 +153,7 @@ export function BottomNavigationMenu() {
       ref={overlayRef}
       className={
         menuOpen
-          ? "fixed inset-0 z-50 flex items-end justify-center bg-black/[0.06] backdrop-blur-sm p-3 pb-20 md:pb-24"
+          ? "fixed inset-0 z-50 flex items-end justify-center bg-black/[0.06] backdrop-blur-sm p-3"
           : "hidden"
       }
       onClick={(e) => {
@@ -155,12 +167,14 @@ export function BottomNavigationMenu() {
       <div
         ref={panelRef}
         className={cn(
-          "relative w-full max-w-sm max-h-[60vh] overflow-y-auto border border-white/40 bg-white/85 backdrop-blur-2xl shadow-[0_8px_40px_rgba(0,0,0,0.06),0_2px_12px_rgba(0,0,0,0.04)]",
-          "rounded-[28px] px-5 pb-6 pt-5 md:rounded-[32px] md:px-6 md:pb-8",
+          "relative w-full max-w-md max-h-[60vh] overflow-y-auto border border-white/40 bg-white/85 backdrop-blur-2xl shadow-[0_8px_40px_rgba(0,0,0,0.06),0_2px_12px_rgba(0,0,0,0.04)]",
+          "rounded-[28px] px-5 pb-6 pt-5 md:px-6 md:pb-8",
         )}
-        style={{ transform: "translateY(60px)" }}
+        style={{
+          transform: "translateY(16px) scale(0.94)",
+          transformOrigin: "bottom right",
+        }}
       >
-        <div className="mx-auto mb-4 h-1 w-9 shrink-0 rounded-full bg-black/[0.08] md:hidden" />
         <button
           onClick={closeMenu}
           className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full text-[var(--color-muted)] hover:bg-black/[0.04] hover:text-[var(--color-ink)] transition-all duration-200"
