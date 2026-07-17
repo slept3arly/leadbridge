@@ -35,6 +35,7 @@ export class ConnectorService {
     return listResult(data, total, query);
   }
 
+  // Legacy compatibility for smoke scripts. Sync history is persisted by the runtime.
   async recordSyncRun(connectorId: string, status: "INACTIVE" | "ACTIVE" | "ERROR", counts: { recordsSeen?: number; recordsCreated?: number; recordsUpdated?: number; recordsSkipped?: number; errorMessage?: string }) {
     const now = new Date();
     return prisma.$transaction(async (tx) => {

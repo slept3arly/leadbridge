@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withApiAuthorization, apiError } from "@/lib/api";
+import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { leadSchema } from "@/lib/validation";
 import { leadService } from "@/services/lead.service";
 
@@ -13,13 +13,20 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
   }
 
   const { id } = await context.params;
-  const lead = await leadService.update(id, parsed.data, session.user);
-
-  return NextResponse.json(lead);
+  try {
+    const lead = await leadService.update(id, parsed.data, session.user);
+    return NextResponse.json(lead);
+  } catch (error) {
+    return handleApiError(error, "Failed to update lead");
+  }
 });
 
 export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>("ADMIN", async (_request, context, session) => {
   const { id } = await context.params;
-  await leadService.remove(id, session.user);
-  return new NextResponse(null, { status: 204 });
+  try {
+    await leadService.remove(id, session.user);
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    return handleApiError(error, "Failed to delete lead");
+  }
 });

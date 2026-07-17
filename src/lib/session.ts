@@ -16,6 +16,10 @@ export type AppSession = Awaited<ReturnType<typeof auth.api.getSession>> & {
   };
 };
 
+export function canAccessProtectedSession(session: AppSession | null): session is AppSession {
+  return Boolean(session && session.user.active && !session.user.banned && !session.user.isDeleted);
+}
+
 export async function getSession() {
   return auth.api.getSession({ headers: await headers() }) as Promise<AppSession | null>;
 }
@@ -23,11 +27,7 @@ export async function getSession() {
 export async function requireSession(role?: AppRole) {
   const session = await getSession();
 
-  if (!session) {
-    redirect("/login");
-  }
-
-  if (!session.user.active || session.user.banned) {
+  if (!canAccessProtectedSession(session)) {
     redirect("/login");
   }
 

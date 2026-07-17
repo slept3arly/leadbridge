@@ -47,6 +47,22 @@ enum ConnectorStatus {
   ERROR
 }
 
+enum ConnectorScheduleType {
+  MANUAL
+  EVERY_5_MIN
+  EVERY_15_MIN
+  EVERY_30_MIN
+  HOURLY
+  DAILY
+  CUSTOM
+}
+
+enum ConnectorHealthStatus {
+  HEALTHY
+  WARNING
+  ERROR
+}
+
 enum UnmatchedEmailStatus {
   UNMATCHED
   ASSIGNED
@@ -241,6 +257,7 @@ model Lead {
   @@index([nextFollowUpAt, isDeleted])
   @@index([connectorId, sourceId])
   @@index([connectorId, sourceReferenceId])
+  @@unique([connectorId, sourceReferenceId])
   @@index([createdById, createdAt])
   @@index([email])
   @@index([phone])
@@ -296,30 +313,40 @@ model Attachment {
 }
 
 model Connector {
-  id              String             @id @default(cuid())
-  name            String             @unique
-  environmentKey  String?            @unique
-  type            String
-  enabled         Boolean            @default(false)
-  status          ConnectorStatus    @default(INACTIVE)
-  configuration   Json?
-  runtimeMetadata Json?
-  lastSyncedAt    DateTime?
-  lastSuccessAt   DateTime?
-  lastFailureAt   DateTime?
-  lastError       String?
-  pollInterval    Int?
-  sourceId        String?
-  source          LeadSource?        @relation(fields: [sourceId], references: [id], onDelete: SetNull)
-  parserId        String?
-  parser          Parser?            @relation(fields: [parserId], references: [id], onDelete: SetNull)
-  fieldMappings   FieldMapping[]
-  leads           Lead[]
-  syncRuns        ConnectorSyncRun[]
-  routingRules    RoutingRule[]
-  unmatchedEmails UnmatchedEmail[]
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  id                  String                @id @default(cuid())
+  name                String                @unique
+  environmentKey      String?               @unique
+  type                String
+  enabled             Boolean               @default(false)
+  status              ConnectorStatus       @default(INACTIVE)
+  configuration       Json?
+  runtimeMetadata     Json?
+  lastSyncedAt        DateTime?
+  lastSuccessAt       DateTime?
+  lastFailureAt       DateTime?
+  lastError           String?
+  pollInterval        Int?
+  scheduleType        ConnectorScheduleType @default(MANUAL)
+  scheduleConfig      Json?
+  nextScheduledRun    DateTime?
+  consecutiveFailures Int                   @default(0)
+  averageDurationMs   Int?
+  lastDurationMs      Int?
+  healthStatus        ConnectorHealthStatus @default(HEALTHY)
+  isRunning           Boolean               @default(false)
+  lockedAt            DateTime?
+  lockedBy            String?
+  sourceId            String?
+  source              LeadSource?           @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  parserId            String?
+  parser              Parser?               @relation(fields: [parserId], references: [id], onDelete: SetNull)
+  fieldMappings       FieldMapping[]
+  leads               Lead[]
+  syncRuns            ConnectorSyncRun[]
+  routingRules        RoutingRule[]
+  unmatchedEmails     UnmatchedEmail[]
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
 
   @@index([enabled, status])
   @@index([sourceId, enabled])

@@ -3,6 +3,7 @@ import { DataTable } from "@/components/data-table";
 import { Navbar } from "@/components/navbar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { ExportButton } from "@/components/export-button";
 import { formatDate } from "@/lib/utils";
 import { userService } from "@/services/user.service";
 import { ServerTableControls } from "@/components/server-table-controls";
@@ -15,7 +16,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
 
   return (
     <>
-      <Navbar title="User Administration" />
+      <Navbar title="User Administration" actions={<ExportButton type="users" />} />
       <Card>
         <h2 className="text-xl font-semibold">Create internal user</h2>
         <p className="mt-2 text-sm text-[var(--color-muted)]">Only admins can provision accounts. Public signup stays disabled.</p>

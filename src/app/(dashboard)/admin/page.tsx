@@ -1,21 +1,24 @@
 import { Navbar } from "@/components/navbar";
 import { SignOutButton } from "@/components/sign-out-button";
 import { Card } from "@/components/ui/card";
-import { leadService } from "@/services/lead.service";
-import { userService } from "@/services/user.service";
+import { dashboardService } from "@/services/dashboard.service";
+import { AdminDashboardClient } from "@/components/admin-dashboard-client";
 
 export default async function AdminDashboardPage() {
-  const [leadStats, userStats] = await Promise.all([leadService.stats(), userService.stats()]);
+  const data = await dashboardService.admin();
 
   return (
     <>
       <Navbar title="Admin Dashboard" actions={<SignOutButton />} />
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card><p className="text-sm text-[var(--color-muted)]">Total leads</p><p className="mt-3 text-3xl font-semibold">{leadStats.total}</p></Card>
-        <Card><p className="text-sm text-[var(--color-muted)]">Open pipeline</p><p className="mt-3 text-3xl font-semibold">{leadStats.open}</p></Card>
-        <Card><p className="text-sm text-[var(--color-muted)]">Qualified leads</p><p className="mt-3 text-3xl font-semibold">{leadStats.qualified}</p></Card>
-        <Card><p className="text-sm text-[var(--color-muted)]">Active sales users</p><p className="mt-3 text-3xl font-semibold">{userStats.sales}</p></Card>
+      <div className="grid gap-4 md:grid-cols-5">
+        <Card><p className="text-sm text-[var(--color-muted)]">Total leads</p><p className="mt-3 text-3xl font-semibold">{data.cards.totalLeads}</p></Card>
+        <Card><p className="text-sm text-[var(--color-muted)]">Active pipeline</p><p className="mt-3 text-3xl font-semibold">{data.cards.activeLeads}</p></Card>
+        <Card><p className="text-sm text-[var(--color-muted)]">New today</p><p className="mt-3 text-3xl font-semibold">{data.cards.newToday}</p></Card>
+        <Card><p className="text-sm text-[var(--color-muted)]">Won</p><p className="mt-3 text-3xl font-semibold">{data.cards.won}</p></Card>
+        <Card><p className="text-sm text-[var(--color-muted)]">Unassigned</p><p className="mt-3 text-3xl font-semibold">{data.cards.unassigned}</p></Card>
       </div>
+
+      <AdminDashboardClient data={data} />
     </>
   );
 }

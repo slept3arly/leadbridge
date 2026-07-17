@@ -1,11 +1,31 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
-import { createConfiguredRuntime } from "@/connectors/platform";
-import { connectorService } from "@/services/connector.service";
+import { GmailConnector } from "@/connectors/gmail/gmail-connector";
+import { RestConnector } from "@/connectors/rest/rest-connector";
 
 export const POST = withApiAuthorization("ADMIN", async (request) => {
-  let body: unknown;
-  try { body = await request.json(); } catch { return apiError("Invalid JSON body.", 400); }
-  if (!body || typeof body !== "object" || !("key" in body) || !("kind" in body) || typeof body.key !== "string" || typeof body.kind !== "string") return apiError("Connector key and kind are required.", 400);
-  return NextResponse.json(await connectorService.testConnection(body.key, body.kind as Parameters<typeof createConfiguredRuntime>[1]));
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return apiError("Invalid JSON body.", 400);
+  }
+
+  const kind = (body.kind as string) ?? (body.type as string);
+
+  if (kind === "GMAIL" || kind === "gmail") {
+    const key = body.key as string;
+    if (!key) return apiError("Connector key is required.", 400);
+    const result = await GmailConnector.testConnection(key);
+    return NextResponse.json(result);
+  }
+
+  if (kind === "REST" || kind === "rest") {
+    const config = body.config as Record<string, unknown>;
+    if (!config) return apiError("REST connector configuration is required.", 400);
+    const result = await RestConnector.testConnection(config);
+    return NextResponse.json(result);
+  }
+
+  return apiError(`Unsupported connector kind: ${kind}`, 400);
 });

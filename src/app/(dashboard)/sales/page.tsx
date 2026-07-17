@@ -2,20 +2,22 @@ import { Navbar } from "@/components/navbar";
 import { SignOutButton } from "@/components/sign-out-button";
 import { Card } from "@/components/ui/card";
 import { requireSession } from "@/lib/session";
-import { leadService } from "@/services/lead.service";
+import { dashboardService } from "@/services/dashboard.service";
+import { SalesDashboardClient } from "@/components/sales-dashboard-client";
 
 export default async function SalesDashboardPage() {
   const { user } = await requireSession("SALES");
-  const stats = await leadService.stats(user.id);
+  const data = await dashboardService.sales(user.id);
 
   return (
     <>
       <Navbar title="Sales Dashboard" actions={<SignOutButton />} />
       <div className="grid gap-4 md:grid-cols-3">
-        <Card><p className="text-sm text-[var(--color-muted)]">My leads</p><p className="mt-3 text-3xl font-semibold">{stats.total}</p></Card>
-        <Card><p className="text-sm text-[var(--color-muted)]">Open follow-ups</p><p className="mt-3 text-3xl font-semibold">{stats.open}</p></Card>
-        <Card><p className="text-sm text-[var(--color-muted)]">Qualified pipeline</p><p className="mt-3 text-3xl font-semibold">{stats.qualified}</p></Card>
+        <Card><p className="text-sm text-[var(--color-muted)]">My leads</p><p className="mt-3 text-3xl font-semibold">{data.cards.myLeads}</p></Card>
+        <Card><p className="text-sm text-[var(--color-muted)]">Open leads</p><p className="mt-3 text-3xl font-semibold">{data.cards.myOpenLeads}</p></Card>
+        <Card><p className="text-sm text-[var(--color-muted)]">Closed leads</p><p className="mt-3 text-3xl font-semibold">{data.cards.myClosedLeads}</p></Card>
       </div>
+      <SalesDashboardClient data={data} />
     </>
   );
 }

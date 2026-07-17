@@ -7,6 +7,7 @@ import { Navbar } from "@/components/navbar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ExportButton } from "@/components/export-button";
 import { formatDate } from "@/lib/utils";
 import { leadService } from "@/services/lead.service";
 import { userService } from "@/services/user.service";
@@ -23,7 +24,7 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
 
   return (
     <>
-      <Navbar title="Lead Management" />
+      <Navbar title="Lead Management" actions={<ExportButton type="leads" />} />
       <Card>
         <h2 className="text-xl font-semibold">Create lead</h2>
         <p className="mt-2 text-sm text-[var(--color-muted)]">Version 1 ships with manual lead entry and CRUD foundations for future ingestion pipelines.</p>
@@ -39,13 +40,23 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
             { key: "status", header: "Status", render: (lead) => <div className="flex gap-2"><Badge label={lead.status} /><Badge label={lead.priority} /></div> },
             { key: "owner", header: "Assigned", render: (lead) => lead.assignedUser?.name ?? "Unassigned" },
             { key: "createdAt", header: "Created", render: (lead) => formatDate(lead.createdAt) },
-            { key: "actions", header: "Actions", render: (lead) => <LeadActions lead={lead} assignableUsers={assignableUsers} canAssign canDelete /> },
+            { key: "actions", header: "", render: (lead) => <LeadActions lead={lead} canDelete assignableUsers={assignableUsers} /> },
           ]}
         />
       ) : (
-        <EmptyState title="No leads yet" description="Create your first lead to initialize the CRM workflow." />
+        <EmptyState title="No leads yet" description="Create your first lead above." />
       )}
-      {deletedResult.data.length ? <Card><h2 className="mb-3 text-lg font-semibold">Recently deleted</h2>{deletedResult.data.map((lead) => <div key={lead.id} className="flex items-center justify-between border-b py-3 last:border-0"><span>{lead.name}</span><LeadRestoreButton leadId={lead.id} /></div>)}</Card> : null}
+      {deletedResult.data.length ? (
+        <div className="space-y-3">
+          <div className="border-t border-[var(--color-border)] pt-6"><h3 className="font-semibold">Recently deleted</h3><p className="text-sm text-[var(--color-muted)]">These leads can be restored within the retention window.</p></div>
+          <DataTable rows={deletedResult.data} columns={[
+            { key: "name", header: "Lead", render: (lead) => <div><p className="font-semibold">{lead.name}</p><p className="text-xs text-[var(--color-muted)]">{lead.company ?? "No company"}</p></div> },
+            { key: "contact", header: "Contact", render: (lead) => lead.email ?? "-" },
+            { key: "status", header: "Status", render: (lead) => <Badge label={lead.status} /> },
+            { key: "actions", header: "", render: (lead) => <LeadRestoreButton leadId={lead.id} /> },
+          ]} />
+        </div>
+      ) : null}
     </>
   );
 }

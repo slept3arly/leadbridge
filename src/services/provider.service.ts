@@ -41,6 +41,7 @@ export class ProviderService {
     return prisma.routingRule.findMany({ orderBy: [{ priority: "asc" }, { createdAt: "asc" }], include: { provider: { select: { id: true, name: true } }, parser: { select: { id: true, name: true, version: true } }, connector: { select: { id: true, name: true, environmentKey: true } } } });
   }
 
+  // Legacy compatibility for smoke scripts. Routing is now owned by the runtime.
   async route(input: { recipientGmailAccount?: string; senderEmail?: string; senderDomain?: string; subject?: string; gmailLabel?: string }) {
     const rules = await prisma.routingRule.findMany({ where: { active: true }, orderBy: [{ fallback: "asc" }, { priority: "asc" }] });
     return rules.find((rule) => {

@@ -1,11 +1,30 @@
-# Development Guidelines
+# Connector & Parser Developer Guide
+
+## Purpose
+
+This guide explains how to add or modify integrations without reading the entire
+repository.
+
+It covers:
+
+- connector contract and registry behavior
+- parser contract and registry behavior
+- runtime execution and error handling
+- testing and validation expectations
+
+## Scope
+
+- Backend integration code only
+- Static connector and parser registration
+- In-process execution, not queue workers
+- Small internal CRM usage
 
 ## Non-negotiable principles
 
 1. Extend the existing architecture; do not rewrite working foundations for stylistic preference.
-2. Keep implemented behavior and planned behavior clearly separate in code, UI, APIs, and docs.
-3. Enforce security on the server. Client state and middleware are not authorization.
-4. Prefer small, typed, reviewable changes over broad abstractions.
+2. Keep connector behavior isolated from lead persistence and UI code.
+3. Keep parser code deterministic and side-effect free.
+4. Enforce security on the server. Client state and middleware are not authorization.
 5. Preserve the internal-only account model: public signup must remain disabled.
 
 ## Project, naming, and folder conventions
@@ -20,99 +39,214 @@
 | Route handlers | Place under `src/app/api/.../route.ts`; follow App Router HTTP method exports. |
 | Pages/layouts | Use App Router conventions in `src/app`; use route groups for organization only. |
 | UI primitives | Keep generic, reusable controls in `src/components/ui`; place domain-specific compositions beside other components. |
-| Integrations | Connector contracts/implementations in `src/connectors`; parser implementations/registry entries in `src/parsers`. |
+| Integrations | Connector contracts/implementations in `src/connectors`; parser implementations/registry entries in `src/parsers`; runtime flow in `src/runtime`. |
 
 Use the `@/` alias for imports rooted at `src`. Do not edit `src/generated/prisma`; regenerate it with `pnpm prisma generate` after schema changes.
 
-## Components and pages
+## Connector model
 
-- Server components are the default. Add `"use client"` only for state, events, browser APIs, or client navigation.
-- Build pages by composing existing primitives (`Card`, `Button`, `Input`, `ErrorState`, etc.) before adding visual variants.
-- Keep page files focused on layout and data composition. Put reusable interaction/forms in components and business work in services.
-- Create a page under the correct role route group, protect it in the relevant layout or with `requireSession`, then add its navigation entry in `src/lib/navigation.ts` if it should be visible.
-- Do not redesign dashboards or introduce a second styling system. Tailwind and the existing CSS custom properties are the visual baseline.
-- Use stable database IDs as table keys when available; do not copy the current index-key pattern into new mutable tables.
+The connector contract is defined in [`src/runtime/runtime-types.ts`](../src/runtime/runtime-types.ts).
+The registry is in [`src/connectors/registry.ts`](../src/connectors/registry.ts).
 
-## Services, Prisma, and database rules
+Current connector interface:
 
-- Route handlers and pages call services; services call Prisma. Do not scatter raw Prisma queries across new components.
-- Add activity and audit records for material lead mutations. Follow `leadService` and `assignmentService` patterns.
-- Select only fields a caller needs, especially for lists. Reuse or extend focused select objects rather than returning whole records by default.
-- Keep authorization decisions near the boundary and ownership-sensitive logic in the service where it can be reused. New sales mutations must verify the lead is assigned to that sales user.
-- Prisma 7 must remain adapter-based: import the generated client from `@/generated/prisma/client`, construct it with `PrismaPg`, and use the singleton from `src/lib/prisma.ts`.
-- Change `prisma/schema.prisma`, create a reviewed migration, run `pnpm prisma generate`, then typecheck. Never hand-edit migrations after they have been applied to a shared environment.
-- Use transactions when an operation must atomically alter a main record plus activity/audit records. Current multi-write services are a baseline, not a reason to ignore atomicity in new critical workflows.
-- Add indexes only for demonstrated query patterns; inspect query plans and keep existing lead/audit indexes in mind.
-
-## API, validation, and error conventions
-
-- Authenticate every non-public handler with `requireSession`; pass a role for admin-only operations.
-- Parse external request bodies with the appropriate Zod schema before invoking a service. Use `safeParse` and return a `400` response with useful, non-sensitive validation details.
-- Derive TypeScript input types from Zod schemas where practical, as `LeadInput` does.
-- Return semantic status codes: `201` for creation, `204` for successful empty deletion, `400` for invalid input, `401/403` through the auth layer, `404` for absent records, and `409` for conflicts when added.
-- Never trust client-provided actor IDs, roles, ownership, or connector identity. Obtain the actor from the server session and connector identity from trusted configuration.
-- Do not use `any`, `@ts-ignore`, blanket unsafe casts, or validation bypasses to make a check pass. Isolate and document an unavoidable cast narrowly.
-
-## Authentication conventions
-
-- Better Auth owns sessions and credential account handling. Keep `emailAndPassword.disableSignUp` enabled.
-- Application role names are exactly `ADMIN` and `SALES`; do not introduce casing variants or raw Better Auth defaults such as `admin`/`user`.
-- The only supported bootstrap path is `pnpm prisma db seed`, supplied with `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`. The seed is idempotent and must remain so.
-- Admin user provisioning goes through `auth.api.createUser` so credentials and Better Auth records are created correctly.
-- Middleware is only an early redirect. Every server action, route, or page that reads protected data needs authoritative session enforcement.
-
-## Adding a connector
-
-1. Define/configure the source in the `Connector` and `LeadSource` models only if persistence is needed; create a migration first.
-2. Implement the `Connector` interface with a stable, unique `key`.
-3. Keep vendor HTTP/auth logic inside that connector. Validate external payloads before treating them as data.
-4. Normalize each record to `NormalizedLead`; never pass raw vendor payloads into the lead service.
-5. Make sync idempotent using the source reference and appropriate database constraints/lookup logic.
-6. Persist or update connector sync state deliberately, emit structured logs, and record lead activity/audit information through services.
-7. Add retries, rate-limit handling, and a durable job/scheduler before exposing scheduled sync. Do not use a Vercel request or in-memory process as a long-running queue.
-8. Add focused tests and document required secrets/environment variables without committing values.
-
-## Adding a parser
-
-1. Extend `BaseParser<T>` with a stable `key` and a narrow input type.
-2. Validate/guard untrusted input and return only the normalized internal lead shape.
-3. Register the parser in `parserRegistry` explicitly.
-4. Keep parser code deterministic and side-effect free; fetching, persistence, and retries belong to connectors/services/jobs.
-5. Add fixtures/tests for normal, partial, malformed, and duplicate-prone input.
-
-## TypeScript, performance, and deployment standards
-
-- Keep `strict` TypeScript satisfied. Run `pnpm typecheck` before handoff.
-- Use `import type` for type-only imports and avoid untyped JSON propagation.
-- Keep client bundles small: do not import Prisma, Pino, secrets, or server services into client components.
-- Avoid N+1 database access. Prefer Prisma relation selects, bounded lists, parallel independent reads, and pagination as lists grow.
-- On Vercel, use environment variables for deployment-specific configuration and keep work within request limits. Move polling/import/automation to durable background infrastructure.
-- On Neon, use the configured pooled connection URL, migrations appropriate to the target environment, and narrowly selected queries. Do not create a new Prisma client per request.
-- There is no cache today. Introduce caching only with an invalidation plan for lead/user/connector mutations.
-
-## Git and verification workflow
-
-- Work in focused branches; inspect `git status` before editing and preserve unrelated user changes.
-- Use concise conventional commits, for example `feat(leads): add assignment endpoint`, `fix(auth): enforce sales ownership`, `docs: update architecture context`.
-- Keep migrations, generated-client regeneration, schema changes, and documentation changes together when they describe one behavior.
-- Before a normal application handoff, run:
-
-```bash
-pnpm prisma generate
-pnpm typecheck
-pnpm lint
-pnpm build
+```ts
+interface IConnector {
+  readonly key: string;
+  execute(context: ExecutionContext): Promise<RawPayload[]>;
+}
 ```
 
-- For bootstrap changes also run `pnpm prisma db seed` twice and confirm the second run is a no-op.
+Where the runtime expects the connector to behave:
 
-## Contributors must never
+- Return raw, source-shaped payloads.
+- Include routing hints in `_routing` when possible.
+- Include a `_duplicateKey` when the source has a stable external ID.
+- Throw meaningful errors when the source is misconfigured or unreachable.
 
-- Re-enable public signup or weaken server-side role checks without an explicit security decision.
-- Commit `.env` files, passwords, auth secrets, database URLs, tokens, or real connector credentials.
-- Store secrets in client code, `NEXT_PUBLIC_*` variables, logs, audit metadata, or unencrypted connector configuration.
-- Edit generated Prisma output or bypass the Prisma 7 adapter.
-- Add a vendor-specific field directly to the core lead UI/service merely to accommodate one connector; normalize it or use documented custom fields/configuration.
-- Claim a placeholder route/service is a working feature.
-- Add background loops, cron-like work, or long syncs to request handlers without durable infrastructure.
-- Use destructive Git commands or overwrite unrelated work without explicit authorization.
+### Current connector implementations
+
+- `GmailConnector` in `src/connectors/gmail/gmail-connector.ts`
+- `RestConnector` in `src/connectors/rest/rest-connector.ts`
+
+Both are registered statically in `src/connectors/registry.ts`.
+
+### Adding a connector
+
+1. Implement `IConnector`.
+2. Register the factory in `src/connectors/registry.ts`.
+3. Validate configuration before making network calls.
+4. Return raw payloads only; do not write Prisma data from the connector.
+5. Let the runtime handle routing, parsing, normalization, and persistence.
+6. Add a connection test path if admins need to validate configuration before syncing.
+7. Document required environment variables or connector config fields.
+
+### Connector configuration rules
+
+- Gmail uses environment variables, not database-stored secrets.
+- REST connectors store non-secret configuration in `Connector.configuration`.
+- Do not store raw tokens in client-visible state.
+- Keep the `type` value aligned with the registered factory key.
+
+### Connector runtime lifecycle
+
+The execution path is:
+
+```text
+Connector -> ConnectorRuntime -> RoutingEngine -> ParserRuntime -> LeadNormalizer -> LeadService
+```
+
+Execution helpers:
+
+- `ConnectorRuntime` runs the connector, retries transient failures, resolves routing, and persists sync history.
+- `ExecutionLock` prevents concurrent runs of the same connector.
+- `ConnectorHealthService` updates health state and failure counters.
+- `RetryPolicy` retries only when the error is considered retryable.
+
+Common runtime outputs:
+
+- `success`
+- `failed`
+- `skipped`
+- `retry`
+- `cancelled`
+
+## Parser model
+
+The parser base class is in [`src/parsers/base-parser.ts`](../src/parsers/base-parser.ts).
+The registry is in [`src/parsers/registry.ts`](../src/parsers/registry.ts).
+
+Current parser interface:
+
+```ts
+abstract class BaseParser<T = unknown> {
+  abstract key: string;
+  abstract parse(input: T): NormalizedLead;
+}
+```
+
+### Current parsers
+
+- `example`
+- `gmail`
+
+`MockParser` exists as a dev helper under `src/runtime/mock`, but it is not registered in the main parser registry.
+
+`parserService.listForManagement()` upserts the registered parser manifests into the `Parser` table so the admin UI can display them.
+
+### Adding a parser
+
+1. Extend `BaseParser<T>`.
+2. Give it a stable `key`.
+3. Return a `NormalizedLead` and nothing else.
+4. Register it in `parserRegistry`.
+5. Keep it deterministic.
+6. Add a manifest that accurately describes supported provider types and attachments.
+7. Add a preview or fixture if operators need to validate sample payloads.
+
+### Parser manifests
+
+The manifest is what the admin UI consumes. It should stay honest:
+
+- `key`
+- `name`
+- `version`
+- `description`
+- `providerTypesSupported`
+- `developerNotes`
+- `supportsAttachments`
+- `enabled`
+
+## Runtime flow
+
+The connector runtime does not trust raw connector payloads.
+
+```mermaid
+flowchart TD
+  A[Connector execute] --> B[Raw payloads]
+  B --> C{Duplicate key?}
+  C -->|yes| D[Skip and record breakdown]
+  C -->|no| E{Routing rule match?}
+  E -->|no| F[Record unmatched email if available]
+  E -->|yes| G[Select parser]
+  G --> H[ParserRuntime.parse]
+  H --> I[LeadNormalizer.validate]
+  I --> J[LeadNormalizer.enrich]
+  J --> K[LeadService.create]
+  K --> L[LeadActivity + AuditLog]
+```
+
+Implementation details that matter:
+
+- Routing is priority-based and the first match wins.
+- No parser match means the payload is skipped.
+- Duplicate detection is source-reference aware when `_duplicateKey` is available.
+- Normalization adds warnings but does not block imports by itself.
+- Lead creation writes activity and audit rows.
+
+## Error handling
+
+Use the runtime error classes in `src/runtime/runtime-errors.ts` when a failure
+needs to be classified.
+
+| Error class | Meaning |
+| --- | --- |
+| `ConfigurationError` | Missing or invalid connector/parser configuration. |
+| `ConnectorError` | Source-side failure that is not necessarily retryable. |
+| `ParserError` | Parsing failed for a payload. |
+| `ValidationError` | Payload or normalized lead failed validation. |
+| `RetryableError` | A transient failure that should be retried. |
+
+The current retry policy retries network-like and rate-limit errors. Do not
+swallow failures silently. If the connector cannot proceed, surface a meaningful
+error and let the runtime persist the failed run.
+
+## Testing
+
+Use the API endpoints that already exist for validation:
+
+- `POST /api/providers/connectors/test` checks Gmail or REST configuration.
+- `POST /api/parsers/preview` runs a parser against a sample payload.
+- `POST /api/connectors/[id]/sync` exercises the end-to-end runtime.
+
+Suggested test cases:
+
+- valid payload
+- payload missing expected keys
+- malformed email or phone values
+- routing miss
+- duplicate payload
+- transient connector failure
+- invalid connector configuration
+
+## Common mistakes
+
+- Returning raw vendor data from a parser.
+- Reading Prisma directly from connector code.
+- Registering a parser but not exposing a manifest that matches its behavior.
+- Assuming the mock runtime is production wiring. It is not.
+- Using a parser to fetch data or manage retries.
+- Storing secrets in database configuration where they should remain in env vars.
+
+## Workflow reminders
+
+- Run `pnpm typecheck` after connector or parser changes.
+- Run the relevant API preview or connection-test routes.
+- Add focused fixtures when a payload shape is source-specific.
+- Keep any new runtime helper narrow and testable.
+
+## Related files
+
+- [`src/connectors/types.ts`](../src/connectors/types.ts)
+- [`src/connectors/registry.ts`](../src/connectors/registry.ts)
+- [`src/connectors/gmail/gmail-connector.ts`](../src/connectors/gmail/gmail-connector.ts)
+- [`src/connectors/rest/rest-connector.ts`](../src/connectors/rest/rest-connector.ts)
+- [`src/parsers/base-parser.ts`](../src/parsers/base-parser.ts)
+- [`src/parsers/registry.ts`](../src/parsers/registry.ts)
+- [`src/parsers/example-parser.ts`](../src/parsers/example-parser.ts)
+- [`src/connectors/gmail/gmail-parser.ts`](../src/connectors/gmail/gmail-parser.ts)
+- [`src/runtime/connector-runtime.ts`](../src/runtime/connector-runtime.ts)
+- [`src/runtime/parser-runtime.ts`](../src/runtime/parser-runtime.ts)
+- [`src/runtime/lead-normalizer.ts`](../src/runtime/lead-normalizer.ts)
+- [`src/runtime/retry-policy.ts`](../src/runtime/retry-policy.ts)
+- [`src/runtime/routing-engine.ts`](../src/runtime/routing-engine.ts)

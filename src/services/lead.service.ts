@@ -39,6 +39,18 @@ export class LeadService {
     return actor?.role === "SALES" ? { assignedUserId: actor.id } : {};
   }
 
+  private async assertAssignableUser(assignedUserId: string | null | undefined, actor: Actor) {
+    if (assignedUserId === undefined) return;
+    if (actor.role !== "ADMIN") throw new ServiceError("Only admins can assign leads.", 403);
+    if (assignedUserId === null) return;
+
+    const assignee = await prisma.user.findFirst({
+      where: { id: assignedUserId, role: "SALES", active: true, isDeleted: false },
+      select: { id: true },
+    });
+    if (!assignee) throw new ServiceError("Assigned user is not an active sales user.", 400);
+  }
+
   private async assertAccess(id: string, actor: Actor, includeDeleted = false) {
     const lead = await prisma.lead.findFirst({
       where: { id, ...(includeDeleted ? {} : { isDeleted: false }), ...this.accessWhere(actor) },
@@ -59,12 +71,18 @@ export class LeadService {
   }
 
   async listPage(query: ListQuery, actor?: Actor) {
+    const assignedUserFilter = actor?.role === "SALES"
+      ? { assignedUserId: actor.id }
+      : query.filters.assignedUserId?.length
+        ? { assignedUserId: { in: query.filters.assignedUserId } }
+        : {};
+
     const where = {
       isDeleted: query.filters.deleted?.includes("true") ?? false,
       ...this.accessWhere(actor),
       ...(query.filters.status?.length ? { status: { in: query.filters.status as ("NEW" | "CONTACTED" | "QUALIFIED" | "WON" | "LOST")[] } } : {}),
       ...(query.filters.priority?.length ? { priority: { in: query.filters.priority as ("LOW" | "MEDIUM" | "HIGH" | "URGENT")[] } } : {}),
-      ...(query.filters.assignedUserId?.length ? { assignedUserId: { in: query.filters.assignedUserId } } : {}),
+      ...assignedUserFilter,
       ...containsSearch(["displayName", "company", "email", "phone", "leadNumber"], query.search),
       ...dateRange("createdAt", query),
     };
@@ -99,27 +117,36 @@ export class LeadService {
   }
 
   async create(data: LeadInput, actor: Actor) {
+    await this.assertAssignableUser(data.assignedUserId, actor);
     const duplicates = await duplicateService.findPotentialDuplicates(data);
     const { name, customFields, rawPayload, ...leadData } = data;
     return prisma.$transaction(async (tx) => {
-      const lead = await tx.lead.create({
-        data: {
-          ...leadData,
-          displayName: name,
-          createdById: actor.id,
-          ...(customFields === null ? { customFields: Prisma.JsonNull } : customFields === undefined ? {} : { customFields: customFields as Prisma.InputJsonValue }),
-          ...(rawPayload === null ? { rawPayload: Prisma.JsonNull } : rawPayload === undefined ? {} : { rawPayload: rawPayload as Prisma.InputJsonValue }),
-        },
-        select: leadListSelect,
-      });
-      await activityService.record(lead.id, "CREATED", "Lead created", actor.id, duplicates.length ? { duplicateCandidates: duplicates } : undefined, tx);
-      await auditService.log("lead.created", "Lead", lead.id, actor.id, { duplicateCandidates: duplicates.length }, undefined, tx);
-      return toApiLead(lead);
+      try {
+        const lead = await tx.lead.create({
+          data: {
+            ...leadData,
+            displayName: name,
+            createdById: actor.id,
+            ...(customFields === null ? { customFields: Prisma.JsonNull } : customFields === undefined ? {} : { customFields: customFields as Prisma.InputJsonValue }),
+            ...(rawPayload === null ? { rawPayload: Prisma.JsonNull } : rawPayload === undefined ? {} : { rawPayload: rawPayload as Prisma.InputJsonValue }),
+          },
+          select: leadListSelect,
+        });
+        await activityService.record(lead.id, "CREATED", "Lead created", actor.id, duplicates.length ? { duplicateCandidates: duplicates } : undefined, tx);
+        await auditService.log("lead.created", "Lead", lead.id, actor.id, { duplicateCandidates: duplicates.length }, undefined, tx);
+        return toApiLead(lead);
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          throw new ServiceError("Duplicate lead detected.", 409);
+        }
+        throw error;
+      }
     });
   }
 
   async update(id: string, data: Partial<LeadInput>, actor: Actor) {
     const existing = await this.assertAccess(id, actor);
+    await this.assertAssignableUser(data.assignedUserId, actor);
     const { name, customFields, rawPayload, ...leadData } = data;
     return prisma.$transaction(async (tx) => {
       const lead = await tx.lead.update({
@@ -144,10 +171,8 @@ export class LeadService {
   }
 
   async assign(id: string, assignedUserId: string | null, actor: Actor) {
-    if (actor.role !== "ADMIN") throw new ServiceError("Only admins can assign leads.", 403);
     await this.assertAccess(id, actor);
-    const assignee = assignedUserId ? await prisma.user.findFirst({ where: { id: assignedUserId, role: "SALES", active: true, isDeleted: false }, select: { id: true } }) : null;
-    if (assignedUserId && !assignee) throw new ServiceError("Assigned user is not an active sales user.", 400);
+    await this.assertAssignableUser(assignedUserId, actor);
     return prisma.$transaction(async (tx) => {
       const lead = await tx.lead.update({ where: { id }, data: { assignedUserId, updatedById: actor.id }, select: leadListSelect });
       await activityService.record(id, "ASSIGNED", assignedUserId ? "Lead assigned" : "Lead unassigned", actor.id, { assignedUserId }, tx);
