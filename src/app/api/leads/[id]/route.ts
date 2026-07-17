@@ -3,6 +3,11 @@ import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { leadSchema } from "@/lib/validation";
 import { leadService } from "@/services/lead.service";
 
+export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
+  const { id } = await context.params;
+  return NextResponse.json(await leadService.getById(id, session.user));
+});
+
 export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (request, context, session) => {
   let body: unknown;
   try { body = await request.json(); } catch { return apiError("Invalid JSON body.", 400); }

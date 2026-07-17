@@ -12,6 +12,7 @@ export type ListQuery = {
 };
 
 const integer = (value: string | null, fallback: number, min: number, max: number) => {
+  if (value === null || value === "") return fallback;
   const parsed = Number(value);
   return Number.isInteger(parsed) ? Math.min(Math.max(parsed, min), max) : fallback;
 };
@@ -29,8 +30,10 @@ export function parseListQuery(
     }
   }
 
-  const dateFrom = searchParams.get("dateFrom");
-  const dateTo = searchParams.get("dateTo");
+  const dateFrom = searchParams.get("dateFrom") || filters.dateFrom?.[0] || null;
+  const dateTo = searchParams.get("dateTo") || filters.dateTo?.[0] || null;
+  delete filters.dateFrom;
+  delete filters.dateTo;
 
   return {
     page: integer(searchParams.get("page"), 1, 1, Number.MAX_SAFE_INTEGER),

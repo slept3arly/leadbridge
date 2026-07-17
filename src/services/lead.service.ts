@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { UserRole } from "@/generated/prisma/client";
+import type { LeadStatus, LeadPriority, UserRole } from "@/generated/prisma/client";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { containsSearch, dateRange, listResult, pagination, type ListQuery } from "@/lib/query-builder";
@@ -13,21 +13,36 @@ export type LeadInput = z.infer<typeof leadSchema>;
 type Actor = { id: string; role: UserRole };
 
 const leadListSelect = {
-  id: true,
-  leadNumber: true,
-  displayName: true,
-  company: true,
-  email: true,
-  phone: true,
-  city: true,
-  state: true,
-  status: true,
-  priority: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true, leadNumber: true, displayName: true, company: true,
+  email: true, phone: true, city: true, state: true,
+  status: true, priority: true, createdAt: true, updatedAt: true,
   nextFollowUpAt: true,
   assignedUser: { select: { id: true, name: true } },
   source: { select: { id: true, name: true } },
+} as const;
+
+const leadDetailSelect = {
+  id: true, leadNumber: true, displayName: true, company: true,
+  email: true, phone: true, alternatePhone: true, address: true,
+  city: true, state: true, country: true, industry: true,
+  website: true, jobTitle: true, budget: true, expectedValue: true,
+  currency: true, campaign: true, campaignId: true,
+  utmSource: true, utmMedium: true, utmCampaign: true, utmContent: true, utmTerm: true,
+  sourceReferenceId: true, sourceName: true, sourceType: true,
+  parserVersion: true, receivedAt: true, importedAt: true,
+  firstContactedAt: true, lastContactedAt: true, nextFollowUpAt: true,
+  closedAt: true, lostReason: true, wonAmount: true,
+  status: true, priority: true, product: true, requirement: true,
+  isArchived: true, isDeleted: true,
+  customFields: true, rawPayload: true,
+  sourceId: true, connectorId: true,
+  createdAt: true, updatedAt: true, deletedAt: true,
+  assignedUser: { select: { id: true, name: true } },
+  createdBy: { select: { id: true, name: true } },
+  updatedBy: { select: { id: true, name: true } },
+  deletedBy: { select: { id: true, name: true } },
+  source: { select: { id: true, name: true, sourceType: true } },
+  connector: { select: { id: true, name: true, type: true } },
 } as const;
 
 function toApiLead<T extends { displayName: string }>(lead: T) {
@@ -60,6 +75,15 @@ export class LeadService {
     return lead;
   }
 
+  async getById(id: string, actor?: Actor) {
+    const lead = await prisma.lead.findFirst({
+      where: { id, isDeleted: false, ...this.accessWhere(actor) },
+      select: leadDetailSelect,
+    });
+    if (!lead) throw new ServiceError("Lead not found or access denied.", 404);
+    return toApiLead(lead);
+  }
+
   async list(userId?: string) {
     const leads = await prisma.lead.findMany({
       where: { ...(userId ? { assignedUserId: userId } : {}), isDeleted: false },
@@ -77,11 +101,16 @@ export class LeadService {
         ? { assignedUserId: { in: query.filters.assignedUserId } }
         : {};
 
+    const archivedFilter = query.filters.archived?.includes("true")
+      ? { isArchived: true }
+      : { isArchived: false };
+
     const where = {
       isDeleted: query.filters.deleted?.includes("true") ?? false,
+      ...archivedFilter,
       ...this.accessWhere(actor),
-      ...(query.filters.status?.length ? { status: { in: query.filters.status as ("NEW" | "CONTACTED" | "QUALIFIED" | "WON" | "LOST")[] } } : {}),
-      ...(query.filters.priority?.length ? { priority: { in: query.filters.priority as ("LOW" | "MEDIUM" | "HIGH" | "URGENT")[] } } : {}),
+      ...(query.filters.status?.length ? { status: { in: query.filters.status as LeadStatus[] } } : {}),
+      ...(query.filters.priority?.length ? { priority: { in: query.filters.priority as LeadPriority[] } } : {}),
       ...assignedUserFilter,
       ...containsSearch(["displayName", "company", "email", "phone", "leadNumber"], query.search),
       ...dateRange("createdAt", query),

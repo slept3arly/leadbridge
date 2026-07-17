@@ -14,6 +14,27 @@ export const loginSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters."),
 });
 
+export const leadStatusSchema = z.enum([
+  "NEW", "OPEN", "CONTACTED", "ATTEMPTED_CONTACT", "FOLLOW_UP_SCHEDULED",
+  "INTERESTED", "QUALIFIED", "PROPOSAL_SENT", "NEGOTIATION",
+  "WAITING_FOR_CUSTOMER", "ON_HOLD", "WON", "LOST", "DISQUALIFIED", "SPAM", "ARCHIVED"
+]);
+
+export const leadPrioritySchema = z.enum([
+  "VERY_LOW", "LOW", "MEDIUM", "HIGH", "VERY_HIGH", "URGENT", "CRITICAL"
+]);
+
+export const followUpSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(2000).optional().nullable(),
+  dueDate: z.coerce.date().optional().nullable(),
+  dueTime: z.string().max(10).optional().nullable(),
+  priority: leadPrioritySchema.optional(),
+  status: z.enum(["PENDING", "COMPLETED", "CANCELLED"]).optional(),
+  assignedUserId: z.string().optional().nullable(),
+  leadId: z.string().min(1),
+});
+
 export const leadSchema = z.object({
   name: z.string().min(2).max(120),
   company: optionalString(120),
@@ -47,8 +68,9 @@ export const leadSchema = z.object({
   sourceId: z.string().optional().nullable(),
   sourceReferenceId: optionalString(120),
   assignedUserId: z.string().optional().nullable(),
-  status: z.enum(["NEW", "CONTACTED", "QUALIFIED", "WON", "LOST"]).optional(),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(),
+  status: leadStatusSchema.optional(),
+  priority: leadPrioritySchema.optional(),
+  isArchived: z.boolean().optional(),
 });
 
 export const userSchema = z.object({

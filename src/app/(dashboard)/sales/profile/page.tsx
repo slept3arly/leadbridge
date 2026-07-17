@@ -7,7 +7,7 @@ export default async function SalesProfilePage() {
 
   return (
     <>
-      <Navbar title="Profile" />
+      <Navbar title="Profile" showResync />
       <Card>
         <p className="text-sm text-[var(--color-muted)]">Name</p>
         <p className="mt-2 text-xl font-semibold">{user.name}</p>

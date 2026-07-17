@@ -14,17 +14,47 @@ enum UserRole {
 
 enum LeadStatus {
   NEW
+  OPEN
   CONTACTED
+  ATTEMPTED_CONTACT
+  FOLLOW_UP_SCHEDULED
+  INTERESTED
   QUALIFIED
+  PROPOSAL_SENT
+  NEGOTIATION
+  WAITING_FOR_CUSTOMER
+  ON_HOLD
   WON
   LOST
+  DISQUALIFIED
+  SPAM
+  ARCHIVED
 }
 
 enum LeadPriority {
+  VERY_LOW
   LOW
   MEDIUM
   HIGH
+  VERY_HIGH
   URGENT
+  CRITICAL
+}
+
+enum FollowUpStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum FollowUpPriority {
+  VERY_LOW
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+  URGENT
+  CRITICAL
 }
 
 enum ActivityType {
@@ -109,6 +139,8 @@ model User {
   deletedLeads           Lead[]           @relation("LeadDeletedBy")
   activities             LeadActivity[]   @relation("ActivityActor")
   notes                  Note[]
+  followUps              FollowUp[]       @relation("FollowUpAssignee")
+  createdFollowUps       FollowUp[]       @relation("FollowUpCreator")
   uploadedAttachments    Attachment[]
   auditLogs              AuditLog[]
   updatedSettings        Setting[]
@@ -248,6 +280,7 @@ model Lead {
   deletedAt         DateTime?
   activities        LeadActivity[]
   notes             Note[]
+  followUps         FollowUp[]
   attachments       Attachment[]
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
@@ -292,6 +325,28 @@ model Note {
 
   @@index([leadId, createdAt])
   @@index([leadId, isPinned])
+}
+
+model FollowUp {
+  id          String           @id @default(cuid())
+  title       String
+  description String?
+  dueDate     DateTime?
+  dueTime     String?
+  priority    FollowUpPriority @default(MEDIUM)
+  status      FollowUpStatus   @default(PENDING)
+  leadId      String
+  lead        Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedUserId String?
+  assignedUser   User?         @relation("FollowUpAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  createdById String
+  createdBy   User             @relation("FollowUpCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([leadId, dueDate, status])
+  @@index([assignedUserId, status, dueDate])
+  @@index([leadId, createdAt])
 }
 
 model Attachment {

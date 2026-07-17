@@ -11,7 +11,7 @@ export default async function SalesDashboardPage() {
 
   return (
     <>
-      <Navbar title="Sales Dashboard" actions={<SignOutButton />} />
+      <Navbar title="Sales Dashboard" actions={<SignOutButton />} showResync />
       <div className="grid gap-4 md:grid-cols-3">
         <Card><p className="text-sm text-[var(--color-muted)]">My leads</p><p className="mt-3 text-3xl font-semibold">{data.cards.myLeads}</p></Card>
         <Card><p className="text-sm text-[var(--color-muted)]">Open leads</p><p className="mt-3 text-3xl font-semibold">{data.cards.myOpenLeads}</p></Card>

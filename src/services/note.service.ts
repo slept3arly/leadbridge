@@ -17,13 +17,20 @@ export class NoteService {
 
   async list(leadId: string, actor: Actor) {
     await this.assertAccess(leadId, actor);
-    return prisma.note.findMany({ where: { leadId }, orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }] });
+    return prisma.note.findMany({
+      where: { leadId },
+      orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }],
+      include: { author: { select: { id: true, name: true } } },
+    });
   }
 
   async create(leadId: string, content: string, actor: Actor) {
     await this.assertAccess(leadId, actor);
     return prisma.$transaction(async (tx) => {
-      const note = await tx.note.create({ data: { leadId, content, authorId: actor.id } });
+      const note = await tx.note.create({
+        data: { leadId, content, authorId: actor.id },
+        include: { author: { select: { id: true, name: true } } },
+      });
       await activityService.record(leadId, "NOTE_ADDED", "Note added", actor.id, { noteId: note.id }, tx);
       await auditService.log("note.created", "Note", note.id, actor.id, { leadId }, undefined, tx);
       return note;
@@ -31,22 +38,37 @@ export class NoteService {
   }
 
   async update(id: string, content: string, actor: Actor) {
-    const note = await prisma.note.findUnique({ where: { id }, select: { id: true, leadId: true } });
+    const note = await prisma.note.findUnique({
+      where: { id },
+      select: { id: true, leadId: true, authorId: true, content: true },
+    });
     if (!note) throw new ServiceError("Note not found.", 404);
     await this.assertAccess(note.leadId, actor);
+    if (note.authorId !== actor.id && actor.role !== "ADMIN") {
+      throw new ServiceError("You can only edit your own notes.", 403);
+    }
     return prisma.$transaction(async (tx) => {
       const updated = await tx.note.update({ where: { id }, data: { content } });
-      await activityService.record(note.leadId, "NOTE_EDITED", "Note edited", actor.id, { noteId: id }, tx);
+      await activityService.record(note.leadId, "NOTE_EDITED", "Note edited", actor.id, {
+        noteId: id,
+        oldContent: note.content,
+        newContent: content,
+      }, tx);
       await auditService.log("note.updated", "Note", id, actor.id, { leadId: note.leadId }, undefined, tx);
       return updated;
     });
   }
 
   async remove(id: string, actor: Actor) {
-    const note = await prisma.note.findUnique({ where: { id }, select: { id: true, leadId: true } });
+    const note = await prisma.note.findUnique({
+      where: { id },
+      select: { id: true, leadId: true, authorId: true },
+    });
     if (!note) throw new ServiceError("Note not found.", 404);
     await this.assertAccess(note.leadId, actor);
-    if (actor.role !== "ADMIN") throw new ServiceError("Only admins can delete notes.", 403);
+    if (note.authorId !== actor.id && actor.role !== "ADMIN") {
+      throw new ServiceError("You can only delete your own notes.", 403);
+    }
     await prisma.$transaction(async (tx) => {
       await tx.note.delete({ where: { id } });
       await auditService.log("note.deleted", "Note", id, actor.id, { leadId: note.leadId }, undefined, tx);
