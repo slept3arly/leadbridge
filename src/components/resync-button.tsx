@@ -17,7 +17,7 @@ export function ResyncButton() {
       variant="secondary"
       size="sm"
       onClick={handleRefresh}
-      isLoading={loading}
+      disabled={loading}
       className="gap-2"
     >
       <RefreshCw size={16} className={loading ? "animate-spin" : ""} />

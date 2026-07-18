@@ -27,9 +27,9 @@ export class DashboardService {
       bySalesperson,
     ] = await Promise.all([
       prisma.lead.count({ where: { isDeleted: false } }),
-      prisma.lead.count({ where: { isDeleted: false, status: { in: ["NEW", "CONTACTED", "QUALIFIED"] } } }),
+      prisma.lead.count({ where: { isDeleted: false, status: { in: ["NEW", "ON_HOLD"] } } }),
       prisma.lead.count({ where: { createdAt: { gte: today }, isDeleted: false } }),
-      prisma.lead.count({ where: { status: "WON", isDeleted: false } }),
+      prisma.lead.count({ where: { status: "CONVERTED", isDeleted: false } }),
       prisma.lead.count({ where: { status: "LOST", isDeleted: false } }),
       prisma.lead.count({ where: { assignedUserId: null, isDeleted: false } }),
       reportService.statusBreakdown(),
@@ -111,8 +111,8 @@ export class DashboardService {
 
     const [myLeads, myOpenLeads, myClosedLeads, todayFollowUps, recentNotes, myActivity] = await Promise.all([
       prisma.lead.count({ where: { assignedUserId: userId, isDeleted: false } }),
-      prisma.lead.count({ where: { assignedUserId: userId, isDeleted: false, status: { in: ["NEW", "CONTACTED", "QUALIFIED"] } } }),
-      prisma.lead.count({ where: { assignedUserId: userId, isDeleted: false, status: { in: ["WON", "LOST"] } } }),
+      prisma.lead.count({ where: { assignedUserId: userId, isDeleted: false, status: { in: ["NEW", "ON_HOLD"] } } }),
+      prisma.lead.count({ where: { assignedUserId: userId, isDeleted: false, status: { in: ["CONVERTED", "LOST"] } } }),
       prisma.lead.findMany({
         where: { assignedUserId: userId, isDeleted: false, nextFollowUpAt: { not: null, lte: new Date(new Date().setHours(23, 59, 59, 999)) } },
         select: { id: true, displayName: true, leadNumber: true, nextFollowUpAt: true },

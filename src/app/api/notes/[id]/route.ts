@@ -9,7 +9,7 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
   const parsed = noteSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const { id } = await context.params;
-  return NextResponse.json(await noteService.update(id, parsed.data.content, session.user));
+  return NextResponse.json(await noteService.update(id, { content: parsed.data.content, whatIDid: parsed.data.whatIDid, whatCustomerSaid: parsed.data.whatCustomerSaid }, session.user));
 });
 
 export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {

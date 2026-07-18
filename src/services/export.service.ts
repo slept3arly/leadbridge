@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
+import { STATUS_VALUES } from "@/lib/lead-constants";
 
 function escapeCsv(value: unknown): string {
   const str = value == null ? "" : String(value);
@@ -44,7 +45,7 @@ export class ExportService {
     search?: string;
   }): Promise<string> {
     const where: Prisma.LeadWhereInput = { isDeleted: false };
-    if (params.status?.length) where.status = { in: params.status as ("NEW" | "CONTACTED" | "QUALIFIED" | "WON" | "LOST")[] };
+    if (params.status?.length) where.status = { in: params.status.filter((status) => STATUS_VALUES.includes(status as (typeof STATUS_VALUES)[number])) as (typeof STATUS_VALUES)[number][] };
     if (params.assignedUserId) where.assignedUserId = params.assignedUserId;
     if (params.from || params.to) {
       where.createdAt = {};

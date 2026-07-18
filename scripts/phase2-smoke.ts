@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import "dotenv/config";
 import { hashPassword } from "better-auth/crypto";
 import { auth } from "../src/lib/auth";
 import { PrismaClient, UserRole } from "../src/generated/prisma/client";
@@ -25,9 +24,9 @@ async function main() {
 
   const lead = await leadService.create({ name: `Phase 2 Lead ${suffix}`, email: `lead-${suffix}@example.test`, phone: null, company: null, alternatePhone: null, address: null, city: null, state: null, country: null, product: null, requirement: null, industry: null, website: null, jobTitle: null, budget: null, expectedValue: null, currency: null, campaign: null, campaignId: null, utmSource: null, utmMedium: null, utmCampaign: null, utmContent: null, utmTerm: null, nextFollowUpAt: null, lostReason: null, wonAmount: null, customFields: null, rawPayload: { provider: "smoke-test" }, sourceId: null, sourceReferenceId: `ref-${suffix}`, assignedUserId: null, status: "NEW", priority: "HIGH" }, adminActor);
   await leadService.assign(lead.id, sales.id, adminActor);
-  await leadService.update(lead.id, { status: "CONTACTED", nextFollowUpAt: new Date(Date.now() + 86_400_000) }, salesActor);
-  const note = await noteService.create(lead.id, "Smoke-test follow-up note", salesActor);
-  await noteService.update(note.id, "Edited smoke-test follow-up note", salesActor);
+  await leadService.update(lead.id, { status: "ON_HOLD", nextFollowUpAt: new Date(Date.now() + 86_400_000) }, salesActor);
+  const note = await noteService.create(lead.id, { whatIDid: "Smoke-test follow-up note" }, salesActor);
+  await noteService.update(note.id, { whatIDid: "Edited smoke-test follow-up note" }, salesActor);
 
   const page = await leadService.listPage(parseListQuery(new URLSearchParams(`search=${encodeURIComponent(lead.name)}&pageSize=1`)), adminActor);
   if (page.pagination.total !== 1 || page.data[0]?.id !== lead.id) throw new Error("Lead search/pagination failed");

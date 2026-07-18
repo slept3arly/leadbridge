@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
+import { LEAD_STATUSES } from "@/lib/lead-constants";
 
 export function LeadForm() {
   const [pending, setPending] = useState(false);
@@ -68,11 +69,11 @@ export function LeadForm() {
       </FormField>
       <FormField label="Status" htmlFor="lead-status">
         <Select id="lead-status" name="status" defaultValue="NEW">
-          <option value="NEW">NEW</option>
-          <option value="CONTACTED">CONTACTED</option>
-          <option value="QUALIFIED">QUALIFIED</option>
-          <option value="WON">WON</option>
-          <option value="LOST">LOST</option>
+          {LEAD_STATUSES.map((status) => (
+            <option key={status.value} value={status.value}>
+              {status.label.toUpperCase()}
+            </option>
+          ))}
         </Select>
       </FormField>
       <FormField label="Requirement" htmlFor="lead-requirement" className="md:col-span-2">

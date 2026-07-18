@@ -18,8 +18,8 @@ export class ReportService {
 
     const [total, open, won, lost, deleted] = await Promise.all([
       prisma.lead.count({ where }),
-      prisma.lead.count({ where: { ...where, status: { in: ["NEW", "CONTACTED", "QUALIFIED"] } } }),
-      prisma.lead.count({ where: { ...where, status: "WON" } }),
+      prisma.lead.count({ where: { ...where, status: { in: ["NEW", "ON_HOLD"] } } }),
+      prisma.lead.count({ where: { ...where, status: "CONVERTED" } }),
       prisma.lead.count({ where: { ...where, status: "LOST" } }),
       prisma.lead.count({ where: deletedWhere }),
     ]);
@@ -154,7 +154,7 @@ export class ReportService {
       SELECT
         to_char(date_trunc('month', "createdAt"), 'YYYY-MM') AS month,
         COUNT(*)::bigint AS total,
-        COUNT(*) FILTER (WHERE "status" = 'WON')::bigint AS won,
+        COUNT(*) FILTER (WHERE "status" = 'CONVERTED')::bigint AS won,
         COUNT(*) FILTER (WHERE "status" = 'LOST')::bigint AS lost
       FROM "Lead"
       WHERE "createdAt" >= ${sixMonthsAgo} AND "isDeleted" = false

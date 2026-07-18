@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { FormField } from "@/components/ui/form-field";
+import { LEAD_PRIORITIES } from "@/lib/lead-constants";
 import { toast } from "@/lib/toast";
 
 type FollowUp = {
@@ -147,13 +148,9 @@ export function FollowUpPanel({ leadId, currentUserId }: { leadId: string; curre
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Priority" htmlFor="fu-priority">
               <Select id="fu-priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
-                <option value="VERY_LOW">Very Low</option>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="VERY_HIGH">Very High</option>
-                <option value="URGENT">Urgent</option>
-                <option value="CRITICAL">Critical</option>
+                {LEAD_PRIORITIES.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </Select>
             </FormField>
             <FormField label="Assign To" htmlFor="fu-assign">
@@ -186,9 +183,9 @@ export function FollowUpPanel({ leadId, currentUserId }: { leadId: string; curre
                       {fu.title}
                     </span>
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      fu.priority === "URGENT" || fu.priority === "CRITICAL" ? "bg-red-100 text-red-800" :
-                      fu.priority === "HIGH" || fu.priority === "VERY_HIGH" ? "bg-orange-100 text-orange-800" :
-                      fu.priority === "LOW" || fu.priority === "VERY_LOW" ? "bg-sky-100 text-sky-700" :
+                      fu.priority === "URGENT" ? "bg-red-100 text-red-800" :
+                      fu.priority === "HIGH" ? "bg-orange-100 text-orange-800" :
+                      fu.priority === "LOW" ? "bg-sky-100 text-sky-700" :
                       "bg-slate-100 text-slate-700"
                     }`}>
                       {fu.priority.replace("_", " ")}

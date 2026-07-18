@@ -1,4 +1,6 @@
-export type LeadStatus = "NEW" | "CONTACTED" | "QUALIFIED" | "WON" | "LOST";
+import { STATUS_VALUES } from "@/lib/lead-constants";
+
+export type LeadStatus = (typeof STATUS_VALUES)[number];
 export type LeadPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 
 export type NormalizedLead = {

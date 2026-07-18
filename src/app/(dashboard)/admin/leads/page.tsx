@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ExportButton } from "@/components/export-button";
 import { formatDate } from "@/lib/utils";
+import { LEAD_STATUSES, LEAD_PRIORITIES } from "@/lib/lead-constants";
 import { leadService } from "@/services/lead.service";
 import { userService } from "@/services/user.service";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
@@ -30,7 +31,7 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
         <p className="mt-2 text-sm text-[var(--color-muted)]">Version 1 ships with manual lead entry and CRUD foundations for future ingestion pipelines.</p>
         <div className="mt-6"><LeadForm /></div>
       </Card>
-      <ServerTableControls initial={{ search: query.search ?? "", page: query.page, pageSize: query.pageSize, sortBy: query.sortBy, sortDirection: query.sortDirection, filters: Object.fromEntries(Object.entries(query.filters).map(([key, value]) => [key, value.join(",")])) }} pagination={result.pagination} filters={[{ key: "status", label: "Status", options: ["NEW", "CONTACTED", "QUALIFIED", "WON", "LOST"].map((value) => ({ value, label: value })) }, { key: "priority", label: "Priority", options: ["LOW", "MEDIUM", "HIGH", "URGENT"].map((value) => ({ value, label: value })) }]} />
+      <ServerTableControls initial={{ search: query.search ?? "", page: query.page, pageSize: query.pageSize, sortBy: query.sortBy, sortDirection: query.sortDirection, filters: Object.fromEntries(Object.entries(query.filters).map(([key, value]) => [key, value.join(",")])) }} pagination={result.pagination} filters={[{ key: "status", label: "Status", options: LEAD_STATUSES.map((status) => ({ value: status.value, label: status.label })) }, { key: "priority", label: "Priority", options: LEAD_PRIORITIES.map((priority) => ({ value: priority.value, label: priority.label })) }]} />
       {leads.length ? (
         <DataTable
           rows={leads}

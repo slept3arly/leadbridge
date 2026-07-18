@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { LeadStatus, LeadPriority, UserRole } from "@/generated/prisma/client";
+import type { UserRole, LeadStatus, LeadPriority, LeadCategory } from "@/generated/prisma/client";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { containsSearch, dateRange, listResult, pagination, type ListQuery } from "@/lib/query-builder";
@@ -15,8 +15,8 @@ type Actor = { id: string; role: UserRole };
 const leadListSelect = {
   id: true, leadNumber: true, displayName: true, company: true,
   email: true, phone: true, city: true, state: true,
-  status: true, priority: true, createdAt: true, updatedAt: true,
-  nextFollowUpAt: true,
+  status: true, priority: true, category: true, createdAt: true, updatedAt: true,
+  nextFollowUpAt: true, lastFollowUpAt: true,
   assignedUser: { select: { id: true, name: true } },
   source: { select: { id: true, name: true } },
 } as const;
@@ -32,8 +32,8 @@ const leadDetailSelect = {
   parserVersion: true, receivedAt: true, importedAt: true,
   firstContactedAt: true, lastContactedAt: true, nextFollowUpAt: true,
   closedAt: true, lostReason: true, wonAmount: true,
-  status: true, priority: true, product: true, requirement: true,
-  isArchived: true, isDeleted: true,
+  status: true, priority: true, category: true, product: true, requirement: true,
+  lastFollowUpAt: true, isArchived: true, isDeleted: true,
   customFields: true, rawPayload: true,
   sourceId: true, connectorId: true,
   createdAt: true, updatedAt: true, deletedAt: true,
@@ -111,11 +111,12 @@ export class LeadService {
       ...this.accessWhere(actor),
       ...(query.filters.status?.length ? { status: { in: query.filters.status as LeadStatus[] } } : {}),
       ...(query.filters.priority?.length ? { priority: { in: query.filters.priority as LeadPriority[] } } : {}),
+      ...(query.filters.category?.length ? { category: { in: query.filters.category as LeadCategory[] } } : {}),
       ...assignedUserFilter,
       ...containsSearch(["displayName", "company", "email", "phone", "leadNumber"], query.search),
       ...dateRange("createdAt", query),
     };
-    const orderBy = ["createdAt", "updatedAt", "displayName", "status", "priority"].includes(query.sortBy ?? "")
+    const orderBy = ["createdAt", "updatedAt", "displayName", "status", "priority", "category"].includes(query.sortBy ?? "")
       ? { [query.sortBy!]: query.sortDirection }
       : { updatedAt: "desc" as const };
     const [data, total] = await Promise.all([
@@ -127,12 +128,11 @@ export class LeadService {
 
   async stats(userId?: string) {
     const where = { ...(userId ? { assignedUserId: userId } : {}), isDeleted: false };
-    const [total, open, qualified] = await Promise.all([
+    const [total, active] = await Promise.all([
       prisma.lead.count({ where }),
-      prisma.lead.count({ where: { ...where, status: { in: ["NEW", "CONTACTED"] } } }),
-      prisma.lead.count({ where: { ...where, status: "QUALIFIED" } }),
+      prisma.lead.count({ where: { ...where, status: { in: ["NEW", "ON_HOLD"] } } }),
     ]);
-    return { total, open, qualified };
+    return { total, active };
   }
 
   async listFollowUps(actor: Actor) {
@@ -148,13 +148,16 @@ export class LeadService {
   async create(data: LeadInput, actor: Actor) {
     await this.assertAssignableUser(data.assignedUserId, actor);
     const duplicates = await duplicateService.findPotentialDuplicates(data);
-    const { name, customFields, rawPayload, ...leadData } = data;
+    const { name, customFields, rawPayload, status, priority, category, ...rest } = data;
     return prisma.$transaction(async (tx) => {
       try {
         const lead = await tx.lead.create({
           data: {
-            ...leadData,
+            ...rest,
             displayName: name,
+            status: status as LeadStatus,
+            priority: (priority ?? "MEDIUM") as LeadPriority,
+            category: (category ?? null) as LeadCategory | null,
             createdById: actor.id,
             ...(customFields === null ? { customFields: Prisma.JsonNull } : customFields === undefined ? {} : { customFields: customFields as Prisma.InputJsonValue }),
             ...(rawPayload === null ? { rawPayload: Prisma.JsonNull } : rawPayload === undefined ? {} : { rawPayload: rawPayload as Prisma.InputJsonValue }),
@@ -176,21 +179,24 @@ export class LeadService {
   async update(id: string, data: Partial<LeadInput>, actor: Actor) {
     const existing = await this.assertAccess(id, actor);
     await this.assertAssignableUser(data.assignedUserId, actor);
-    const { name, customFields, rawPayload, ...leadData } = data;
+    const { name, customFields, rawPayload, status, priority, category, ...rest } = data;
     return prisma.$transaction(async (tx) => {
       const lead = await tx.lead.update({
         where: { id },
         data: {
-          ...leadData,
+          ...rest,
           ...(name === undefined ? {} : { displayName: name }),
+          ...(status === undefined ? {} : { status: status as LeadStatus }),
+          ...(priority === undefined ? {} : { priority: priority as LeadPriority }),
+          ...(category === undefined ? {} : { category: category as LeadCategory | null }),
           ...(customFields === null ? { customFields: Prisma.JsonNull } : customFields === undefined ? {} : { customFields: customFields as Prisma.InputJsonValue }),
           ...(rawPayload === null ? { rawPayload: Prisma.JsonNull } : rawPayload === undefined ? {} : { rawPayload: rawPayload as Prisma.InputJsonValue }),
           updatedById: actor.id,
         },
         select: leadListSelect,
       });
-      const statusChanged = data.status && data.status !== existing.status;
-      await activityService.record(id, statusChanged ? "STATUS_CHANGED" : "UPDATED", statusChanged ? `Status changed to ${data.status}` : "Lead updated", actor.id, statusChanged ? { from: existing.status, to: data.status } : undefined, tx);
+      const statusChanged = status && status !== existing.status;
+      await activityService.record(id, statusChanged ? "STATUS_CHANGED" : "UPDATED", statusChanged ? `Status changed to ${status}` : "Lead updated", actor.id, statusChanged ? { from: existing.status, to: status } : undefined, tx);
       if (data.nextFollowUpAt !== undefined) {
         await activityService.record(id, "FOLLOW_UP", data.nextFollowUpAt ? "Follow-up scheduled" : "Follow-up cleared", actor.id, { nextFollowUpAt: data.nextFollowUpAt }, tx);
       }

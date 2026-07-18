@@ -14,5 +14,13 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(un
   const parsed = noteSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const { id } = await context.params;
-  return NextResponse.json(await noteService.create(id, parsed.data.content, session.user), { status: 201 });
+  const result = await noteService.create(id, {
+    content: parsed.data.content,
+    whatIDid: parsed.data.whatIDid,
+    whatCustomerSaid: parsed.data.whatCustomerSaid,
+    scheduleFollowUp: parsed.data.scheduleFollowUp,
+    followUpDate: parsed.data.followUpDate,
+    followUpTime: parsed.data.followUpTime,
+  }, session.user);
+  return NextResponse.json(result, { status: 201 });
 });

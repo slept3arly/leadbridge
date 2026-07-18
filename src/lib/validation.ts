@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { STATUS_VALUES, PRIORITY_VALUES, CATEGORY_VALUES } from "@/lib/lead-constants";
 
 const optionalString = (max: number) =>
   z
@@ -14,15 +15,11 @@ export const loginSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters."),
 });
 
-export const leadStatusSchema = z.enum([
-  "NEW", "OPEN", "CONTACTED", "ATTEMPTED_CONTACT", "FOLLOW_UP_SCHEDULED",
-  "INTERESTED", "QUALIFIED", "PROPOSAL_SENT", "NEGOTIATION",
-  "WAITING_FOR_CUSTOMER", "ON_HOLD", "WON", "LOST", "DISQUALIFIED", "SPAM", "ARCHIVED"
-]);
+export const leadStatusSchema = z.enum(STATUS_VALUES as [string, ...string[]]);
 
-export const leadPrioritySchema = z.enum([
-  "VERY_LOW", "LOW", "MEDIUM", "HIGH", "VERY_HIGH", "URGENT", "CRITICAL"
-]);
+export const leadPrioritySchema = z.enum(PRIORITY_VALUES as [string, ...string[]]);
+
+export const leadCategorySchema = z.enum(CATEGORY_VALUES as [string, ...string[]]);
 
 export const followUpSchema = z.object({
   title: z.string().min(1).max(200),
@@ -33,6 +30,15 @@ export const followUpSchema = z.object({
   status: z.enum(["PENDING", "COMPLETED", "CANCELLED"]).optional(),
   assignedUserId: z.string().optional().nullable(),
   leadId: z.string().min(1),
+});
+
+export const noteSchema = z.object({
+  content: z.string().trim().max(10000).optional(),
+  whatIDid: z.string().trim().max(5000).optional().nullable(),
+  whatCustomerSaid: z.string().trim().max(5000).optional().nullable(),
+  scheduleFollowUp: z.boolean().optional(),
+  followUpDate: z.string().optional().nullable(),
+  followUpTime: z.string().optional().nullable(),
 });
 
 export const leadSchema = z.object({
@@ -70,6 +76,7 @@ export const leadSchema = z.object({
   assignedUserId: z.string().optional().nullable(),
   status: leadStatusSchema.optional(),
   priority: leadPrioritySchema.optional(),
+  category: leadCategorySchema.optional().nullable(),
   isArchived: z.boolean().optional(),
 });
 
@@ -83,10 +90,6 @@ export const userSchema = z.object({
 export const settingSchema = z.object({
   key: z.string().min(2).max(80),
   value: z.record(z.string(), z.unknown()),
-});
-
-export const noteSchema = z.object({
-  content: z.string().trim().min(1).max(10000),
 });
 
 export const assignmentSchema = z.object({

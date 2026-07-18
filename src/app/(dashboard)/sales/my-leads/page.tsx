@@ -1,49 +1,31 @@
 import { DataTable } from "@/components/data-table";
 import { Navbar } from "@/components/navbar";
 import { LeadActions } from "@/components/lead-actions";
-import { ServerTableControls } from "@/components/server-table-controls";
+import { SalesTableControls } from "@/components/sales-table-controls";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatDate } from "@/lib/utils";
 import { requireSession } from "@/lib/session";
 import { leadService } from "@/services/lead.service";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
-import type { LeadPriority, LeadStatus } from "@/generated/prisma/client";
+import { getCategoryLabel } from "@/lib/lead-constants";
+import type { TableQueryState } from "@/hooks/use-table-query";
 
 type LeadRow = {
   id: string; name: string; company: string | null; email: string | null;
-  phone: string | null; status: LeadStatus; priority: LeadPriority;
+  phone: string | null; status: string; priority: string;
+  category: string | null;
   createdAt: Date; updatedAt: Date;
+  lastFollowUpAt: Date | null;
+  nextFollowUpAt: Date | null;
 };
 
-const statusOptions = [
-  { value: "NEW", label: "New" },
-  { value: "OPEN", label: "Open" },
-  { value: "CONTACTED", label: "Contacted" },
-  { value: "ATTEMPTED_CONTACT", label: "Attempted Contact" },
-  { value: "FOLLOW_UP_SCHEDULED", label: "Follow Up Scheduled" },
-  { value: "INTERESTED", label: "Interested" },
-  { value: "QUALIFIED", label: "Qualified" },
-  { value: "PROPOSAL_SENT", label: "Proposal Sent" },
-  { value: "NEGOTIATION", label: "Negotiation" },
-  { value: "WAITING_FOR_CUSTOMER", label: "Waiting for Customer" },
-  { value: "ON_HOLD", label: "On Hold" },
-  { value: "WON", label: "Won" },
-  { value: "LOST", label: "Lost" },
-  { value: "DISQUALIFIED", label: "Disqualified" },
-  { value: "SPAM", label: "Spam" },
-  { value: "ARCHIVED", label: "Archived" },
-];
-
-const priorityOptions = [
-  { value: "VERY_LOW", label: "Very Low" },
-  { value: "LOW", label: "Low" },
-  { value: "MEDIUM", label: "Medium" },
-  { value: "HIGH", label: "High" },
-  { value: "VERY_HIGH", label: "Very High" },
-  { value: "URGENT", label: "Urgent" },
-  { value: "CRITICAL", label: "Critical" },
-];
+function formatDateTime(value: Date | string | null | undefined) {
+  if (!value) return "-";
+  const d = new Date(value);
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) +
+    " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+}
 
 export default async function SalesMyLeadsPage({
   searchParams,
@@ -55,26 +37,27 @@ export default async function SalesMyLeadsPage({
   const result = await leadService.listPage(query, user);
   const leads = result.data;
 
+  const tableInitial: Partial<TableQueryState> = {
+    search: query.search ?? "",
+    page: query.page,
+    pageSize: query.pageSize,
+    sortBy: query.sortBy,
+    sortDirection: query.sortDirection,
+    filters: Object.fromEntries(
+      Object.entries(query.filters).map(([key, value]) => [key, value.join(",")])
+    ),
+    dateFrom: query.dateFrom?.toISOString(),
+    dateTo: query.dateTo?.toISOString(),
+  };
+
   return (
     <>
       <Navbar title="My Leads" showResync />
-      <ServerTableControls
-        initial={{
-          search: query.search ?? "",
-          page: query.page,
-          pageSize: query.pageSize,
-          sortBy: query.sortBy,
-          sortDirection: query.sortDirection,
-          filters: Object.fromEntries(
-            Object.entries(query.filters).map(([key, value]) => [key, value.join(",")])
-          ),
-        }}
+      <SalesTableControls
+        initial={tableInitial}
         pagination={result.pagination}
-        filters={[
-          { key: "status", label: "Status", options: statusOptions },
-          { key: "priority", label: "Priority", options: priorityOptions },
-          { key: "archived", label: "View", options: [{ value: "true", label: "Archived" }] },
-        ]}
+        isAdmin={user.role === "ADMIN"}
+        currentUserId={user.id}
       />
       {leads.length ? (
         <DataTable
@@ -106,9 +89,46 @@ export default async function SalesMyLeadsPage({
               render: (lead: LeadRow) => <Badge label={lead.priority} />,
             },
             {
+              key: "category",
+              header: "Category",
+              render: (lead: LeadRow) => lead.category ? <Badge label={getCategoryLabel(lead.category)} /> : <span className="text-xs text-[var(--color-muted)]">-</span>,
+            },
+            {
               key: "createdAt",
               header: "Created",
               render: (lead: LeadRow) => formatDate(lead.createdAt),
+            },
+            {
+              key: "updatedAt",
+              header: "Last Updated",
+              render: (lead: LeadRow) => (
+                <span className="text-xs text-[var(--color-muted)] whitespace-nowrap">{formatDateTime(lead.updatedAt)}</span>
+              ),
+            },
+            {
+              key: "lastFollowUpAt",
+              header: "Last Follow Up",
+              render: (lead: LeadRow) => (
+                <span className="text-xs text-[var(--color-muted)] whitespace-nowrap">
+                  {lead.lastFollowUpAt ? formatDateTime(lead.lastFollowUpAt) : <span className="text-[var(--color-muted)]">-</span>}
+                </span>
+              ),
+            },
+            {
+              key: "nextFollowUpAt",
+              header: "Next Follow Up",
+              render: (lead: LeadRow) => {
+                if (!lead.nextFollowUpAt) return <span className="text-xs text-[var(--color-muted)]">-</span>;
+                const isOverdue = new Date(lead.nextFollowUpAt) < new Date();
+                return (
+                  <span className={`text-xs whitespace-nowrap ${isOverdue ? "text-red-600 font-medium" : "text-[var(--color-muted)]"}`}>
+                    {formatDateTime(lead.nextFollowUpAt)}
+                    {isOverdue && (
+                      <span className="ml-1.5 inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">Overdue</span>
+                    )}
+                  </span>
+                );
+              },
             },
             {
               key: "actions",
@@ -125,8 +145,8 @@ export default async function SalesMyLeadsPage({
         />
       ) : (
         <EmptyState
-          title="No assigned leads"
-          description="Assigned leads will appear here for the sales team."
+          title="No leads found"
+          description="Try adjusting your filters or create a new lead."
         />
       )}
     </>

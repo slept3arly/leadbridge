@@ -14,31 +14,17 @@ enum UserRole {
 
 enum LeadStatus {
   NEW
-  OPEN
-  CONTACTED
-  ATTEMPTED_CONTACT
-  FOLLOW_UP_SCHEDULED
-  INTERESTED
-  QUALIFIED
-  PROPOSAL_SENT
-  NEGOTIATION
-  WAITING_FOR_CUSTOMER
-  ON_HOLD
-  WON
+  CONVERTED
   LOST
-  DISQUALIFIED
   SPAM
-  ARCHIVED
+  ON_HOLD
 }
 
 enum LeadPriority {
-  VERY_LOW
   LOW
   MEDIUM
   HIGH
-  VERY_HIGH
   URGENT
-  CRITICAL
 }
 
 enum FollowUpStatus {
@@ -48,13 +34,10 @@ enum FollowUpStatus {
 }
 
 enum FollowUpPriority {
-  VERY_LOW
   LOW
   MEDIUM
   HIGH
-  VERY_HIGH
   URGENT
-  CRITICAL
 }
 
 enum ActivityType {
@@ -69,6 +52,26 @@ enum ActivityType {
   DELETED
   RESTORED
   ATTACHMENT_ADDED
+}
+
+enum LeadCategory {
+  MEDICAL_REPRESENTATIVE
+  RETAILER
+  WHOLESALER
+  DISTRIBUTOR
+  MARKETING
+  THIRD_PARTY
+  DOCTOR
+  FRANCHISE
+  BUSINESS
+  HOSPITAL
+  CLINIC
+  PHARMACY
+  LABORATORY
+  MANUFACTURER
+  CORPORATE
+  GOVERNMENT
+  OTHER
 }
 
 enum ConnectorStatus {
@@ -259,8 +262,10 @@ model Lead {
   parserVersion     String?
   receivedAt        DateTime?
   importedAt        DateTime?
-  status            LeadStatus     @default(NEW)
-  priority          LeadPriority   @default(MEDIUM)
+  status            LeadStatus       @default(NEW)
+  priority          LeadPriority     @default(MEDIUM)
+  category          LeadCategory?
+  lastFollowUpAt    DateTime?
   customFields      Json?
   rawPayload        Json?
   sourceId          String?
@@ -312,16 +317,19 @@ model LeadActivity {
 }
 
 model Note {
-  id         String   @id @default(cuid())
-  content    String
-  leadId     String
-  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  authorId   String
-  author     User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  editedAt   DateTime @updatedAt
-  isPinned   Boolean  @default(false)
-  visibility String   @default("INTERNAL")
-  createdAt  DateTime @default(now())
+  id               String     @id @default(cuid())
+  content          String
+  whatIDid         String?
+  whatCustomerSaid String?
+  leadId           String
+  lead             Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId         String
+  author           User       @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  editedAt         DateTime   @updatedAt
+  isPinned         Boolean    @default(false)
+  visibility       String     @default("INTERNAL")
+  followUps        FollowUp[]
+  createdAt        DateTime   @default(now())
 
   @@index([leadId, createdAt])
   @@index([leadId, isPinned])
@@ -337,10 +345,13 @@ model FollowUp {
   status      FollowUpStatus   @default(PENDING)
   leadId      String
   lead        Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  noteId      String?
+  note        Note?            @relation(fields: [noteId], references: [id], onDelete: SetNull)
   assignedUserId String?
   assignedUser   User?         @relation("FollowUpAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
   createdById String
   createdBy   User             @relation("FollowUpCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  completedAt DateTime?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
