@@ -23,10 +23,12 @@ export function ArchivedLeadsModal({
   onClose,
   onLeadClick,
   isAdmin,
+  canArchive = false,
 }: {
   onClose: () => void;
   onLeadClick?: (leadId: string) => void;
   isAdmin: boolean;
+  canArchive?: boolean;
 }) {
   const [leads, setLeads] = useState<ArchivedLead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,7 +133,7 @@ export function ArchivedLeadsModal({
                     <span className="text-xs text-[var(--color-muted)] hidden sm:block">
                       {formatDate(lead.createdAt)}
                     </span>
-                    {isAdmin && (
+                    {(isAdmin || canArchive) && (
                       <Button
                         size="sm"
                         variant="ghost"

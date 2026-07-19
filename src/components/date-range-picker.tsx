@@ -114,7 +114,7 @@ export function DateRangePicker({
       <button
         ref={triggerRef}
         onClick={() => setOpen(!open)}
-        className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition ${
+        className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition w-full sm:w-auto ${
           hasValue
             ? "border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]"
             : "border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-ink)] hover:border-[var(--color-brand)]/40"

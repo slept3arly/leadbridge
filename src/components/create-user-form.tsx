@@ -10,6 +10,7 @@ import { FormField } from "@/components/ui/form-field";
 export function CreateUserForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState("SALES");
 
   return (
     <form
@@ -26,6 +27,7 @@ export function CreateUserForm() {
             email: formData.get("email"),
             password: formData.get("password"),
             role: formData.get("role"),
+            salesPrivilege: formData.get("salesPrivilege") || undefined,
           });
 
           event.currentTarget.reset();
@@ -47,11 +49,19 @@ export function CreateUserForm() {
         <Input id="user-password" name="password" type="password" minLength={8} required />
       </FormField>
       <FormField label="Role" htmlFor="user-role">
-        <Select id="user-role" name="role" defaultValue="SALES">
+        <Select id="user-role" name="role" defaultValue="SALES" onChange={(e) => setRole(e.target.value)}>
           <option value="SALES">Sales</option>
           <option value="ADMIN">Admin</option>
         </Select>
       </FormField>
+      {role === "SALES" && (
+        <FormField label="Sales Privilege" htmlFor="user-privilege">
+          <Select id="user-privilege" name="salesPrivilege" defaultValue="JUNIOR">
+            <option value="JUNIOR">Junior</option>
+            <option value="SENIOR">Senior</option>
+          </Select>
+        </FormField>
+      )}
       <div className="md:col-span-2 flex justify-end">
         <Button isLoading={pending} type="submit">
           {pending ? "Creating..." : "Create user"}

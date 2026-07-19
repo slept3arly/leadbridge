@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { UserRole, LeadStatus, LeadPriority, LeadCategory } from "@/generated/prisma/client";
+import type { UserRole, SalesPrivilege, LeadStatus, LeadPriority, LeadCategory } from "@/generated/prisma/client";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { containsSearch, dateRange, listResult, pagination, type ListQuery } from "@/lib/query-builder";
@@ -8,9 +8,10 @@ import { leadSchema } from "@/lib/validation";
 import { activityService } from "@/services/activity.service";
 import { auditService } from "@/services/audit.service";
 import { duplicateService } from "@/services/duplicate.service";
+import { can, Permission } from "@/lib/permissions";
 
 export type LeadInput = z.infer<typeof leadSchema>;
-type Actor = { id: string; role: UserRole };
+type Actor = { id: string; role: UserRole; salesPrivilege?: SalesPrivilege | null };
 
 const leadListSelect = {
   id: true, leadNumber: true, displayName: true, company: true,
@@ -178,6 +179,9 @@ export class LeadService {
 
   async update(id: string, data: Partial<LeadInput>, actor: Actor) {
     const existing = await this.assertAccess(id, actor);
+    if ("isArchived" in data && !can(actor, Permission.ARCHIVE_LEAD)) {
+      throw new ServiceError("You do not have permission to archive leads.", 403);
+    }
     await this.assertAssignableUser(data.assignedUserId, actor);
     const { name, customFields, rawPayload, status, priority, category, ...rest } = data;
     return prisma.$transaction(async (tx) => {
@@ -217,7 +221,7 @@ export class LeadService {
   }
 
   async remove(id: string, actor: Actor) {
-    if (actor.role !== "ADMIN") throw new ServiceError("Only admins can delete leads.", 403);
+    if (!can(actor, Permission.DELETE_LEAD)) throw new ServiceError("You do not have permission to delete leads.", 403);
     await this.assertAccess(id, actor);
     await prisma.$transaction(async (tx) => {
       await tx.lead.update({ where: { id }, data: { isDeleted: true, deletedAt: new Date(), deletedById: actor.id } });

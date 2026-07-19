@@ -52,6 +52,11 @@ export const auth = betterAuth({
         required: false,
         input: false,
       },
+      salesPrivilege: {
+        type: "string",
+        required: false,
+        input: true,
+      },
     },
   },
   session: {

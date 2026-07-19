@@ -10,11 +10,13 @@ export function SalesTableControls({
   pagination,
   isAdmin,
   currentUserId,
+  canArchive = false,
 }: {
   initial: Partial<TableQueryState>;
   pagination?: { page: number; totalPages: number };
   isAdmin: boolean;
   currentUserId: string;
+  canArchive?: boolean;
 }) {
   const query = useTableQuery(initial);
 
@@ -24,7 +26,7 @@ export function SalesTableControls({
         value={query.search}
         onChange={(value) => query.update({ search: value })}
       />
-      <LeadFilters query={query} isAdmin={isAdmin} currentUserId={currentUserId} />
+      <LeadFilters query={query} isAdmin={isAdmin} currentUserId={currentUserId} canArchive={canArchive} />
       {pagination ? (
         <Pagination
           page={pagination.page}

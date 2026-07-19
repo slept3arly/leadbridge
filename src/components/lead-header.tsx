@@ -20,6 +20,7 @@ type LeadHeaderProps = {
   onToggleArchive: () => void;
   saving: boolean;
   archiving: boolean;
+  canArchive?: boolean;
 };
 
 export function LeadHeader({
@@ -30,6 +31,7 @@ export function LeadHeader({
   onToggleArchive,
   saving,
   archiving,
+  canArchive = false,
 }: LeadHeaderProps) {
   return (
     <div className="shrink-0 border-b border-[var(--color-border)] bg-white">
@@ -42,6 +44,7 @@ export function LeadHeader({
           onClick={onClose}
           className="shrink-0 ml-4 rounded-xl p-2 hover:bg-slate-100 transition"
           aria-label="Close"
+          title="Close"
         >
           <X className="h-5 w-5" />
         </button>
@@ -82,9 +85,11 @@ export function LeadHeader({
           <Button size="sm" variant="secondary" isLoading={saving} onClick={onUpdate} className="h-10">
             Update
           </Button>
-          <Button size="sm" variant="ghost" isLoading={archiving} onClick={onToggleArchive} className="h-10">
-            {lead.isArchived ? <RotateCcw size={14} /> : <Archive size={14} />}
-          </Button>
+          {canArchive && (
+            <Button size="sm" variant="ghost" isLoading={archiving} onClick={onToggleArchive} className="h-10" title={lead.isArchived ? "Restore lead" : "Archive lead"}>
+              {lead.isArchived ? <RotateCcw size={14} /> : <Archive size={14} />}
+            </Button>
+          )}
         </div>
       </div>
     </div>

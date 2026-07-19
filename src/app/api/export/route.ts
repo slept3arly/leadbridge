@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
 import { exportService } from "@/services/export.service";
+import { Permission, can } from "@/lib/permissions";
 
-export const GET = withApiAuthorization("ADMIN", async (request) => {
+export const GET = withApiAuthorization(["ADMIN", "SALES"], async (request, _context, session) => {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type");
 
   if (!type) {
     return apiError("Query parameter 'type' is required. Supported values: leads, users, providers, sync-history", 400);
+  }
+
+  if (type === "leads" && !can(session.user, Permission.EXPORT_LEADS)) {
+    return apiError("You do not have permission to export leads.", 403);
+  }
+
+  if (type !== "leads" && session.user.role !== "ADMIN") {
+    return apiError("You do not have permission to perform this action.", 403);
   }
 
   try {

@@ -44,12 +44,14 @@ export function LeadDetailsModal({
   leadId,
   currentUserId,
   isAdmin,
+  canArchive = false,
   onClose,
   onUpdate,
 }: {
   leadId: string;
   currentUserId: string;
   isAdmin: boolean;
+  canArchive?: boolean;
   onClose: () => void;
   onUpdate?: () => void;
 }) {
@@ -172,6 +174,7 @@ export function LeadDetailsModal({
               onToggleArchive={handleToggleArchive}
               saving={saving}
               archiving={archiving}
+              canArchive={canArchive}
             />
 
             <div className="flex border-b border-[var(--color-border)] bg-white">

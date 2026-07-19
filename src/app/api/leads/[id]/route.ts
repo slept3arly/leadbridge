@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
+import { withApiAuthorization, withPermissionAuthorization, apiError, handleApiError } from "@/lib/api";
 import { leadSchema } from "@/lib/validation";
 import { leadService } from "@/services/lead.service";
+import { Permission } from "@/lib/permissions";
 
 export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
   const { id } = await context.params;
@@ -26,7 +27,7 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
   }
 });
 
-export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>("ADMIN", async (_request, context, session) => {
+export const DELETE = withPermissionAuthorization<{ params: Promise<{ id: string }> }>(Permission.DELETE_LEAD, async (_request, context, session) => {
   const { id } = await context.params;
   try {
     await leadService.remove(id, session.user);

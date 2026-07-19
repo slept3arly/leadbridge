@@ -4,11 +4,13 @@ import { LeadActions } from "@/components/lead-actions";
 import { SalesTableControls } from "@/components/sales-table-controls";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatDate } from "@/lib/utils";
+import { ExportButton } from "@/components/export-button";
+
 import { requireSession } from "@/lib/session";
 import { leadService } from "@/services/lead.service";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
 import { getCategoryLabel } from "@/lib/lead-constants";
+import { can, Permission } from "@/lib/permissions";
 import type { TableQueryState } from "@/hooks/use-table-query";
 
 type LeadRow = {
@@ -20,11 +22,17 @@ type LeadRow = {
   nextFollowUpAt: Date | null;
 };
 
-function formatDateTime(value: Date | string | null | undefined) {
-  if (!value) return "-";
+function DateTimeCell({ value, overdue }: { value: Date | string | null | undefined; overdue?: boolean }) {
+  if (!value) return <span className="text-xs text-[var(--color-muted)]">-</span>;
   const d = new Date(value);
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) +
-    " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  const date = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  const time = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className="leading-tight whitespace-nowrap">
+      <div className={`text-sm ${overdue ? "text-red-600 font-medium" : "text-[var(--color-ink)]"}`}>{date}</div>
+      <div className="text-xs text-[var(--color-muted)]">{time}</div>
+    </div>
+  );
 }
 
 export default async function SalesMyLeadsPage({
@@ -36,6 +44,10 @@ export default async function SalesMyLeadsPage({
   const query = parseListQuery(toSearchParams(await searchParams));
   const result = await leadService.listPage(query, user);
   const leads = result.data;
+
+  const canDelete = can(user, Permission.DELETE_LEAD);
+  const canArchive = can(user, Permission.ARCHIVE_LEAD);
+  const canExport = can(user, Permission.EXPORT_LEADS);
 
   const tableInitial: Partial<TableQueryState> = {
     search: query.search ?? "",
@@ -52,12 +64,13 @@ export default async function SalesMyLeadsPage({
 
   return (
     <>
-      <Navbar title="My Leads" showResync />
+      <Navbar title="My Leads" showResync actions={canExport ? <ExportButton type="leads" /> : undefined} />
       <SalesTableControls
         initial={tableInitial}
         pagination={result.pagination}
         isAdmin={user.role === "ADMIN"}
         currentUserId={user.id}
+        canArchive={canArchive}
       />
       {leads.length ? (
         <DataTable
@@ -76,7 +89,7 @@ export default async function SalesMyLeadsPage({
             {
               key: "contact",
               header: "Contact",
-              render: (lead: LeadRow) => lead.email ?? lead.phone ?? "-",
+              render: (lead: LeadRow) => lead.phone ?? lead.email ?? "-",
             },
             {
               key: "status",
@@ -96,23 +109,17 @@ export default async function SalesMyLeadsPage({
             {
               key: "createdAt",
               header: "Created",
-              render: (lead: LeadRow) => formatDate(lead.createdAt),
+              render: (lead: LeadRow) => <DateTimeCell value={lead.createdAt} />,
             },
             {
               key: "updatedAt",
               header: "Last Updated",
-              render: (lead: LeadRow) => (
-                <span className="text-xs text-[var(--color-muted)] whitespace-nowrap">{formatDateTime(lead.updatedAt)}</span>
-              ),
+              render: (lead: LeadRow) => <DateTimeCell value={lead.updatedAt} />,
             },
             {
               key: "lastFollowUpAt",
               header: "Last Follow Up",
-              render: (lead: LeadRow) => (
-                <span className="text-xs text-[var(--color-muted)] whitespace-nowrap">
-                  {lead.lastFollowUpAt ? formatDateTime(lead.lastFollowUpAt) : <span className="text-[var(--color-muted)]">-</span>}
-                </span>
-              ),
+              render: (lead: LeadRow) => <DateTimeCell value={lead.lastFollowUpAt} />,
             },
             {
               key: "nextFollowUpAt",
@@ -121,12 +128,12 @@ export default async function SalesMyLeadsPage({
                 if (!lead.nextFollowUpAt) return <span className="text-xs text-[var(--color-muted)]">-</span>;
                 const isOverdue = new Date(lead.nextFollowUpAt) < new Date();
                 return (
-                  <span className={`text-xs whitespace-nowrap ${isOverdue ? "text-red-600 font-medium" : "text-[var(--color-muted)]"}`}>
-                    {formatDateTime(lead.nextFollowUpAt)}
+                  <div className="flex items-center gap-1.5">
+                    <DateTimeCell value={lead.nextFollowUpAt} overdue={isOverdue} />
                     {isOverdue && (
-                      <span className="ml-1.5 inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">Overdue</span>
+                      <span className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 shrink-0">Overdue</span>
                     )}
-                  </span>
+                  </div>
                 );
               },
             },
@@ -138,6 +145,8 @@ export default async function SalesMyLeadsPage({
                   lead={lead}
                   currentUserId={user.id}
                   isAdmin={user.role === "ADMIN"}
+                  canDelete={canDelete}
+                  canArchive={canArchive}
                 />
               ),
             },

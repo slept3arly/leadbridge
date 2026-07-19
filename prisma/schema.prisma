@@ -12,6 +12,11 @@ enum UserRole {
   SALES
 }
 
+enum SalesPrivilege {
+  JUNIOR
+  SENIOR
+}
+
 enum LeadStatus {
   NEW
   CONVERTED
@@ -118,6 +123,7 @@ model User {
   emailVerified          Boolean          @default(false)
   image                  String?
   role                   UserRole         @default(SALES)
+  salesPrivilege         SalesPrivilege?
   active                 Boolean          @default(true)
   banned                 Boolean          @default(false)
   banReason              String?

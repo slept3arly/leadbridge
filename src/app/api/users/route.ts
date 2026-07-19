@@ -19,9 +19,15 @@ export const POST = withApiAuthorization("ADMIN", async (request, _context, sess
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const { salesPrivilege, ...userData } = parsed.data;
+
+  if (userData.role === "SALES") {
+    (userData as Record<string, unknown>).salesPrivilege = salesPrivilege ?? "JUNIOR";
+  }
+
   const created = await auth.api.createUser({
     headers: await headers(),
-    body: parsed.data,
+    body: userData,
   });
 
   await userService.markCreated(created.user.id, session.user.id);

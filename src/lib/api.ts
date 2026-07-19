@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession, canAccessProtectedSession, type AppRole, type AppSession } from "@/lib/session";
 import { ServiceError } from "@/lib/service-errors";
+import { can, type Permission } from "@/lib/permissions";
 
 export function apiError(message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: message, ...(details ? { details } : {}) }, { status });
@@ -23,6 +24,22 @@ export function withApiAuthorization<C = unknown>(role: AppRole | AppRole[] | un
       return apiError("You do not have permission to perform this action.", 403);
     }
 
+    return handler(request, context, session);
+  };
+}
+
+export function withPermissionAuthorization<C = unknown>(permission: Permission, handler: ApiHandler<C>) {
+  return async (request: Request, context: C) => {
+    const session = await getSession();
+    if (!session) {
+      return apiError("Authentication required.", 401);
+    }
+    if (!canAccessProtectedSession(session)) {
+      return apiError("Account is not active.", 403);
+    }
+    if (!can(session.user, permission)) {
+      return apiError("You do not have permission to perform this action.", 403);
+    }
     return handler(request, context, session);
   };
 }

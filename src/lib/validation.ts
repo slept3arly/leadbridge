@@ -85,6 +85,7 @@ export const userSchema = z.object({
   email: z.email(),
   password: z.string().min(8).max(128),
   role: z.enum(["ADMIN", "SALES"]),
+  salesPrivilege: z.enum(["JUNIOR", "SENIOR"]).optional().nullable(),
 });
 
 export const settingSchema = z.object({

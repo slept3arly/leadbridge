@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { LeadActionPanel } from "@/components/lead-action-panel";
 import { LeadDetailsModal } from "@/components/lead-details-modal";
 
 type Lead = { id: string; name: string; status: string; priority: string; assignedUser?: { name: string } | null };
@@ -15,6 +16,7 @@ export function LeadActions({
   assignableUsers = [],
   canAssign = false,
   canDelete = false,
+  canArchive = false,
   onUpdate,
 }: {
   lead: Lead;
@@ -23,19 +25,34 @@ export function LeadActions({
   assignableUsers?: User[];
   canAssign?: boolean;
   canDelete?: boolean;
+  canArchive?: boolean;
   onUpdate?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [assignedUserId, setAssignedUserId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
     <>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>Details</Button>
-        {canDelete ? <Button variant="danger" size="sm" isLoading={deleting} onClick={async () => {
+      <LeadActionPanel
+        onDetails={() => setOpen(true)}
+        onArchive={async () => {
+          setArchiving(true);
+          try {
+            const axios = (await import("axios")).default;
+            await axios.patch(`/api/leads/${lead.id}`, { isArchived: true });
+            (await import("@/lib/toast")).toast.success("Lead archived");
+            window.location.reload();
+          } catch {
+            setError("Failed to archive lead.");
+            setArchiving(false);
+          }
+        }}
+        onDelete={async () => {
+          if (!confirm("Delete this lead permanently?")) return;
           setDeleting(true);
           try {
             const axios = (await import("axios")).default;
@@ -46,8 +63,12 @@ export function LeadActions({
             setError("Failed to delete lead.");
             setDeleting(false);
           }
-        }}>Delete</Button> : null}
-      </div>
+        }}
+        isArchiving={archiving}
+        isDeleting={deleting}
+        canDelete={canDelete}
+        canArchive={canArchive}
+      />
       {canAssign ? (
         <div className="flex gap-2 mt-2">
           <Select value={assignedUserId} onChange={(event) => setAssignedUserId(event.target.value)}>
@@ -74,6 +95,7 @@ export function LeadActions({
           leadId={lead.id}
           currentUserId={currentUserId ?? ""}
           isAdmin={isAdmin}
+          canArchive={canArchive}
           onClose={() => setOpen(false)}
           onUpdate={() => { if (onUpdate) onUpdate(); }}
         />

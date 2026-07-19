@@ -41,7 +41,7 @@ export default async function AdminLeadsPage({ searchParams }: { searchParams: P
             { key: "status", header: "Status", render: (lead) => <div className="flex gap-2"><Badge label={lead.status} /><Badge label={lead.priority} /></div> },
             { key: "owner", header: "Assigned", render: (lead) => lead.assignedUser?.name ?? "Unassigned" },
             { key: "createdAt", header: "Created", render: (lead) => formatDate(lead.createdAt) },
-            { key: "actions", header: "", render: (lead) => <LeadActions lead={lead} canDelete assignableUsers={assignableUsers} /> },
+            { key: "actions", header: "", render: (lead) => <LeadActions lead={lead} canDelete canArchive assignableUsers={assignableUsers} /> },
           ]}
         />
       ) : (

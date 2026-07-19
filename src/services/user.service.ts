@@ -10,6 +10,7 @@ export class UserService {
         name: true,
         email: true,
         role: true,
+        salesPrivilege: true,
         active: true,
         createdAt: true,
       },
@@ -46,7 +47,7 @@ export class UserService {
       ...containsSearch(["name", "email", "employeeCode"], query.search),
     };
     const [data, total] = await Promise.all([
-      prisma.user.findMany({ where, orderBy: { name: "asc" }, ...pagination(query), select: { id: true, name: true, email: true, role: true, active: true, createdAt: true } }),
+      prisma.user.findMany({ where, orderBy: { name: "asc" }, ...pagination(query), select: { id: true, name: true, email: true, role: true, salesPrivilege: true, active: true, createdAt: true } }),
       prisma.user.count({ where }),
     ]);
     return listResult(data, total, query);

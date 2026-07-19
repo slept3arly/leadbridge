@@ -15,9 +15,12 @@ type LeadFiltersProps = {
   query: TableQueryState & { update: (next: Partial<TableQueryState>) => void };
   isAdmin: boolean;
   currentUserId: string;
+  canArchive?: boolean;
 };
 
-export function LeadFilters({ query, isAdmin, currentUserId }: LeadFiltersProps) {
+const filterClass = "w-full sm:w-[135px]";
+
+export function LeadFilters({ query, isAdmin, currentUserId, canArchive = false }: LeadFiltersProps) {
   const [showArchived, setShowArchived] = useState(false);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
 
@@ -89,11 +92,11 @@ export function LeadFilters({ query, isAdmin, currentUserId }: LeadFiltersProps)
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3 lg:flex-nowrap">
         <Select
           value={String(query.pageSize)}
           onChange={(event) => query.update({ pageSize: Number(event.target.value), page: 1 })}
-          className="h-10 w-28"
+          className={filterClass}
         >
           <option value="25">25 / page</option>
           <option value="50">50 / page</option>
@@ -108,7 +111,7 @@ export function LeadFilters({ query, isAdmin, currentUserId }: LeadFiltersProps)
             const [sortBy, sortDirection] = val.split(":");
             query.update({ sortBy, sortDirection: sortDirection as "asc" | "desc", page: 1 });
           }}
-          className="h-10 w-40"
+          className={filterClass}
         >
           <option value="">Sort</option>
           <option value="createdAt:desc">Newest First</option>
@@ -134,7 +137,7 @@ export function LeadFilters({ query, isAdmin, currentUserId }: LeadFiltersProps)
         <Select
           value={query.filters.status ?? ""}
           onChange={(e) => setFilter("status", e.target.value)}
-          className="h-10 w-32"
+          className={filterClass}
         >
           <option value="">Status</option>
           {LEAD_STATUSES.map((opt) => (
@@ -145,7 +148,7 @@ export function LeadFilters({ query, isAdmin, currentUserId }: LeadFiltersProps)
         <Select
           value={query.filters.priority ?? ""}
           onChange={(e) => setFilter("priority", e.target.value)}
-          className="h-10 w-32"
+          className={filterClass}
         >
           <option value="">Priority</option>
           {LEAD_PRIORITIES.map((opt) => (
@@ -156,7 +159,7 @@ export function LeadFilters({ query, isAdmin, currentUserId }: LeadFiltersProps)
         <Select
           value={query.filters.category ?? ""}
           onChange={(e) => setFilter("category", e.target.value)}
-          className="h-10 w-36"
+          className={filterClass}
         >
           <option value="">Category</option>
           {LEAD_CATEGORIES.map((opt) => (
@@ -166,9 +169,9 @@ export function LeadFilters({ query, isAdmin, currentUserId }: LeadFiltersProps)
 
         <Button
           variant="secondary"
-          size="sm"
+          size="md"
           onClick={() => setShowArchived(true)}
-          className="h-10 gap-2"
+          className="w-full sm:w-auto lg:ml-auto gap-2"
         >
           <Archive size={14} />
           Archived
@@ -184,6 +187,7 @@ export function LeadFilters({ query, isAdmin, currentUserId }: LeadFiltersProps)
       {showArchived && (
         <ArchivedLeadsModal
           isAdmin={isAdmin}
+          canArchive={canArchive}
           onClose={() => setShowArchived(false)}
           onLeadClick={(leadId) => {
             setShowArchived(false);
@@ -197,6 +201,7 @@ export function LeadFilters({ query, isAdmin, currentUserId }: LeadFiltersProps)
           leadId={detailLeadId}
           currentUserId={currentUserId}
           isAdmin={isAdmin}
+          canArchive={canArchive}
           onClose={() => setDetailLeadId(null)}
         />
       )}

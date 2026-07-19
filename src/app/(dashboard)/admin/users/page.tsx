@@ -4,6 +4,7 @@ import { Navbar } from "@/components/navbar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ExportButton } from "@/components/export-button";
+import { UserPrivilegeCell } from "@/components/user-privilege-cell";
 import { formatDate } from "@/lib/utils";
 import { userService } from "@/services/user.service";
 import { ServerTableControls } from "@/components/server-table-controls";
@@ -29,6 +30,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
           { key: "name", header: "Name", render: (user) => user.name },
           { key: "email", header: "Email", render: (user) => user.email },
           { key: "role", header: "Role", render: (user) => <Badge label={user.role} /> },
+          { key: "privilege", header: "Privilege", render: (user) => <UserPrivilegeCell userId={user.id} role={user.role} privilege={user.salesPrivilege} /> },
           { key: "active", header: "Status", render: (user) => (user.active ? "Active" : "Inactive") },
           { key: "createdAt", header: "Created", render: (user) => formatDate(user.createdAt) },
         ]}
