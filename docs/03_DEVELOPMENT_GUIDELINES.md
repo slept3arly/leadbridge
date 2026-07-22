@@ -26,6 +26,7 @@ It covers:
 3. Keep parser code deterministic and side-effect free.
 4. Enforce security on the server. Client state and middleware are not authorization.
 5. Preserve the internal-only account model: public signup must remain disabled.
+6. **UI consistency is a project requirement.** All Sales Panel pages must follow the design principles in [docs/02_ARCHITECTURE.md](./02_ARCHITECTURE.md#sales-ui-design-principles). Reuse existing shared components before introducing new ones. The Sales Dashboard is the visual baseline for all Sales UI.
 
 ## Project, naming, and folder conventions
 
@@ -38,7 +39,7 @@ It covers:
 | Services | Place in `src/services/<domain>.service.ts`; export one named class and one shared instance. |
 | Route handlers | Place under `src/app/api/.../route.ts`; follow App Router HTTP method exports. |
 | Pages/layouts | Use App Router conventions in `src/app`; use route groups for organization only. |
-| UI primitives | Keep generic, reusable controls in `src/components/ui`; place domain-specific compositions beside other components. |
+| Components | Keep generic UI primitives in `src/components/ui`, cross-feature business components in `src/components/shared`, admin-only components in `src/components/admin`, and sales-only components in `src/components/sales`. Follow the conventions in [docs/02_ARCHITECTURE.md#sales-ui-design-principles](./02_ARCHITECTURE.md#sales-ui-design-principles) when building Sales Panel pages. |
 | Integrations | Connector contracts/implementations in `src/connectors`; parser implementations/registry entries in `src/parsers`; runtime flow in `src/runtime`. |
 
 Use the `@/` alias for imports rooted at `src`. Do not edit `src/generated/prisma`; regenerate it with `pnpm prisma generate` after schema changes.

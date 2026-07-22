@@ -14,19 +14,18 @@ export class FollowUpService {
   }
 
   private async recalculateLeadFollowUpFields(leadId: string) {
-    const [latestCompleted] = await prisma.followUp.findMany({
-      where: { leadId, status: "COMPLETED", completedAt: { not: null } },
-      orderBy: { completedAt: "desc" },
-      take: 1,
-      select: { completedAt: true },
-    });
-
-    const [earliestPending] = await prisma.followUp.findMany({
-      where: { leadId, status: "PENDING", dueDate: { not: null } },
-      orderBy: { dueDate: "asc" },
-      take: 1,
-      select: { dueDate: true },
-    });
+    const [latestCompleted, earliestPending] = await Promise.all([
+      prisma.followUp.findFirst({
+        where: { leadId, status: "COMPLETED", completedAt: { not: null } },
+        orderBy: { completedAt: "desc" },
+        select: { completedAt: true },
+      }),
+      prisma.followUp.findFirst({
+        where: { leadId, status: "PENDING", dueDate: { not: null } },
+        orderBy: { dueDate: "asc" },
+        select: { dueDate: true },
+      }),
+    ]);
 
     await prisma.lead.update({
       where: { id: leadId },

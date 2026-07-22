@@ -3,6 +3,7 @@ import { withApiAuthorization, withPermissionAuthorization, apiError, handleApiE
 import { leadSchema } from "@/lib/validation";
 import { leadService } from "@/services/lead.service";
 import { Permission } from "@/lib/permissions";
+import { invalidateAfterMutation } from "@/lib/cache-tags";
 
 export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
   const { id } = await context.params;
@@ -21,6 +22,7 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
   const { id } = await context.params;
   try {
     const lead = await leadService.update(id, parsed.data, session.user);
+    invalidateAfterMutation(session.user.id);
     return NextResponse.json(lead);
   } catch (error) {
     return handleApiError(error, "Failed to update lead");
@@ -31,6 +33,7 @@ export const DELETE = withPermissionAuthorization<{ params: Promise<{ id: string
   const { id } = await context.params;
   try {
     await leadService.remove(id, session.user);
+    invalidateAfterMutation(session.user.id);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return handleApiError(error, "Failed to delete lead");

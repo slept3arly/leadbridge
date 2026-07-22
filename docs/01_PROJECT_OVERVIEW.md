@@ -57,8 +57,8 @@ Implemented today:
 
 ## Documentation map
 
-- [02_ARCHITECTURE.md](./02_ARCHITECTURE.md) explains the backend layers, runtime flow, and data movement.
-- [03_DEVELOPMENT_GUIDELINES.md](./03_DEVELOPMENT_GUIDELINES.md) explains how to add connectors and parsers.
+- [02_ARCHITECTURE.md](./02_ARCHITECTURE.md) explains the backend layers, runtime flow, data movement, and **Sales UI design principles** (the Design Reference for all Sales Panel pages).
+- [03_DEVELOPMENT_GUIDELINES.md](./03_DEVELOPMENT_GUIDELINES.md) explains how to add connectors and parsers, and includes UI consistency requirements.
 - [04_ADMINISTRATION_AND_OPERATIONS.md](./04_ADMINISTRATION_AND_OPERATIONS.md) explains the admin screens, deployment, and recovery.
 
 Read this first if you need the current shape of the product. Read the other
@@ -80,7 +80,7 @@ The product is a single-organization CRM with:
 | Location | Responsibility |
 | --- | --- |
 | `src/app` | Next.js App Router pages, layouts, and route handlers. Dashboard groups live in `(dashboard)`. |
-| `src/components` | Feature components plus reusable `ui` primitives. |
+| `src/components` | Organized into `ui/` (generic primitives), `shared/` (cross-feature business components), `admin/` (admin-only), and `sales/` (sales-only). The Sales Dashboard (`src/components/sales/sales-dashboard-client.tsx`) is the visual baseline for the Sales Panel. |
 | `src/services` | Business orchestration and Prisma-backed domain operations. |
 | `src/lib` | Auth, session enforcement, Prisma client, validation, logging, navigation, and shared helpers. |
 | `src/connectors` | Vendor-neutral connector contract and concrete connector implementations. |

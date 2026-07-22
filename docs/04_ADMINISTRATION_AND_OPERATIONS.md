@@ -275,7 +275,7 @@ If a schema or deployment change breaks the app:
 ## Related files
 
 - [docs/01_PROJECT_OVERVIEW.md](./01_PROJECT_OVERVIEW.md)
-- [docs/02_ARCHITECTURE.md](./02_ARCHITECTURE.md)
+- [docs/02_ARCHITECTURE.md](./02_ARCHITECTURE.md) — includes Sales UI Design Principles that also apply to Admin UI conventions where relevant.
 - [docs/03_DEVELOPMENT_GUIDELINES.md](./03_DEVELOPMENT_GUIDELINES.md)
 - [`prisma/schema.prisma`](../prisma/schema.prisma)
 - [`prisma/seed.ts`](../prisma/seed.ts)
@@ -283,4 +283,4 @@ If a schema or deployment change breaks the app:
 - [`src/app/api/connectors/route.ts`](../src/app/api/connectors/route.ts)
 - [`src/app/api/connectors/[id]/sync/route.ts`](../src/app/api/connectors/[id]/sync/route.ts)
 - [`src/app/api/scheduler/trigger/route.ts`](../src/app/api/scheduler/trigger/route.ts)
-- [`src/components/provider-management.tsx`](../src/components/provider-management.tsx)
+- [`src/components/admin/provider-management.tsx`](../src/components/admin/provider-management.tsx)

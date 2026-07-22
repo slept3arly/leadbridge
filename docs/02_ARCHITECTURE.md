@@ -236,6 +236,233 @@ This backend is intentionally simple:
 
 Treat sync runs as database-backed operations, not queue jobs.
 
+## Sales UI Design Principles
+
+All Sales Panel pages must inherit a single, cohesive design language. The Sales
+Dashboard (`/sales`) is the visual baseline and reference implementation.
+
+### 1. Dashboard as the Design Reference
+
+The Sales Dashboard establishes the visual conventions for the entire Sales
+Panel. Every new or modified Sales page should use the same:
+
+- spacing and layout rhythm
+- typography scale and weights
+- border radius tokens
+- card styling and surface hierarchy
+- action button sizing and placement
+- component sizing and density
+
+Avoid introducing page-specific design languages. If a pattern exists on the
+Dashboard, extend it rather than recreate it.
+
+### 2. Consistent Page Structure
+
+Sales pages should follow a predictable layout order:
+
+```text
+Page Header (Navbar with title + actions)
+       ↓
+Primary Actions / Dropdowns
+       ↓
+Summary / KPI Cards (when applicable)
+       ↓
+Toolbar (Search / Filters)
+       ↓
+Main Content (table, list, or detail view)
+       ↓
+Pagination / Footer (when applicable)
+```
+
+Do not embed duplicate navigation inside page content. The bottom navigation and
+header actions are the sole navigation surface.
+
+### 3. Surface Hierarchy
+
+Maintain three distinct visual layers:
+
+1. **Application background** – the page canvas
+2. **Cards** – elevated containers for grouped content
+3. **Content** – text, badges, tables inside cards
+
+Cards must feel visually distinct from the page background. Use consistent
+surface colors, border treatment, and shadow elevation to achieve separation.
+Do not flatten layers by reducing background contrast or removing card shadows.
+
+### 4. Component Reuse
+
+Before creating a new UI element, check the component directories in order:
+`src/components/ui` (generic primitives), `src/components/shared`
+(cross-feature business components), then `src/components/sales` or
+`src/components/admin` for domain-specific components.
+
+Directory structure:
+
+| Directory | Purpose |
+|---|---|
+| `src/components/ui` | Generic reusable UI primitives (design system) |
+| `src/components/shared` | Cross-feature business components used by both Admin and Sales |
+| `src/components/admin` | Components used exclusively by the Admin application |
+| `src/components/sales` | Components used exclusively by the Sales application |
+
+Known components include:
+
+| Component | Location |
+|---|---|
+| `Button` | `src/components/ui/button.tsx` |
+| `Card` / `CardEmptyState` | `src/components/ui/card.tsx` |
+| `Badge` | `src/components/ui/badge.tsx` |
+| `Select` | `src/components/ui/select.tsx` |
+| `EmptyState` | `src/components/ui/empty-state.tsx` |
+| `Pagination` | `src/components/ui/pagination.tsx` |
+| `FilterChip` | `src/components/ui/filter-chip.tsx` |
+| `DateTimeCell` | `src/components/ui/date-time-cell.tsx` |
+| `IconActionButton` | `src/components/ui/icon-action-button.tsx` |
+| `ExpandableSection` | `src/components/ui/expandable-section.tsx` |
+| `AnimatedReveal` | `src/components/ui/animated-reveal.tsx` |
+| `ActiveFilters` | `src/components/shared/active-filters.tsx` |
+| `SearchToolbar` | `src/components/shared/search-toolbar.tsx` |
+| `Navbar` | `src/components/shared/navbar.tsx` |
+| `DataTable` | `src/components/shared/data-table.tsx` |
+| `ExportButton` | `src/components/shared/export-button.tsx` |
+| `KpiCard` | `src/components/shared/kpi-card.tsx` |
+| `ResyncButton` | `src/components/shared/resync-button.tsx` |
+| `SignOutButton` | `src/components/shared/sign-out-button.tsx` |
+| `DateRangePicker` | `src/components/shared/date-range-picker.tsx` |
+| `AttentionCenter` | `src/components/sales/attention-center.tsx` |
+| `AttentionCard` | `src/components/sales/attention-card.tsx` |
+| `BlueprintBackground` | `src/components/shared/blueprint-background.tsx` |
+
+### 4a. Attention Center Filter Behaviour
+
+The Attention Center (`src/components/sales/attention-center.tsx`) renders all
+attention items as a **single unified card grid** (2 columns desktop, 1 column
+mobile). The filter pills select which category of cards is visible — they do
+not restructure the page into separate sections. Behaviour:
+
+- **Default (no pill active):** All cards are shown in priority order: Pending
+  → Today → New → Needs Attention (within each category, existing server-side
+  sort is preserved).
+- **Pill click:** Single-select filter — only cards matching the category
+  remain visible. Clicking the same pill again clears the filter.
+- **Clear button (✕):** Always occupies layout space but is invisible and
+  pointer-events-disabled when no filter is active. Fades in when a filter is
+  active. Clicking it resets to the default unfiltered state.
+  **No layout shift** occurs when toggling the filter.
+- **Pill styling:** Matches the `SegmentedControl` pattern from My Leads:
+  `inline-flex rounded-xl bg-slate-100/80 p-1` container, `rounded-lg px-3
+  py-1.5 text-sm font-medium` buttons, `bg-white shadow-sm` active state.
+- **Pill labels:** Compact single-word labels (`Pending`, `Today`, `New`,
+  `Attention`).
+- **Empty state:** When a filter is active and yields zero results, a single
+  centered empty card is shown with a category-specific message (e.g. "No
+  pending follow-ups.").
+- **Needs Attention actions:** Cards in the "stale" category include Archive
+  (`isArchived: true`) and Delete (permanent) icon buttons reusing
+  `IconActionButton` from `src/components/ui/icon-action-button.tsx`. The
+  API-call and confirmation patterns mirror `LeadActions` in
+  `src/components/shared/lead-actions.tsx`.
+- **No section headings:** The page has no "Pending Follow-ups", "Today's
+  Follow-ups", etc. headings. The filter pills are the only navigation between
+  categories.
+
+### 4b. Login Page
+
+The login page (`src/app/login/page.tsx`) follows the same Surface Hierarchy,
+spacing, and component conventions as the rest of the application. It is **not**
+a standalone marketing or branded page — it is the first page of the CRM.
+
+- **Layout:** Two-column grid on desktop (`md:grid-cols-2`). Left column
+  contains brand copy; right column contains the authentication card. On mobile
+  the left column is hidden and only the centered card is shown.
+- **Card:** Uses the shared `Card` component with `p-8` for a calmer feel.
+  Inner copy uses `CardTitle` ("Welcome back") and `CardDescription` for the
+  subheading. No page-specific card variant.
+- **Form fields:** Uses the shared `Input` component with identical height,
+  radius, padding, border, hover, and focus-ring as every other input in the
+  app. Inputs are `disabled` while authentication is pending.
+- **Button:** Uses the shared `Button` component with `isLoading` prop to show
+  `ButtonSpinner` during authentication. `disabled` is managed automatically by
+  the `isLoading` state.
+- **Validation errors:** Uses the shared `ErrorState` component (`rounded-xl
+  bg-red-50 px-4 py-3 text-sm text-red-700`).
+- **Brand copy:** "LEADBRIDGE" rendered in `text-xs font-semibold uppercase
+  tracking-[0.1em] text-[var(--color-muted)]` — subtle, not branded.
+- **No page-specific primitives:** All visual elements come from
+  `src/components/ui/`. The form logic lives in `src/components/login-form.tsx`
+  but has zero page-specific CSS or layout wrappers.
+
+### 4c. Blueprint Grid Background
+
+The `BlueprintBackground` component (`src/components/shared/blueprint-background.tsx`)
+provides an optional engineering-grid background for standalone pages (login,
+error, setup wizard, empty states). It is **not** used on dashboard pages,
+which retain the plain `var(--color-surface)` background.
+
+**Implementation:**
+- **Grid:** Two `repeating-linear-gradient` layers (horizontal + vertical) at
+  `1px` stroke, `32px` spacing, `4%` opacity of `var(--color-ink)`.
+- **Mask:** A `radial-gradient` mask fades the grid from nearly invisible at
+  center to visible at the edges, keeping the content area clean.
+- **Accents:** Three inline SVG elements — a quarter-circle arc (top-left), a
+  partial circle arc (bottom-right), and a dashed vertical construction line.
+  All at very low opacity with `0.5px` stroke.
+- **No JavaScript**, no images, no external dependencies. Pure CSS + SVG.
+- **ARIA:** `aria-hidden="true"` with `pointer-events-none`.
+- **Responsive:** `viewBox="0 0 1440 900"` with `preserveAspectRatio="xMidYMid
+  slice"` on the SVG; grid fills the viewport via `fixed inset-0`.
+
+**Usage guidelines:**
+- Suitable for pages where the plain background feels too sparse: login, 404,
+  setup wizard, onboarding, empty state pages.
+- Dashboard, table, and detail pages should **not** use this background. The
+  plain `--color-surface` is the established dashboard background.
+- If used on a page with a `Card`, ensure the card surface (`--color-panel`,
+  `--color-border`, `shadow-xs`) sits visually above the grid without
+  competing. The grid's low opacity and radial mask guarantee this.
+
+Avoid duplicate implementations. If a component needs customization, extend it
+with props or composition rather than copying the source.
+
+### 5. Action Placement
+
+Primary page actions belong in the page header — either in the Navbar or as
+header-level buttons. Do not scatter action shortcuts (navigation links, export
+buttons, secondary CTAs) within page body content when they duplicate
+functionality available in the header or bottom navigation.
+
+### 6. Empty States
+
+Every Sales page should handle the empty state consistently. Use the shared
+`EmptyState` or `CardEmptyState` component with:
+
+- a clear, concise title
+- a short description explaining what the user should expect
+- consistent icon usage (when applicable)
+- consistent spacing and typography
+- an optional action button when the user can resolve the empty state
+
+### 7. Terminology
+
+Use consistent labels across the Sales Panel. For example, refer to the
+salesperson's owned leads as **"My Leads"** everywhere (not "My Pipeline" on one
+page and "My Leads" on another). Follow the existing label conventions in
+`src/lib/lead-constants.ts` and `src/lib/navigation.tsx`.
+
+### 8. Design Consistency for New Pages
+
+When introducing a new Sales page:
+
+- It should visually feel like it belongs to the same application as the
+  Dashboard.
+- Extend the existing design system — do not invent new layout patterns,
+  spacing scales, or component variants without a project-wide rationale.
+- Use the same CSS custom properties defined in `src/app/globals.css`:
+  `--color-ink`, `--color-muted`, `--color-border`, `--color-brand`,
+  `--color-panel`, `--color-surface`, etc.
+- Match the Dashboard's header structure (Navbar), card density, button
+  sizing, and surface hierarchy.
+
 ## Related files
 
 - [`docs/01_PROJECT_OVERVIEW.md`](./01_PROJECT_OVERVIEW.md)
@@ -251,3 +478,9 @@ Treat sync runs as database-backed operations, not queue jobs.
 - [`src/runtime/routing-engine.ts`](../src/runtime/routing-engine.ts)
 - [`src/connectors/registry.ts`](../src/connectors/registry.ts)
 - [`src/parsers/registry.ts`](../src/parsers/registry.ts)
+- [`src/app/globals.css`](../src/app/globals.css)
+- [`src/lib/navigation.tsx`](../src/lib/navigation.tsx)
+- [`src/components/ui`](../src/components/ui)
+- [`src/components/shared`](../src/components/shared)
+- [`src/components/sales`](../src/components/sales)
+- [`src/components/admin`](../src/components/admin)

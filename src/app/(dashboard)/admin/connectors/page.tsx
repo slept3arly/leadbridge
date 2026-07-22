@@ -1,8 +1,8 @@
-import { Navbar } from "@/components/navbar";
+import { Navbar } from "@/components/shared/navbar";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { connectorService } from "@/services/connector.service";
-import { ServerTableControls } from "@/components/server-table-controls";
+import { ServerTableControls } from "@/components/admin/server-table-controls";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
 
 export default async function AdminConnectorsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

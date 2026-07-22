@@ -1,6 +1,6 @@
-import { Navbar } from "@/components/navbar";
-import { ProviderManagement } from "@/components/provider-management";
-import { ExportButton } from "@/components/export-button";
+import { Navbar } from "@/components/shared/navbar";
+import { ProviderManagement } from "@/components/admin/provider-management";
+import { ExportButton } from "@/components/shared/export-button";
 import { providerService } from "@/services/provider.service";
 import { connectorService } from "@/services/connector.service";
 import { parserRequestService } from "@/services/parser-request.service";

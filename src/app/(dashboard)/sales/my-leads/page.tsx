@@ -1,10 +1,14 @@
-import { DataTable } from "@/components/data-table";
-import { Navbar } from "@/components/navbar";
-import { LeadActions } from "@/components/lead-actions";
-import { SalesTableControls } from "@/components/sales-table-controls";
+import { DataTable } from "@/components/shared/data-table";
+import { Navbar } from "@/components/shared/navbar";
+import { SignOutButton } from "@/components/shared/sign-out-button";
+import { LeadActions } from "@/components/shared/lead-actions";
+import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog";
+import { SalesTableControls } from "@/components/sales/sales-table-controls";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ExportButton } from "@/components/export-button";
+import { ExportButton } from "@/components/shared/export-button";
+import { DateTimeCell } from "@/components/ui/date-time-cell";
+import { prisma } from "@/lib/prisma";
 
 import { requireSession } from "@/lib/session";
 import { leadService } from "@/services/lead.service";
@@ -20,20 +24,8 @@ type LeadRow = {
   createdAt: Date; updatedAt: Date;
   lastFollowUpAt: Date | null;
   nextFollowUpAt: Date | null;
+  followUps?: Array<{ status: string; dueDate: Date | null; completedAt: Date | null }>;
 };
-
-function DateTimeCell({ value, overdue }: { value: Date | string | null | undefined; overdue?: boolean }) {
-  if (!value) return <span className="text-xs text-[var(--color-muted)]">-</span>;
-  const d = new Date(value);
-  const date = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-  const time = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-  return (
-    <div className="leading-tight whitespace-nowrap">
-      <div className={`text-sm ${overdue ? "text-red-600 font-medium" : "text-[var(--color-ink)]"}`}>{date}</div>
-      <div className="text-xs text-[var(--color-muted)]">{time}</div>
-    </div>
-  );
-}
 
 export default async function SalesMyLeadsPage({
   searchParams,
@@ -41,13 +33,21 @@ export default async function SalesMyLeadsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { user } = await requireSession("SALES");
-  const query = parseListQuery(toSearchParams(await searchParams));
+  const resolvedSearchParams = await searchParams;
+  const query = parseListQuery(toSearchParams(resolvedSearchParams));
   const result = await leadService.listPage(query, user);
   const leads = result.data;
+  const autoOpenLeadId = (resolvedSearchParams.leadId as string) || null;
 
   const canDelete = can(user, Permission.DELETE_LEAD);
   const canArchive = can(user, Permission.ARCHIVE_LEAD);
   const canExport = can(user, Permission.EXPORT_LEADS);
+
+  const leadSources = await prisma.leadSource.findMany({
+    where: { active: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
 
   const tableInitial: Partial<TableQueryState> = {
     search: query.search ?? "",
@@ -64,13 +64,20 @@ export default async function SalesMyLeadsPage({
 
   return (
     <>
-      <Navbar title="My Leads" showResync actions={canExport ? <ExportButton type="leads" /> : undefined} />
+      <Navbar
+        title="My Leads"
+        showResync
+        actions={
+          <>
+            {canExport && <ExportButton type="leads" iconOnly />}
+            <SignOutButton />
+          </>
+        }
+      />
       <SalesTableControls
         initial={tableInitial}
         pagination={result.pagination}
-        isAdmin={user.role === "ADMIN"}
-        currentUserId={user.id}
-        canArchive={canArchive}
+        leadSources={leadSources}
       />
       {leads.length ? (
         <DataTable
@@ -119,7 +126,23 @@ export default async function SalesMyLeadsPage({
             {
               key: "lastFollowUpAt",
               header: "Last Follow Up",
-              render: (lead: LeadRow) => <DateTimeCell value={lead.lastFollowUpAt} />,
+              render: (lead: LeadRow) => {
+                if (!lead.lastFollowUpAt) return <span className="text-xs text-[var(--color-muted)]">-</span>;
+                const lastFu = lead.followUps?.find((f) => f.status === "COMPLETED");
+                const wasOverdue = lastFu?.dueDate && lastFu.completedAt && new Date(lastFu.dueDate) < new Date(lastFu.completedAt);
+                return (
+                  <div className="flex items-center gap-1.5">
+                    <DateTimeCell value={lead.lastFollowUpAt} />
+                    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold shrink-0 ${
+                      wasOverdue
+                        ? "bg-red-100 text-red-700"
+                        : "bg-green-100 text-green-700"
+                    }`}>
+                      {wasOverdue ? "Overdue" : "Done"}
+                    </span>
+                  </div>
+                );
+              },
             },
             {
               key: "nextFollowUpAt",
@@ -130,8 +153,10 @@ export default async function SalesMyLeadsPage({
                 return (
                   <div className="flex items-center gap-1.5">
                     <DateTimeCell value={lead.nextFollowUpAt} overdue={isOverdue} />
-                    {isOverdue && (
+                    {isOverdue ? (
                       <span className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 shrink-0">Overdue</span>
+                    ) : (
+                      <span className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 shrink-0">Pending</span>
                     )}
                   </div>
                 );
@@ -158,6 +183,12 @@ export default async function SalesMyLeadsPage({
           description="Try adjusting your filters or create a new lead."
         />
       )}
+      <LeadDetailDialog
+        leadId={autoOpenLeadId}
+        currentUserId={user.id}
+        isAdmin={user.role === "ADMIN"}
+        canArchive={canArchive}
+      />
     </>
   );
 }

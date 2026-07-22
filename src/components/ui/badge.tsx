@@ -29,9 +29,26 @@ const tones: Record<string, string> = {
   CORPORATE: "bg-slate-100 text-slate-800",
   GOVERNMENT: "bg-red-100 text-red-800",
   OTHER: "bg-gray-100 text-gray-700",
+  Active: "bg-emerald-50 text-emerald-700",
+  Inactive: "bg-rose-50 text-rose-700",
+  JUNIOR: "bg-slate-100 text-slate-600",
+  SENIOR: "bg-slate-100 text-slate-600",
 } as const;
 
-export function Badge({ label }: { label: string }) {
+export function Badge({
+  label,
+  variant,
+  className,
+}: {
+  label: string;
+  variant?: "default" | "rounded" | "square";
+  className?: string;
+}) {
   const tone = tones[label as keyof typeof tones] ?? "bg-slate-100 text-slate-700";
-  return <span className={cn("inline-flex rounded-full px-3 py-1 text-xs font-semibold", tone)}>{label}</span>;
+  const shape = variant === "rounded"
+    ? "rounded-md px-2 py-0.5"
+    : variant === "square"
+      ? "rounded-md px-2 py-0.5"
+      : "rounded-full px-3 py-1";
+  return <span className={cn("inline-flex text-xs font-semibold", shape, tone, className)}>{label}</span>;
 }

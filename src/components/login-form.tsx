@@ -15,7 +15,7 @@ export function LoginForm() {
 
   return (
     <form
-      className="space-y-4"
+      className="space-y-5"
       onSubmit={async (event) => {
         event.preventDefault();
         setError(null);
@@ -55,17 +55,17 @@ export function LoginForm() {
         <label className="text-sm font-medium" htmlFor="email">
           Email
         </label>
-        <Input id="email" name="email" type="email" placeholder="admin@leadbridge.local" required />
+        <Input id="email" name="email" type="email" placeholder="admin@leadbridge.local" required disabled={pending} />
       </div>
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="password">
           Password
         </label>
-        <Input id="password" name="password" type="password" placeholder="********" required />
+        <Input id="password" name="password" type="password" placeholder="********" required disabled={pending} />
       </div>
       {error ? <ErrorState message={error} /> : null}
-      <Button className="w-full" disabled={pending} type="submit">
-        {pending ? "Signing in..." : "Sign in"}
+      <Button className="w-full" isLoading={pending} type="submit">
+        Sign in
       </Button>
     </form>
   );

@@ -10,7 +10,7 @@ import {
   CircleUser,
 } from "lucide-react";
 
-const iconProps = { size: 20, strokeWidth: 1.5 };
+const iconProps = { size: 22, strokeWidth: 1.5 };
 
 export type NavItem = {
   href: string;
@@ -82,7 +82,7 @@ export const salesNavigation: NavGroup[] = [
     title: "Sales",
     items: [
       { href: "/sales/my-leads", label: "My Leads", icon: <ContactRound {...iconProps} /> },
-      { href: "/sales/tasks", label: "Tasks", icon: <ClipboardList {...iconProps} /> },
+      { href: "/sales/tasks", label: "Attention\nCenter", icon: <ClipboardList {...iconProps} /> },
     ],
   },
   {

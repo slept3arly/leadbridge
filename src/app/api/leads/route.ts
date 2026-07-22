@@ -3,6 +3,7 @@ import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { leadSchema } from "@/lib/validation";
 import { parseListQuery } from "@/lib/query-builder";
 import { leadService } from "@/services/lead.service";
+import { invalidateAfterMutation } from "@/lib/cache-tags";
 
 export const GET = withApiAuthorization(undefined, async (request, _context, session) => {
   const query = parseListQuery(new URL(request.url).searchParams);
@@ -20,6 +21,7 @@ export const POST = withApiAuthorization(undefined, async (request, _context, se
 
   try {
     const lead = await leadService.create(parsed.data, session.user);
+    invalidateAfterMutation(session.user.id);
     return NextResponse.json(lead, { status: 201 });
   } catch (error) {
     return handleApiError(error, "Failed to create lead");

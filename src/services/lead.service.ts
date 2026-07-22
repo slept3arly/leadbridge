@@ -20,6 +20,11 @@ const leadListSelect = {
   nextFollowUpAt: true, lastFollowUpAt: true,
   assignedUser: { select: { id: true, name: true } },
   source: { select: { id: true, name: true } },
+  followUps: {
+    orderBy: { createdAt: "desc" },
+    take: 1,
+    select: { status: true, dueDate: true, completedAt: true },
+  },
 } as const;
 
 const leadDetailSelect = {
@@ -106,6 +111,19 @@ export class LeadService {
       ? { isArchived: true }
       : { isArchived: false };
 
+    const followUpFilter = query.filters.followUp?.length
+      ? (() => {
+          const now = new Date();
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
+          const filterVal = query.filters.followUp[0];
+          if (filterVal === "overdue") return { nextFollowUpAt: { not: null, lt: now } };
+          if (filterVal === "today") return { nextFollowUpAt: { not: null, gte: startOfToday, lte: endOfToday } };
+          if (filterVal === "upcoming") return { nextFollowUpAt: { not: null, gte: now } };
+          return {};
+        })()
+      : {};
+
     const where = {
       isDeleted: query.filters.deleted?.includes("true") ?? false,
       ...archivedFilter,
@@ -113,11 +131,13 @@ export class LeadService {
       ...(query.filters.status?.length ? { status: { in: query.filters.status as LeadStatus[] } } : {}),
       ...(query.filters.priority?.length ? { priority: { in: query.filters.priority as LeadPriority[] } } : {}),
       ...(query.filters.category?.length ? { category: { in: query.filters.category as LeadCategory[] } } : {}),
+      ...(query.filters.source?.length ? { sourceId: { in: query.filters.source } } : {}),
       ...assignedUserFilter,
+      ...followUpFilter,
       ...containsSearch(["displayName", "company", "email", "phone", "leadNumber"], query.search),
       ...dateRange("createdAt", query),
     };
-    const orderBy = ["createdAt", "updatedAt", "displayName", "status", "priority", "category"].includes(query.sortBy ?? "")
+    const orderBy = ["createdAt", "updatedAt", "displayName", "status", "priority", "category", "nextFollowUpAt"].includes(query.sortBy ?? "")
       ? { [query.sortBy!]: query.sortDirection }
       : { updatedAt: "desc" as const };
     const [data, total] = await Promise.all([

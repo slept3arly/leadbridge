@@ -14,7 +14,22 @@ export type TableQueryState = {
   dateTo?: string;
 };
 
-const FILTER_KEYS_FROM_URL = ["status", "priority", "category"];
+const FILTER_KEYS_FROM_URL = ["status", "priority", "category", "followUp", "source", "archived"];
+
+function toQueryString(state: TableQueryState): string {
+  const params = new URLSearchParams();
+  if (state.search) params.set("search", state.search);
+  params.set("page", String(state.page));
+  params.set("pageSize", String(state.pageSize));
+  if (state.sortBy) params.set("sortBy", state.sortBy);
+  params.set("sortDirection", state.sortDirection);
+  Object.entries(state.filters).forEach(([key, value]) => {
+    if (value) params.set(`filter.${key}`, value);
+  });
+  if (state.dateFrom) params.set("dateFrom", state.dateFrom);
+  if (state.dateTo) params.set("dateTo", state.dateTo);
+  return params.toString();
+}
 
 function readFiltersFromUrl(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -55,6 +70,8 @@ export function useTableQuery(initial: Partial<TableQueryState> = {}, debounceMs
     setState((current) => ({ ...current, ...next, ...(next.search === undefined ? {} : { page: 1 }) }));
   }, []);
 
+  const queryString = useMemo(() => toQueryString(state), [state]);
+
   useEffect(() => {
     if (!initialized.current) {
       initialized.current = true;
@@ -62,36 +79,10 @@ export function useTableQuery(initial: Partial<TableQueryState> = {}, debounceMs
     }
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      const params = new URLSearchParams();
-      if (state.search) params.set("search", state.search);
-      params.set("page", String(state.page));
-      params.set("pageSize", String(state.pageSize));
-      if (state.sortBy) params.set("sortBy", state.sortBy);
-      params.set("sortDirection", state.sortDirection);
-      Object.entries(state.filters).forEach(([key, value]) => {
-        if (value) params.set(`filter.${key}`, value);
-      });
-      if (state.dateFrom) params.set("dateFrom", state.dateFrom);
-      if (state.dateTo) params.set("dateTo", state.dateTo);
-      router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
+      router.replace(`${window.location.pathname}?${queryString}`, { scroll: false });
     }, state.search === "" ? 0 : debounceMs);
     return () => clearTimeout(timer.current);
-  }, [debounceMs, router, state]);
-
-  const queryString = useMemo(() => {
-    const params = new URLSearchParams();
-    if (state.search) params.set("search", state.search);
-    params.set("page", String(state.page));
-    params.set("pageSize", String(state.pageSize));
-    if (state.sortBy) params.set("sortBy", state.sortBy);
-    params.set("sortDirection", state.sortDirection);
-    Object.entries(state.filters).forEach(([key, value]) => {
-      if (value) params.set(`filter.${key}`, value);
-    });
-    if (state.dateFrom) params.set("dateFrom", state.dateFrom);
-    if (state.dateTo) params.set("dateTo", state.dateTo);
-    return params.toString();
-  }, [state]);
+  }, [debounceMs, router, queryString, state.search]);
 
   return { ...state, update, queryString };
 }

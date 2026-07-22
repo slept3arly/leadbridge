@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { reportService } from "./report.service";
+import { attentionService } from "./attention.service";
 
 export class DashboardService {
   async admin() {
@@ -104,62 +105,91 @@ export class DashboardService {
   }
 
   async sales(userId: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const weekAgo = new Date(today);
-    weekAgo.setDate(weekAgo.getDate() - 7);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
+    const leadWhere = { assignedUserId: userId, isDeleted: false };
 
-    const [myLeads, myOpenLeads, myClosedLeads, todayFollowUps, recentNotes, myActivity] = await Promise.all([
-      prisma.lead.count({ where: { assignedUserId: userId, isDeleted: false } }),
-      prisma.lead.count({ where: { assignedUserId: userId, isDeleted: false, status: { in: ["NEW", "ON_HOLD"] } } }),
-      prisma.lead.count({ where: { assignedUserId: userId, isDeleted: false, status: { in: ["CONVERTED", "LOST"] } } }),
-      prisma.lead.findMany({
-        where: { assignedUserId: userId, isDeleted: false, nextFollowUpAt: { not: null, lte: new Date(new Date().setHours(23, 59, 59, 999)) } },
-        select: { id: true, displayName: true, leadNumber: true, nextFollowUpAt: true },
-        orderBy: { nextFollowUpAt: "asc" },
-        take: 20,
+    const [
+      leadStats,
+      upcomingFollowUps,
+      overdueFollowUpCount,
+      todayFollowUpCount,
+      newLeadCount,
+      needsAttentionItems,
+    ] = await Promise.all([
+      prisma.lead.groupBy({
+        by: ["status"],
+        where: leadWhere,
+        _count: { id: true },
       }),
-      prisma.note.findMany({
-        where: { authorId: userId, lead: { isDeleted: false } },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        include: { lead: { select: { id: true, displayName: true, leadNumber: true } } },
+      prisma.followUp.findMany({
+        where: {
+          status: "PENDING",
+          dueDate: { not: null, gte: startOfToday },
+          OR: [{ assignedUserId: userId }, { createdById: userId }],
+        },
+        orderBy: { dueDate: "asc" },
+        take: 5,
+        select: {
+          id: true, title: true, dueDate: true, dueTime: true,
+          lead: { select: { id: true, displayName: true, company: true, leadNumber: true, priority: true, category: true } },
+        },
       }),
-      prisma.leadActivity.findMany({
-        where: { actorId: userId, createdAt: { gte: weekAgo } },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-        include: { lead: { select: { id: true, displayName: true, leadNumber: true } } },
+      prisma.followUp.count({
+        where: {
+          status: "PENDING",
+          dueDate: { not: null, lt: now },
+          OR: [{ assignedUserId: userId }, { createdById: userId }],
+        },
       }),
+      prisma.followUp.count({
+        where: {
+          status: "PENDING",
+          dueDate: { not: null, gte: startOfToday, lte: endOfToday },
+          OR: [{ assignedUserId: userId }, { createdById: userId }],
+        },
+      }),
+      prisma.lead.count({
+        where: { ...leadWhere, notes: { none: {} }, followUps: { none: {} } },
+      }),
+      attentionService.getNeedsAttention(userId),
     ]);
+
+    const myLeadsTotal = leadStats.reduce((sum, s) => sum + s._count.id, 0);
+    const myOpenLeads = leadStats
+      .filter((s) => ["NEW", "ON_HOLD"].includes(s.status))
+      .reduce((sum, s) => sum + s._count.id, 0);
+    const myClosedLeads = leadStats
+      .filter((s) => ["CONVERTED", "LOST"].includes(s.status))
+      .reduce((sum, s) => sum + s._count.id, 0);
 
     return {
       cards: {
-        myLeads,
+        myLeads: myLeadsTotal,
         myOpenLeads,
         myClosedLeads,
       },
-      todayFollowUps: todayFollowUps.map((f) => ({
+      attention: {
+        todayFollowUpCount,
+        overdueFollowUpCount,
+        newLeadCount,
+        needsAttentionCount: needsAttentionItems.length,
+      },
+      pipeline: leadStats.map((s) => ({ status: s.status, count: s._count.id })),
+      upcomingFollowUps: upcomingFollowUps.map((f) => ({
         id: f.id,
-        leadName: f.displayName,
-        leadNumber: f.leadNumber,
-        nextFollowUpAt: f.nextFollowUpAt!.toISOString(),
+        title: f.title,
+        dueDate: f.dueDate!.toISOString(),
+        dueTime: f.dueTime,
+        leadId: f.lead.id,
+        leadName: f.lead.displayName,
+        leadNumber: f.lead.leadNumber,
+        company: f.lead.company,
+        priority: f.lead.priority,
+        category: f.lead.category,
       })),
-      recentNotes: recentNotes.map((n) => ({
-        id: n.id,
-        content: n.content.slice(0, 200),
-        leadName: n.lead.displayName,
-        leadNumber: n.lead.leadNumber,
-        createdAt: n.createdAt.toISOString(),
-      })),
-      myActivity: myActivity.map((a) => ({
-        id: a.id,
-        type: a.type,
-        message: a.message,
-        leadName: a.lead?.displayName ?? "Deleted",
-        leadNumber: a.lead?.leadNumber ?? "",
-        createdAt: a.createdAt.toISOString(),
-      })),
+
     };
   }
 }

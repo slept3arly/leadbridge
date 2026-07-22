@@ -1,8 +1,8 @@
-import { Navbar } from "@/components/navbar";
-import { SignOutButton } from "@/components/sign-out-button";
+import { Navbar } from "@/components/shared/navbar";
+import { SignOutButton } from "@/components/shared/sign-out-button";
 import { Card } from "@/components/ui/card";
 import { dashboardService } from "@/services/dashboard.service";
-import { AdminDashboardClient } from "@/components/admin-dashboard-client";
+import { AdminDashboardClient } from "@/components/admin/admin-dashboard-client";
 
 export default async function AdminDashboardPage() {
   const data = await dashboardService.admin();

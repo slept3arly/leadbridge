@@ -1,13 +1,13 @@
-import { CreateUserForm } from "@/components/create-user-form";
-import { DataTable } from "@/components/data-table";
-import { Navbar } from "@/components/navbar";
+import { CreateUserForm } from "@/components/admin/create-user-form";
+import { DataTable } from "@/components/shared/data-table";
+import { Navbar } from "@/components/shared/navbar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { ExportButton } from "@/components/export-button";
-import { UserPrivilegeCell } from "@/components/user-privilege-cell";
+import { ExportButton } from "@/components/shared/export-button";
+import { UserPrivilegeCell } from "@/components/admin/user-privilege-cell";
 import { formatDate } from "@/lib/utils";
 import { userService } from "@/services/user.service";
-import { ServerTableControls } from "@/components/server-table-controls";
+import { ServerTableControls } from "@/components/admin/server-table-controls";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
 
 export default async function AdminUsersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

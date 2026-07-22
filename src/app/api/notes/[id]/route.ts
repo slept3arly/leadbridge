@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
 import { noteSchema } from "@/lib/validation";
 import { noteService } from "@/services/note.service";
+import { invalidateAfterMutation } from "@/lib/cache-tags";
 
 export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (request, context, session) => {
   let body: unknown;
@@ -9,11 +10,14 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
   const parsed = noteSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const { id } = await context.params;
-  return NextResponse.json(await noteService.update(id, { content: parsed.data.content, whatIDid: parsed.data.whatIDid, whatCustomerSaid: parsed.data.whatCustomerSaid }, session.user));
+  const result = await noteService.update(id, { content: parsed.data.content, whatIDid: parsed.data.whatIDid, whatCustomerSaid: parsed.data.whatCustomerSaid }, session.user);
+  invalidateAfterMutation(session.user.id);
+  return NextResponse.json(result);
 });
 
 export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
   const { id } = await context.params;
   await noteService.remove(id, session.user);
+  invalidateAfterMutation(session.user.id);
   return new NextResponse(null, { status: 204 });
 });

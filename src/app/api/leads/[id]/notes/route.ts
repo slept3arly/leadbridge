@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
 import { noteSchema } from "@/lib/validation";
 import { noteService } from "@/services/note.service";
+import { invalidateAfterMutation } from "@/lib/cache-tags";
 
 export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
   const { id } = await context.params;
@@ -22,5 +23,6 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(un
     followUpDate: parsed.data.followUpDate,
     followUpTime: parsed.data.followUpTime,
   }, session.user);
+  invalidateAfterMutation(session.user.id);
   return NextResponse.json(result, { status: 201 });
 });

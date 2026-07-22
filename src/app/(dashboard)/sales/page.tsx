@@ -1,23 +1,31 @@
-import { Navbar } from "@/components/navbar";
-import { SignOutButton } from "@/components/sign-out-button";
-import { Card } from "@/components/ui/card";
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
+import { Navbar } from "@/components/shared/navbar";
+import { SignOutButton } from "@/components/shared/sign-out-button";
+import { FollowUpDropdown } from "@/components/sales/follow-up-dropdown";
 import { requireSession } from "@/lib/session";
+import { can, Permission } from "@/lib/permissions";
 import { dashboardService } from "@/services/dashboard.service";
-import { SalesDashboardClient } from "@/components/sales-dashboard-client";
+import { SalesDashboardClient } from "@/components/sales/sales-dashboard-client";
+import { TAG } from "@/lib/cache-tags";
+
+const getDashboardData = cache((userId: string) =>
+  unstable_cache(
+    async () => dashboardService.sales(userId),
+    [`dashboard-sales-${userId}`],
+    { tags: [TAG.DASHBOARD(userId), TAG.ATTENTION(userId)] },
+  )(),
+);
 
 export default async function SalesDashboardPage() {
   const { user } = await requireSession("SALES");
-  const data = await dashboardService.sales(user.id);
+  const data = await getDashboardData(user.id);
+  const canExport = can(user, Permission.EXPORT_LEADS);
 
   return (
     <>
-      <Navbar title="Sales Dashboard" actions={<SignOutButton />} showResync />
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card><p className="text-sm text-[var(--color-muted)]">My leads</p><p className="mt-3 text-3xl font-semibold">{data.cards.myLeads}</p></Card>
-        <Card><p className="text-sm text-[var(--color-muted)]">Open leads</p><p className="mt-3 text-3xl font-semibold">{data.cards.myOpenLeads}</p></Card>
-        <Card><p className="text-sm text-[var(--color-muted)]">Closed leads</p><p className="mt-3 text-3xl font-semibold">{data.cards.myClosedLeads}</p></Card>
-      </div>
-      <SalesDashboardClient data={data} />
+      <Navbar title="Sales Dashboard" followUpDropdown={<FollowUpDropdown />} actions={<SignOutButton />} showResync />
+      <SalesDashboardClient data={{ ...data, canExport }} />
     </>
   );
 }

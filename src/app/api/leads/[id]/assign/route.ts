@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
 import { assignmentSchema } from "@/lib/validation";
 import { leadService } from "@/services/lead.service";
+import { invalidateAfterMutation } from "@/lib/cache-tags";
 
 export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>("ADMIN", async (request, context, session) => {
   let body: unknown;
@@ -9,5 +10,7 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>("A
   const parsed = assignmentSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const { id } = await context.params;
-  return NextResponse.json(await leadService.assign(id, parsed.data.assignedUserId, session.user));
+  const lead = await leadService.assign(id, parsed.data.assignedUserId, session.user);
+  invalidateAfterMutation(session.user.id);
+  return NextResponse.json(lead);
 });
