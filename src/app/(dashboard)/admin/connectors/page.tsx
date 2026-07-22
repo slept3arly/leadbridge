@@ -1,35 +1,103 @@
 import { Navbar } from "@/components/shared/navbar";
-import { Card } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
+import { ConnectorManagement } from "@/components/connectors/connector-management";
+import { ExportButton } from "@/components/shared/export-button";
+import { providerService } from "@/services/provider.service";
 import { connectorService } from "@/services/connector.service";
-import { ServerTableControls } from "@/components/admin/server-table-controls";
-import { parseListQuery, toSearchParams } from "@/lib/query-builder";
+import { parserRequestService } from "@/services/parser-request.service";
+import { unmatchedEmailService } from "@/services/unmatched-email.service";
+import { parserService } from "@/services/parser.service";
+import { prisma } from "@/lib/prisma";
+import { listConnectorManifests } from "@/connectors/registry";
 
-export default async function AdminConnectorsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const params = toSearchParams(await searchParams);
-  const query = parseListQuery(params);
-  const result = await connectorService.listPage(query);
-  const connectors = result.data;
+export default async function AdminConnectorsPage() {
+  const [providers, gmailAccounts, syncRuns, unmatched, parserRequests, parserRows, connectors, connectorTypes] = await Promise.all([
+    providerService.list(),
+    connectorService.listGmailAccounts(),
+    connectorService.listSyncRuns(),
+    unmatchedEmailService.list(),
+    parserRequestService.list(),
+    parserService.listForManagement(),
+    prisma.connector.findMany({
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        status: true,
+        enabled: true,
+        environmentKey: true,
+        lastSyncedAt: true,
+        lastSuccessAt: true,
+        lastFailureAt: true,
+        lastError: true,
+        runtimeMetadata: true,
+        scheduleType: true,
+        scheduleConfig: true,
+        nextScheduledRun: true,
+        consecutiveFailures: true,
+        averageDurationMs: true,
+        lastDurationMs: true,
+        healthStatus: true,
+        isRunning: true,
+        lockedBy: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    Promise.resolve(listConnectorManifests()),
+  ]);
+
+  const providerRows = "data" in providers ? providers.data : providers;
 
   return (
     <>
-      <Navbar title="Connector Framework" />
-      <Card>
-        <p className="text-sm text-[var(--color-muted)]">Connector configuration, parser assignment, provider ownership, and sync status are available here. Runtime integrations remain intentionally disabled.</p>
-      </Card>
-      <ServerTableControls initial={{ search: query.search ?? "", page: query.page, pageSize: query.pageSize, filters: Object.fromEntries(Object.entries(query.filters).map(([key, value]) => [key, value.join(",")])) }} pagination={result.pagination} filters={[{ key: "status", label: "Status", options: [{ value: "ACTIVE", label: "Active" }, { value: "INACTIVE", label: "Inactive" }, { value: "ERROR", label: "Error" }] }]} />
-      {connectors.length ? (
-        <Card>
-          {connectors.map((connector) => (
-            <div key={connector.id} className="flex items-center justify-between border-b border-[var(--color-border)] py-4 last:border-b-0">
-              <div><p className="font-semibold">{connector.name}</p><p className="text-sm text-[var(--color-muted)]">{connector.type} · {connector.source?.name ?? "No provider"} · {connector.parser?.name ?? "No parser"}</p></div>
-              <p className="text-sm">{connector.status} · {connector.enabled ? "Enabled" : "Disabled"}</p>
-            </div>
-          ))}
-        </Card>
-      ) : (
-        <EmptyState title="No connectors configured" description="The abstraction is ready for future Gmail, Meta, and custom source integrations." />
-      )}
+      <Navbar title="Connectors" actions={<div className="flex gap-2"><ExportButton type="sync-history" label="Sync History" /></div>} />
+      <ConnectorManagement
+        providers={providerRows.map((provider) => ({ id: provider.id, name: provider.name }))}
+        parsers={parserRows.map((parser) => ({
+          key: parser.id,
+          name: parser.name,
+          type: parser.type,
+          version: parser.version ?? "—",
+          description: parser.description ?? "",
+        }))}
+        connectorTypes={connectorTypes}
+        gmailAccounts={gmailAccounts.map((account) => ({
+          ...account,
+          lastSyncedAt: account.lastSyncedAt?.toISOString() ?? null,
+        }))}
+        connectors={connectors.map((c) => ({
+          id: c.id,
+          name: c.name,
+          type: c.type,
+          status: c.status,
+          enabled: c.enabled,
+          environmentKey: c.environmentKey,
+          lastSyncedAt: c.lastSyncedAt?.toISOString() ?? null,
+          lastSuccessAt: c.lastSuccessAt?.toISOString() ?? null,
+          lastFailureAt: c.lastFailureAt?.toISOString() ?? null,
+          lastError: c.lastError,
+          runtimeMetadata: c.runtimeMetadata as Record<string, unknown> | null,
+          scheduleType: c.scheduleType,
+          scheduleConfig: c.scheduleConfig as Record<string, unknown> | null,
+          nextScheduledRun: c.nextScheduledRun?.toISOString() ?? null,
+          consecutiveFailures: c.consecutiveFailures,
+          averageDurationMs: c.averageDurationMs,
+          lastDurationMs: c.lastDurationMs,
+          healthStatus: c.healthStatus,
+          isRunning: c.isRunning,
+          lockedBy: c.lockedBy,
+        }))}
+        syncRuns={syncRuns.map((run) => ({
+          ...run,
+          startedAt: run.startedAt.toISOString(),
+          completedAt: run.completedAt?.toISOString() ?? null,
+          metadata: run.metadata as Record<string, unknown> | null,
+        }))}
+        unmatched={unmatched.map((email) => ({ ...email, receivedAt: email.receivedAt.toISOString() }))}
+        parserRequests={parserRequests.map((request) => ({
+          ...request,
+          requestedAt: request.requestedAt.toISOString(),
+        }))}
+      />
     </>
   );
 }

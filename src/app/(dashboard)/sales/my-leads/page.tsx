@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { leadService } from "@/services/lead.service";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
-import { getCategoryLabel } from "@/lib/lead-constants";
+import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
 import { can, Permission } from "@/lib/permissions";
 import type { TableQueryState } from "@/hooks/use-table-query";
 
@@ -101,22 +101,17 @@ export default async function SalesMyLeadsPage({
             {
               key: "status",
               header: "Status",
-              render: (lead: LeadRow) => <Badge label={lead.status} />,
+              render: (lead: LeadRow) => <Badge label={getStatusLabel(lead.status)} toneKey={lead.status} />,
             },
             {
               key: "priority",
               header: "Priority",
-              render: (lead: LeadRow) => <Badge label={lead.priority} />,
+              render: (lead: LeadRow) => <Badge label={getPriorityLabel(lead.priority)} toneKey={lead.priority} />,
             },
             {
               key: "category",
               header: "Category",
-              render: (lead: LeadRow) => lead.category ? <Badge label={getCategoryLabel(lead.category)} /> : <span className="text-xs text-[var(--color-muted)]">-</span>,
-            },
-            {
-              key: "createdAt",
-              header: "Created",
-              render: (lead: LeadRow) => <DateTimeCell value={lead.createdAt} />,
+              render: (lead: LeadRow) => lead.category ? <Badge label={getCategoryLabel(lead.category)} toneKey={lead.category} /> : <span className="text-xs text-[var(--color-muted)]">-</span>,
             },
             {
               key: "updatedAt",

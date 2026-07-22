@@ -5,6 +5,7 @@ import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ExpandableSection } from "@/components/ui/expandable-section";
+import { DateTimeDisplay } from "@/components/shared/date-time-display";
 import { toast } from "@/lib/toast";
 import { useLeadDetails } from "@/hooks/use-lead-details";
 
@@ -68,12 +69,6 @@ export function NotesPanel({ leadId, currentUserId, isAdmin }: { leadId: string;
     }
   }
 
-  function formatDateTime(dateStr: string) {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) +
-      " at " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-  }
-
   if (loading) {
     return (
       <div className="space-y-3 animate-pulse">
@@ -109,7 +104,7 @@ export function NotesPanel({ leadId, currentUserId, isAdmin }: { leadId: string;
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-[var(--color-ink)]">{note.author.name}</span>
-                    <span className="text-xs text-[var(--color-muted)]">{formatDateTime(note.createdAt)}</span>
+                    <DateTimeDisplay date={note.createdAt} className="text-xs" />
                     {wasEdited && (
                       <span className="text-xs text-[var(--color-muted)] italic">(edited)</span>
                     )}

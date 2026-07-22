@@ -1,3 +1,5 @@
+import { DateTimeDisplay } from "@/components/shared/date-time-display";
+
 type LeadDetail = {
   createdAt: string;
   updatedAt: string;
@@ -12,20 +14,7 @@ type LeadDetail = {
   sourceReferenceId: string | null;
 };
 
-function formatDateTime(dateStr: string | null) {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  return {
-    date: d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-    time: d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
-  };
-}
-
 export function LeadMetadataCard({ lead }: { lead: LeadDetail }) {
-  const created = formatDateTime(lead.createdAt);
-  const updated = formatDateTime(lead.updatedAt);
-  const imported = formatDateTime(lead.importedAt);
-
   const isImported = !!lead.source || !!lead.connector || !!lead.importedAt;
   const isManual = !isImported;
 
@@ -38,7 +27,7 @@ export function LeadMetadataCard({ lead }: { lead: LeadDetail }) {
         <div className="grid grid-cols-3 gap-2 px-4 py-2">
           <span className="text-[var(--color-muted)]">Created</span>
           <span className="col-span-2 font-medium">
-            {created ? `${created.date} at ${created.time}` : "-"}
+            <DateTimeDisplay date={lead.createdAt} fallback="-" />
           </span>
         </div>
         <div className="grid grid-cols-3 gap-2 px-4 py-2">
@@ -52,7 +41,7 @@ export function LeadMetadataCard({ lead }: { lead: LeadDetail }) {
               <div className="grid grid-cols-3 gap-2 px-4 py-2">
                 <span className="text-[var(--color-muted)]">Imported</span>
                 <span className="col-span-2 font-medium">
-                  {imported ? `${imported.date} at ${imported.time}` : "-"}
+                  <DateTimeDisplay date={lead.importedAt} fallback="-" />
                 </span>
               </div>
             )}
@@ -105,7 +94,7 @@ export function LeadMetadataCard({ lead }: { lead: LeadDetail }) {
         <div className="grid grid-cols-3 gap-2 px-4 py-2">
           <span className="text-[var(--color-muted)]">Updated</span>
           <span className="col-span-2 font-medium">
-            {updated ? `${updated.date} at ${updated.time}` : "-"}
+            <DateTimeDisplay date={lead.updatedAt} fallback="-" />
           </span>
         </div>
         {lead.updatedBy && (

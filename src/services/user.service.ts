@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { containsSearch, listResult, pagination, parseListQuery } from "@/lib/query-builder";
+import { containsSearch, dateRange, listResult, pagination, parseListQuery } from "@/lib/query-builder";
 
 export class UserService {
   async list() {
@@ -40,17 +40,62 @@ export class UserService {
 
   async listPage(searchParams: URLSearchParams) {
     const query = parseListQuery(searchParams);
-    const where = {
+    const where: Record<string, unknown> = {
       isDeleted: query.filters.deleted?.includes("true") ?? false,
-      ...(query.filters.role?.length ? { role: { in: query.filters.role as ("ADMIN" | "SALES")[] } } : {}),
-      ...(query.filters.active?.length ? { active: query.filters.active.includes("true") } : {}),
-      ...containsSearch(["name", "email", "employeeCode"], query.search),
     };
+
+    if (query.filters.role?.length) {
+      where.role = { in: query.filters.role };
+    }
+    if (query.filters.salesPrivilege?.length) {
+      where.salesPrivilege = query.filters.salesPrivilege[0];
+    }
+    if (query.filters.active?.length) {
+      const val = query.filters.active[0];
+      if (val === "true") where.active = true;
+      else if (val === "false") where.active = false;
+    }
+    const searchFilter = containsSearch(["name", "email", "employeeCode"], query.search);
+    if (searchFilter) where.OR = searchFilter.OR;
+    const dateFilter = dateRange("createdAt", query);
+    if (dateFilter) Object.assign(where, dateFilter);
+
+    const orderBy: Record<string, "asc" | "desc">[] = [];
+    if (query.sortBy === "name") {
+      orderBy.push({ name: query.sortDirection });
+    } else if (query.sortBy === "lastSeenAt") {
+      orderBy.push({ lastSeenAt: query.sortDirection });
+    } else {
+      orderBy.push({ createdAt: query.sortDirection });
+    }
+
     const [data, total] = await Promise.all([
-      prisma.user.findMany({ where, orderBy: { name: "asc" }, ...pagination(query), select: { id: true, name: true, email: true, role: true, salesPrivilege: true, active: true, createdAt: true } }),
+      prisma.user.findMany({
+        where,
+        orderBy,
+        ...pagination(query),
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          salesPrivilege: true,
+          active: true,
+          createdAt: true,
+          lastLoginAt: true,
+          lastSeenAt: true,
+          _count: { select: { assignedLeads: true } },
+        },
+      }),
       prisma.user.count({ where }),
     ]);
-    return listResult(data, total, query);
+
+    const mapped = data.map(({ _count, ...user }) => ({
+      ...user,
+      assignedLeads: _count.assignedLeads,
+    }));
+
+    return listResult(mapped, total, query);
   }
 
   async markCreated(id: string, createdById: string) {

@@ -6,6 +6,8 @@ import {
   UserCog,
   Settings,
   BarChart3,
+  Cable,
+  ScrollText,
   ClipboardList,
   CircleUser,
 } from "lucide-react";
@@ -30,8 +32,8 @@ export function flattenNav(groups: NavGroup[]): NavItem[] {
 export const adminPrimaryOrder = [
   "/admin",
   "/admin/leads",
-  "/admin/providers",
   "/admin/users",
+  "/admin/providers",
   "/admin/reports",
 ];
 
@@ -56,17 +58,24 @@ export const adminNavigation: NavGroup[] = [
     ],
   },
   {
-    title: "Administration",
+    title: "Operations",
     items: [
       { href: "/admin/users", label: "Users", icon: <UserCog {...iconProps} /> },
       { href: "/admin/providers", label: "Providers", icon: <Building2 {...iconProps} /> },
-      { href: "/admin/settings", label: "Settings", icon: <Settings {...iconProps} /> },
     ],
   },
   {
     title: "Analytics",
     items: [
       { href: "/admin/reports", label: "Reports", icon: <BarChart3 {...iconProps} /> },
+    ],
+  },
+  {
+    title: "More",
+    items: [
+      { href: "/admin/connectors", label: "Connectors", icon: <Cable {...iconProps} /> },
+      { href: "/admin/audit-logs", label: "Audit Logs", icon: <ScrollText {...iconProps} /> },
+      { href: "/admin/settings", label: "Settings", icon: <Settings {...iconProps} /> },
     ],
   },
 ];

@@ -1,39 +1,74 @@
-import { CreateUserForm } from "@/components/admin/create-user-form";
-import { DataTable } from "@/components/shared/data-table";
 import { Navbar } from "@/components/shared/navbar";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { SignOutButton } from "@/components/shared/sign-out-button";
 import { ExportButton } from "@/components/shared/export-button";
-import { UserPrivilegeCell } from "@/components/admin/user-privilege-cell";
-import { formatDate } from "@/lib/utils";
+import { UsersPageContent, type SerializedUser } from "@/components/users/users-page-content";
 import { userService } from "@/services/user.service";
-import { ServerTableControls } from "@/components/admin/server-table-controls";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
+import type { TableQueryState } from "@/hooks/use-table-query";
 
-export default async function AdminUsersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const query = parseListQuery(toSearchParams(await searchParams));
-  const result = await userService.listPage(toSearchParams(await searchParams));
-  const users = result.data;
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const query = parseListQuery(toSearchParams(resolvedSearchParams));
+  const result = await userService.listPage(toSearchParams(resolvedSearchParams));
+  const users = result.data as Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    salesPrivilege: string | null;
+    active: boolean;
+    createdAt: Date;
+    lastLoginAt: Date | null;
+    lastSeenAt: Date | null;
+    assignedLeads: number;
+  }>;
+
+  const tableInitial: Partial<TableQueryState> = {
+    search: query.search ?? "",
+    page: query.page,
+    pageSize: query.pageSize,
+    sortBy: query.sortBy,
+    sortDirection: query.sortDirection,
+    filters: Object.fromEntries(
+      Object.entries(query.filters).map(([key, value]) => [key, value.join(",")])
+    ),
+    dateFrom: query.dateFrom?.toISOString(),
+    dateTo: query.dateTo?.toISOString(),
+  };
+
+  const serializedUsers: SerializedUser[] = users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    salesPrivilege: u.salesPrivilege,
+    active: u.active,
+    createdAt: u.createdAt.toISOString(),
+    lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
+    lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
+    assignedLeads: u.assignedLeads,
+  }));
 
   return (
     <>
-      <Navbar title="User Administration" actions={<ExportButton type="users" />} />
-      <Card>
-        <h2 className="text-xl font-semibold">Create internal user</h2>
-        <p className="mt-2 text-sm text-[var(--color-muted)]">Only admins can provision accounts. Public signup stays disabled.</p>
-        <div className="mt-6"><CreateUserForm /></div>
-      </Card>
-      <ServerTableControls initial={{ search: query.search ?? "", page: query.page, pageSize: query.pageSize, filters: Object.fromEntries(Object.entries(query.filters).map(([key, value]) => [key, value.join(",")])) }} pagination={result.pagination} filters={[{ key: "role", label: "Role", options: [{ value: "ADMIN", label: "Admin" }, { value: "SALES", label: "Sales" }] }]} />
-      <DataTable
-        rows={users}
-        columns={[
-          { key: "name", header: "Name", render: (user) => user.name },
-          { key: "email", header: "Email", render: (user) => user.email },
-          { key: "role", header: "Role", render: (user) => <Badge label={user.role} /> },
-          { key: "privilege", header: "Privilege", render: (user) => <UserPrivilegeCell userId={user.id} role={user.role} privilege={user.salesPrivilege} /> },
-          { key: "active", header: "Status", render: (user) => (user.active ? "Active" : "Inactive") },
-          { key: "createdAt", header: "Created", render: (user) => formatDate(user.createdAt) },
-        ]}
+      <Navbar
+        title="User Administration"
+        showResync
+        actions={
+          <>
+            <ExportButton type="users" iconOnly />
+            <SignOutButton />
+          </>
+        }
+      />
+      <UsersPageContent
+        users={serializedUsers}
+        initial={tableInitial}
+        pagination={result.pagination}
       />
     </>
   );

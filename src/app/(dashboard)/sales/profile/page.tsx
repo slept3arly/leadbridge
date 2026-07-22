@@ -5,7 +5,8 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/session";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
+import { DateTimeDisplay } from "@/components/shared/date-time-display";
 import { UserIdField } from "./user-id-field";
 
 function InitialsAvatar({ name }: { name: string }) {
@@ -23,7 +24,7 @@ function InitialsAvatar({ name }: { name: string }) {
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <p className="text-xs text-[var(--color-muted)]">{label}</p>
@@ -94,10 +95,10 @@ export default async function SalesProfilePage() {
                 <Field label="Joined" value={formatDate(profile.createdAt)} />
               )}
               {profile?.lastLoginAt && (
-                <Field label="Last Login" value={formatDateTime(profile.lastLoginAt)} />
+                <Field label="Last Login" value={<DateTimeDisplay date={profile.lastLoginAt} />} />
               )}
               {profile?.lastSeenAt && (
-                <Field label="Last Seen" value={formatDateTime(profile.lastSeenAt)} />
+                <Field label="Last Seen" value={<DateTimeDisplay date={profile.lastSeenAt} />} />
               )}
             </div>
           </Card>

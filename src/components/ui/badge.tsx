@@ -38,13 +38,15 @@ const tones: Record<string, string> = {
 export function Badge({
   label,
   variant,
+  toneKey,
   className,
 }: {
   label: string;
   variant?: "default" | "rounded" | "square";
+  toneKey?: string;
   className?: string;
 }) {
-  const tone = tones[label as keyof typeof tones] ?? "bg-slate-100 text-slate-700";
+  const tone = tones[(toneKey ?? label) as keyof typeof tones] ?? "bg-slate-100 text-slate-700";
   const shape = variant === "rounded"
     ? "rounded-md px-2 py-0.5"
     : variant === "square"

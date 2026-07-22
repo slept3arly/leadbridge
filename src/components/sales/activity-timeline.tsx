@@ -5,6 +5,7 @@ import {
   ArrowRightLeft, Calendar, Trash2, Undo2, Paperclip, Info
 } from "lucide-react";
 import { ExpandableSection } from "@/components/ui/expandable-section";
+import { DateTimeDisplay } from "@/components/shared/date-time-display";
 import type { LeadActivity } from "@/hooks/use-lead-details";
 
 const activityConfig: Record<string, { icon: typeof Circle; label: string }> = {
@@ -22,11 +23,6 @@ const activityConfig: Record<string, { icon: typeof Circle; label: string }> = {
 };
 
 export function ActivityTimeline({ activities }: { activities: LeadActivity[] }) {
-  function formatDateTime(dateStr: string) {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) +
-      " at " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-  }
 
   function renderDetail(activity: LeadActivity) {
     const meta = activity.metadata;
@@ -76,7 +72,7 @@ export function ActivityTimeline({ activities }: { activities: LeadActivity[] })
                     {activity.actor?.name ?? "System"}
                   </span>
                   <span className="text-xs text-[var(--color-muted)]">{config.label}</span>
-                  <span className="text-xs text-[var(--color-muted)]">{formatDateTime(activity.createdAt)}</span>
+                  <DateTimeDisplay date={activity.createdAt} className="text-xs" />
                 </div>
                 <p className="text-sm text-[var(--color-ink)] mt-0.5">{activity.message}</p>
                 {renderDetail(activity)}

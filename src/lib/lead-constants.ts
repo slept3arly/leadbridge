@@ -19,7 +19,7 @@ export const LEAD_CATEGORIES = [
   { value: "WHOLESALER", label: "Wholesaler" },
   { value: "DISTRIBUTOR", label: "Distributor" },
   { value: "MARKETING", label: "Marketing" },
-  { value: "THIRD_PARTY", label: "3rd Party" },
+  { value: "THIRD_PARTY", label: "Third Party" },
   { value: "DOCTOR", label: "Doctor" },
   { value: "FRANCHISE", label: "Franchise" },
   { value: "BUSINESS", label: "Business" },

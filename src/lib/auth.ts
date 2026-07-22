@@ -22,6 +22,18 @@ export const auth = betterAuth({
       },
     }),
   ],
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (session) => {
+          await prisma.user.update({
+            where: { id: session.userId as string },
+            data: { lastLoginAt: new Date() },
+          });
+        },
+      },
+    },
+  },
   user: {
     additionalFields: {
       role: {

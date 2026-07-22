@@ -16,6 +16,7 @@ type Actor = { id: string; role: UserRole; salesPrivilege?: SalesPrivilege | nul
 const leadListSelect = {
   id: true, leadNumber: true, displayName: true, company: true,
   email: true, phone: true, city: true, state: true,
+  product: true, requirement: true,
   status: true, priority: true, category: true, createdAt: true, updatedAt: true,
   nextFollowUpAt: true, lastFollowUpAt: true,
   assignedUser: { select: { id: true, name: true } },
@@ -140,10 +141,8 @@ export class LeadService {
     const orderBy = ["createdAt", "updatedAt", "displayName", "status", "priority", "category", "nextFollowUpAt"].includes(query.sortBy ?? "")
       ? { [query.sortBy!]: query.sortDirection }
       : { updatedAt: "desc" as const };
-    const [data, total] = await Promise.all([
-      prisma.lead.findMany({ where, select: leadListSelect, orderBy, ...pagination(query) }),
-      prisma.lead.count({ where }),
-    ]);
+    const data = await prisma.lead.findMany({ where, select: leadListSelect, orderBy, ...pagination(query) });
+    const total = await prisma.lead.count({ where });
     return listResult(data.map(toApiLead), total, query);
   }
 
