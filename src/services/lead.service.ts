@@ -105,7 +105,9 @@ export class LeadService {
     const assignedUserFilter = actor?.role === "SALES"
       ? { assignedUserId: actor.id }
       : query.filters.assignedUserId?.length
-        ? { assignedUserId: { in: query.filters.assignedUserId } }
+        ? query.filters.assignedUserId.includes("unassigned")
+          ? { assignedUserId: null }
+          : { assignedUserId: { in: query.filters.assignedUserId.filter((v) => v !== "unassigned") } }
         : {};
 
     const archivedFilter = query.filters.archived?.includes("true")

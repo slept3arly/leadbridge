@@ -4,6 +4,7 @@ import { ExportButton } from "@/components/shared/export-button";
 import { UsersPageContent, type SerializedUser } from "@/components/users/users-page-content";
 import { userService } from "@/services/user.service";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
+import { settingsService } from "@/services/settings.service";
 import type { TableQueryState } from "@/hooks/use-table-query";
 
 export default async function AdminUsersPage({
@@ -12,7 +13,8 @@ export default async function AdminUsersPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const resolvedSearchParams = await searchParams;
-  const query = parseListQuery(toSearchParams(resolvedSearchParams));
+  const defaultPageSize = (await settingsService.get<number>("default_page_size")) ?? 25;
+  const query = parseListQuery(toSearchParams(resolvedSearchParams), { defaultPageSize });
   const result = await userService.listPage(toSearchParams(resolvedSearchParams));
   const users = result.data as Array<{
     id: string;

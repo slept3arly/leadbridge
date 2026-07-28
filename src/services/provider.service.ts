@@ -4,19 +4,70 @@ import { ServiceError } from "@/lib/service-errors";
 import { auditService } from "@/services/audit.service";
 import type { z } from "zod";
 import { providerSchema, routingRuleSchema } from "@/lib/validation";
+import type { Prisma } from "@/generated/prisma/client";
 
 type ProviderInput = z.infer<typeof providerSchema>;
 type RoutingInput = z.infer<typeof routingRuleSchema>;
 
+const providerInclude = {
+  connectors: { select: { id: true, name: true, type: true, enabled: true, status: true, environmentKey: true } as const },
+  routingRules: { select: { id: true, name: true, active: true, priority: true } as const },
+} satisfies Prisma.LeadSourceInclude;
+
+type ProviderBase = Prisma.LeadSourceGetPayload<{ include: typeof providerInclude }>;
+
+export type ProviderWithStats = ProviderBase & {
+  leadCount: number;
+  activeConnectorCount: number;
+  totalConnectorCount: number;
+  lastSyncAt: Date | null;
+  lastSuccessAt: Date | null;
+};
+
 export class ProviderService {
   async list(query?: ListQuery) {
-    if (!query) return prisma.leadSource.findMany({ orderBy: [{ priority: "desc" }, { name: "asc" }], include: { connectors: { select: { id: true, name: true, type: true, enabled: true, status: true, environmentKey: true } }, routingRules: { select: { id: true, name: true, active: true, priority: true } } } });
+    if (!query) return { data: await this.listAll(), pagination: { page: 1, pageSize: 0, total: 0, totalPages: 0 } };
     const where = { ...(query.filters.active?.length ? { active: query.filters.active.includes("true") } : {}), ...containsSearch(["name", "slug", "sourceType"], query.search) };
     const [data, total] = await Promise.all([
-      prisma.leadSource.findMany({ where, orderBy: { name: "asc" }, ...pagination(query), include: { connectors: { select: { id: true, name: true, type: true, enabled: true, status: true, environmentKey: true } }, routingRules: { select: { id: true, name: true, active: true, priority: true } } } }),
+      prisma.leadSource.findMany({ where, orderBy: { name: "asc" }, ...pagination(query), include: providerInclude }),
       prisma.leadSource.count({ where }),
     ]);
-    return listResult(data, total, query);
+    return listResult(await this.augmentWithStats(data), total, query);
+  }
+
+  async listAll(): Promise<ProviderWithStats[]> {
+    const providers = await prisma.leadSource.findMany({ orderBy: [{ priority: "desc" }, { name: "asc" }], include: providerInclude });
+    return this.augmentWithStats(providers);
+  }
+
+  private async augmentWithStats(providers: ProviderBase[]): Promise<ProviderWithStats[]> {
+    if (providers.length === 0) return [];
+    const ids = providers.map((p) => p.id);
+    const [leadCounts, connectors] = await Promise.all([
+      prisma.lead.groupBy({ by: ["sourceId"], where: { sourceId: { in: ids }, isDeleted: false }, _count: { id: true } }),
+      prisma.connector.findMany({ where: { sourceId: { in: ids } }, select: { id: true, sourceId: true, lastSyncedAt: true, lastSuccessAt: true, lastFailureAt: true, status: true, enabled: true, type: true, name: true } }),
+    ]);
+    const leadCountMap = new Map(leadCounts.map((r) => [r.sourceId, r._count.id]));
+    const connectorMap = new Map<string, typeof connectors>();
+    for (const c of connectors) {
+      const list = connectorMap.get(c.sourceId ?? "") ?? [];
+      list.push(c);
+      connectorMap.set(c.sourceId ?? "", list);
+    }
+    return providers.map((p) => {
+      const pConnectors = connectorMap.get(p.id) ?? [];
+      const activeConnectors = pConnectors.filter((c) => c.enabled);
+      const lastSyncDates = pConnectors.map((c) => c.lastSyncedAt?.getTime()).filter(Boolean) as number[];
+      const lastSuccessDates = pConnectors.map((c) => c.lastSuccessAt?.getTime()).filter(Boolean) as number[];
+      return {
+        ...p,
+        leadCount: leadCountMap.get(p.id) ?? 0,
+        activeConnectorCount: activeConnectors.length,
+        totalConnectorCount: pConnectors.length,
+        lastSyncAt: lastSyncDates.length > 0 ? new Date(Math.max(...lastSyncDates)) : null,
+        lastSuccessAt: lastSuccessDates.length > 0 ? new Date(Math.max(...lastSuccessDates)) : null,
+      };
+    });
   }
 
   async create(data: ProviderInput, actorId: string) {
@@ -28,6 +79,14 @@ export class ProviderService {
   async update(id: string, data: Partial<ProviderInput>, actorId: string) {
     const provider = await prisma.leadSource.update({ where: { id }, data: { ...data, description: data.description ?? undefined } });
     await auditService.log("provider.updated", "LeadSource", id, actorId, data);
+    return provider;
+  }
+
+  async delete(id: string, actorId: string) {
+    const provider = await prisma.leadSource.findUnique({ where: { id }, select: { id: true, name: true } });
+    if (!provider) throw new ServiceError("Provider not found.", 404);
+    await prisma.leadSource.update({ where: { id }, data: { active: false, connectors: { set: [] } } });
+    await auditService.log("provider.deleted", "LeadSource", id, actorId, { name: provider.name });
     return provider;
   }
 

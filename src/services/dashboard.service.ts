@@ -10,6 +10,8 @@ export class DashboardService {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const now = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
 
     const [
       totalLeads,
@@ -26,6 +28,10 @@ export class DashboardService {
       pendingParserRequests,
       unmatchedCount,
       bySalesperson,
+      inactiveConnectors,
+      recentFailedSyncs,
+      duplicateEmails,
+      inactiveUsers,
     ] = await Promise.all([
       prisma.lead.count({ where: { isDeleted: false } }),
       prisma.lead.count({ where: { isDeleted: false, status: { in: ["NEW", "ON_HOLD"] } } }),
@@ -41,12 +47,19 @@ export class DashboardService {
       prisma.parserRequest.count({ where: { status: "OPEN" } }),
       prisma.unmatchedEmail.count({ where: { status: "UNMATCHED" } }),
       prisma.lead.groupBy({ by: ["assignedUserId"], where: { isDeleted: false, assignedUserId: { not: null } }, _count: { id: true } }),
+      prisma.connector.count({ where: { enabled: false } }),
+      prisma.connectorSyncRun.count({ where: { status: "ERROR", startedAt: { gte: yesterday } } }),
+      prisma.lead.groupBy({ by: ["email"], where: { email: { not: null }, isDeleted: false }, _count: { id: true }, having: { id: { _count: { gt: 1 } } } }),
+      prisma.user.count({ where: { active: false } }),
     ]);
 
     const salesUserIds = bySalesperson.map((r) => r.assignedUserId!).filter(Boolean);
     const salesUsers = salesUserIds.length > 0
       ? await prisma.user.findMany({ where: { id: { in: salesUserIds } }, select: { id: true, name: true } })
       : [];
+
+    const yesterdayNew = await prisma.lead.count({ where: { createdAt: { gte: yesterday, lt: today }, isDeleted: false } });
+    const trend = newToday - yesterdayNew;
 
     return {
       cards: {
@@ -100,6 +113,16 @@ export class DashboardService {
       pending: {
         parserRequests: pendingParserRequests,
         unmatchedEmails: unmatchedCount,
+      },
+      insights: {
+        newToday,
+        trend,
+        unassigned,
+        inactiveConnectors,
+        recentFailedSyncs,
+        duplicateEmails: duplicateEmails.length,
+        inactiveUsers,
+        unhealthyConnectors: connectorHealth.filter((c) => c.healthStatus !== "HEALTHY").length,
       },
     };
   }

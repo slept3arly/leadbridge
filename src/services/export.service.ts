@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { STATUS_VALUES } from "@/lib/lead-constants";
+import { reportService } from "@/services/report.service";
+import { auditService } from "@/services/audit.service";
 
 function escapeCsv(value: unknown): string {
   const str = value == null ? "" : String(value);
@@ -154,6 +156,121 @@ export class ExportService {
       (run) => toCsvRow([run.id, run.connector.name, run.connector.type, run.status, run.startedAt.toISOString(), run.completedAt?.toISOString() ?? "", run.recordsSeen, run.recordsCreated, run.recordsUpdated, run.recordsSkipped, run.errorMessage ?? ""]),
       ["Run ID", "Connector", "Type", "Status", "Started At", "Completed At", "Records Seen", "Created", "Updated", "Skipped", "Error"],
     );
+  }
+  async exportReports(params?: { from?: Date; to?: Date }): Promise<string> {
+    const range = params?.from && params?.to ? { from: params.from, to: params.to } : undefined;
+    const dateLabel = range ? `${params!.from!.toISOString().split("T")[0]} to ${params!.to!.toISOString().split("T")[0]}` : "All time";
+
+    const [summary, sources, assignments, statusBreakdown, trends, activity] = await Promise.all([
+      reportService.leadSummary(range),
+      reportService.leadSources(range),
+      reportService.assignments(range),
+      reportService.statusBreakdown(range),
+      reportService.monthlyTrends(),
+      reportService.activity(),
+    ]);
+
+    const rows: string[] = [];
+
+    rows.push(toCsvRow(["LeadBridge Report", dateLabel, "", "", ""]));
+    rows.push("");
+
+    rows.push(toCsvRow(["Metric", "Value", "", "", ""]));
+    rows.push(toCsvRow(["Total Leads", summary.total, "", "", ""]));
+    rows.push(toCsvRow(["Active", summary.active, "", "", ""]));
+    rows.push(toCsvRow(["Won", summary.won, "", "", ""]));
+    rows.push(toCsvRow(["Lost", summary.lost, "", "", ""]));
+    rows.push(toCsvRow(["Conversion Rate", `${summary.conversionRate}%`, "", "", ""]));
+    rows.push(toCsvRow(["Open Rate", `${summary.openRate}%`, "", "", ""]));
+    rows.push("");
+
+    rows.push(toCsvRow(["Lead Status", "Count", "", "", ""]));
+    for (const s of statusBreakdown) {
+      rows.push(toCsvRow([s.status, s.count, "", "", ""]));
+    }
+    rows.push("");
+
+    rows.push(toCsvRow(["Lead Source", "Leads", "", "", ""]));
+    for (const s of sources.byProvider) {
+      rows.push(toCsvRow([s.providerName, s.count, "", "", ""]));
+    }
+    rows.push("");
+
+    rows.push(toCsvRow(["Salesperson", "Assigned Leads", "", "", ""]));
+    for (const a of assignments.bySalesperson) {
+      rows.push(toCsvRow([a.userName, a.leadCount, "", "", ""]));
+    }
+    rows.push(toCsvRow(["Unassigned", assignments.unassigned, "", "", ""]));
+    rows.push("");
+
+    rows.push(toCsvRow(["Month", "Created", "Won", "Lost", ""]));
+    for (const t of trends) {
+      rows.push(toCsvRow([t.month, t.total, t.won, t.lost, ""]));
+    }
+    rows.push("");
+
+    rows.push(toCsvRow(["Activity", "Count", "", "", ""]));
+    rows.push(toCsvRow(["Today", activity.today, "", "", ""]));
+    rows.push(toCsvRow(["This Week", activity.thisWeek, "", "", ""]));
+    rows.push(toCsvRow(["This Month", activity.thisMonth, "", "", ""]));
+
+    return rows.join("");
+  }
+
+  async exportAuditLogs(params?: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    action?: string;
+    entityType?: string;
+    actorId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<string> {
+    const readableAction = (action: string, entityType: string): string => {
+      const entity: Record<string, string> = {
+        Lead: "lead", Note: "note", LeadSource: "provider", Connector: "connector",
+        User: "user", RoutingRule: "routing rule", UnmatchedEmail: "unmatched email",
+        ParserRequest: "parser request", Contact: "contact",
+      };
+      const noun = entity[entityType] ?? entityType.toLowerCase().replace(/_/g, " ");
+      if (action.endsWith(".created")) return `created ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
+      if (action.endsWith(".updated")) return `updated ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
+      if (action.endsWith(".deleted")) return `deleted ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
+      if (action.endsWith(".restored")) return `restored ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
+      if (action.endsWith(".assigned")) return `assigned ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
+      if (action === "connector.sync_completed") return `completed a sync for ${noun}`;
+      const verbMatch = action.match(/\.(\w+)$/);
+      const verb = verbMatch ? verbMatch[1].replace(/_/g, " ") : action;
+      return `${verb} ${noun}`;
+    };
+
+    const describeMetadata = (meta: unknown): string => {
+      if (!meta || typeof meta !== "object") return "";
+      return Object.entries(meta as Record<string, unknown>)
+        .filter(([, v]) => v != null)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("; ");
+    };
+
+    const rows: string[] = [toCsvRow(["Timestamp", "Activity", "Entity", "Description", "Performed By"])];
+
+    const result = await auditService.listPage({
+      ...params,
+      page: 1,
+      pageSize: 1000,
+    });
+
+    for (const entry of result.data) {
+      const timestamp = new Date(entry.createdAt).toISOString();
+      const activity = readableAction(entry.action, entry.entityType);
+      const entity = entry.entityType;
+      const description = describeMetadata(entry.metadata);
+      const actor = entry.actor?.name ?? "System";
+      rows.push(toCsvRow([timestamp, activity, entity, description, actor]));
+    }
+
+    return rows.join("");
   }
 }
 

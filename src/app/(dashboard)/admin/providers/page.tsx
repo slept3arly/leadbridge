@@ -1,43 +1,32 @@
 import { Navbar } from "@/components/shared/navbar";
-import { ProviderManagement } from "@/components/providers/provider-management";
 import { ExportButton } from "@/components/shared/export-button";
+import { SignOutButton } from "@/components/shared/sign-out-button";
+import { ProvidersPageContent } from "@/components/providers/providers-page-content";
 import { providerService } from "@/services/provider.service";
-import { parserService } from "@/services/parser.service";
-import { listConnectorManifests } from "@/connectors/registry";
 
-export default async function ProvidersPage() {
-  const [providers, rules, parserRows, parserManifests] = await Promise.all([
-    providerService.list(),
-    providerService.listRoutingRules(),
-    parserService.listForManagement(),
-    Promise.resolve(parserService.list()),
-  ]);
-
-  const providerRows = "data" in providers ? providers.data : providers;
+export default async function AdminProvidersPage() {
+  const providers = await providerService.listAll();
+  const serialized = providers.map((p) => ({
+    ...p,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
+    lastSyncAt: p.lastSyncAt?.toISOString() ?? null,
+    lastSuccessAt: p.lastSuccessAt?.toISOString() ?? null,
+  }));
 
   return (
     <>
-      <Navbar title="Providers" actions={<div className="flex gap-2"><ExportButton type="providers" /></div>} />
-      <ProviderManagement
-        providers={providerRows.map((provider) => ({ id: provider.id, name: provider.name }))}
-        parsers={parserRows.map((parser) => ({
-          key: parser.id,
-          name: parser.name,
-          type: parser.type,
-          version: parser.version ?? "—",
-          description: parser.description ?? "",
-        }))}
-        parserManifests={parserManifests.map((m) => ({
-          key: m.key,
-          name: m.name,
-          version: m.version,
-          description: m.description,
-          providerTypesSupported: m.providerTypesSupported,
-          supportsAttachments: m.supportsAttachments,
-          developerNotes: m.developerNotes,
-        }))}
-        rules={rules}
+      <Navbar
+        title="Providers"
+        showResync
+        actions={
+          <>
+            <ExportButton type="providers" iconOnly />
+            <SignOutButton />
+          </>
+        }
       />
+      <ProvidersPageContent providers={serialized} />
     </>
   );
 }

@@ -32,8 +32,6 @@ export function flattenNav(groups: NavGroup[]): NavItem[] {
 export const adminPrimaryOrder = [
   "/admin",
   "/admin/leads",
-  "/admin/users",
-  "/admin/providers",
   "/admin/reports",
 ];
 
@@ -52,16 +50,9 @@ export const adminNavigation: NavGroup[] = [
     ],
   },
   {
-    title: "Sales",
+    title: "Leads",
     items: [
       { href: "/admin/leads", label: "Leads", icon: <ContactRound {...iconProps} /> },
-    ],
-  },
-  {
-    title: "Operations",
-    items: [
-      { href: "/admin/users", label: "Users", icon: <UserCog {...iconProps} /> },
-      { href: "/admin/providers", label: "Providers", icon: <Building2 {...iconProps} /> },
     ],
   },
   {
@@ -74,6 +65,8 @@ export const adminNavigation: NavGroup[] = [
     title: "More",
     items: [
       { href: "/admin/connectors", label: "Connectors", icon: <Cable {...iconProps} /> },
+      { href: "/admin/users", label: "User Administration", icon: <UserCog {...iconProps} /> },
+      { href: "/admin/providers", label: "Providers", icon: <Building2 {...iconProps} /> },
       { href: "/admin/audit-logs", label: "Audit Logs", icon: <ScrollText {...iconProps} /> },
       { href: "/admin/settings", label: "Settings", icon: <Settings {...iconProps} /> },
     ],

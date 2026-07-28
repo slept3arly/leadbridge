@@ -1,103 +1,71 @@
-import { Navbar } from "@/components/shared/navbar";
-import { ConnectorManagement } from "@/components/connectors/connector-management";
-import { ExportButton } from "@/components/shared/export-button";
-import { providerService } from "@/services/provider.service";
-import { connectorService } from "@/services/connector.service";
-import { parserRequestService } from "@/services/parser-request.service";
-import { unmatchedEmailService } from "@/services/unmatched-email.service";
-import { parserService } from "@/services/parser.service";
 import { prisma } from "@/lib/prisma";
-import { listConnectorManifests } from "@/connectors/registry";
+import { ConnectorsPageContent } from "@/components/connectors/connectors-page-content";
+
+export type SerializedConnector = {
+  id: string;
+  name: string;
+  type: string;
+  enabled: boolean;
+  status: string;
+  healthStatus: string;
+  consecutiveFailures: number;
+  lastSyncedAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastError: string | null;
+  nextScheduledRun: string | null;
+  scheduleType: string;
+  isRunning: boolean;
+  averageDurationMs: number | null;
+  lastDurationMs: number | null;
+  runtimeMetadata: Record<string, unknown> | null;
+};
+
+export type KpiMetrics = {
+  total: number;
+  healthy: number;
+  warning: number;
+  error: number;
+  running: number;
+};
 
 export default async function AdminConnectorsPage() {
-  const [providers, gmailAccounts, syncRuns, unmatched, parserRequests, parserRows, connectors, connectorTypes] = await Promise.all([
-    providerService.list(),
-    connectorService.listGmailAccounts(),
-    connectorService.listSyncRuns(),
-    unmatchedEmailService.list(),
-    parserRequestService.list(),
-    parserService.listForManagement(),
-    prisma.connector.findMany({
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        status: true,
-        enabled: true,
-        environmentKey: true,
-        lastSyncedAt: true,
-        lastSuccessAt: true,
-        lastFailureAt: true,
-        lastError: true,
-        runtimeMetadata: true,
-        scheduleType: true,
-        scheduleConfig: true,
-        nextScheduledRun: true,
-        consecutiveFailures: true,
-        averageDurationMs: true,
-        lastDurationMs: true,
-        healthStatus: true,
-        isRunning: true,
-        lockedBy: true,
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    Promise.resolve(listConnectorManifests()),
-  ]);
+  const connectors = await prisma.connector.findMany({
+    orderBy: { createdAt: "desc" },
+  });
 
-  const providerRows = "data" in providers ? providers.data : providers;
+  const serialized: SerializedConnector[] = connectors.map((c) => ({
+    id: c.id,
+    name: c.name,
+    type: c.type,
+    enabled: c.enabled,
+    status: c.status,
+    healthStatus: c.healthStatus,
+    consecutiveFailures: c.consecutiveFailures,
+    lastSyncedAt: c.lastSyncedAt?.toISOString() ?? null,
+    lastSuccessAt: c.lastSuccessAt?.toISOString() ?? null,
+    lastFailureAt: c.lastFailureAt?.toISOString() ?? null,
+    lastError: c.lastError,
+    nextScheduledRun: c.nextScheduledRun?.toISOString() ?? null,
+    scheduleType: c.scheduleType,
+    isRunning: c.isRunning,
+    averageDurationMs: c.averageDurationMs,
+    lastDurationMs: c.lastDurationMs,
+    runtimeMetadata: c.runtimeMetadata as Record<string, unknown> | null,
+  }));
+
+  const kpi: KpiMetrics = {
+    total: connectors.length,
+    healthy: connectors.filter((c) => c.healthStatus === "HEALTHY").length,
+    warning: connectors.filter((c) => c.healthStatus === "WARNING").length,
+    error: connectors.filter((c) => c.healthStatus === "ERROR").length,
+    running: connectors.filter((c) => c.isRunning).length,
+  };
 
   return (
-    <>
-      <Navbar title="Connectors" actions={<div className="flex gap-2"><ExportButton type="sync-history" label="Sync History" /></div>} />
-      <ConnectorManagement
-        providers={providerRows.map((provider) => ({ id: provider.id, name: provider.name }))}
-        parsers={parserRows.map((parser) => ({
-          key: parser.id,
-          name: parser.name,
-          type: parser.type,
-          version: parser.version ?? "—",
-          description: parser.description ?? "",
-        }))}
-        connectorTypes={connectorTypes}
-        gmailAccounts={gmailAccounts.map((account) => ({
-          ...account,
-          lastSyncedAt: account.lastSyncedAt?.toISOString() ?? null,
-        }))}
-        connectors={connectors.map((c) => ({
-          id: c.id,
-          name: c.name,
-          type: c.type,
-          status: c.status,
-          enabled: c.enabled,
-          environmentKey: c.environmentKey,
-          lastSyncedAt: c.lastSyncedAt?.toISOString() ?? null,
-          lastSuccessAt: c.lastSuccessAt?.toISOString() ?? null,
-          lastFailureAt: c.lastFailureAt?.toISOString() ?? null,
-          lastError: c.lastError,
-          runtimeMetadata: c.runtimeMetadata as Record<string, unknown> | null,
-          scheduleType: c.scheduleType,
-          scheduleConfig: c.scheduleConfig as Record<string, unknown> | null,
-          nextScheduledRun: c.nextScheduledRun?.toISOString() ?? null,
-          consecutiveFailures: c.consecutiveFailures,
-          averageDurationMs: c.averageDurationMs,
-          lastDurationMs: c.lastDurationMs,
-          healthStatus: c.healthStatus,
-          isRunning: c.isRunning,
-          lockedBy: c.lockedBy,
-        }))}
-        syncRuns={syncRuns.map((run) => ({
-          ...run,
-          startedAt: run.startedAt.toISOString(),
-          completedAt: run.completedAt?.toISOString() ?? null,
-          metadata: run.metadata as Record<string, unknown> | null,
-        }))}
-        unmatched={unmatched.map((email) => ({ ...email, receivedAt: email.receivedAt.toISOString() }))}
-        parserRequests={parserRequests.map((request) => ({
-          ...request,
-          requestedAt: request.requestedAt.toISOString(),
-        }))}
-      />
-    </>
+    <ConnectorsPageContent
+      connectors={serialized}
+      kpi={kpi}
+    />
   );
 }

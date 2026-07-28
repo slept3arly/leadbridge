@@ -1,14 +1,14 @@
 "use client";
 
 import { Download } from "lucide-react";
+import { auditExportParams } from "@/lib/audit-export-params";
 
 export function ExportButton({ type, label, params, iconOnly }: { type: string; label?: string; params?: Record<string, string>; iconOnly?: boolean }) {
   const handleExport = () => {
     const url = new URL(`/api/export?type=${type}`, window.location.origin);
-    if (params) {
-      for (const [key, value] of Object.entries(params)) {
-        if (value) url.searchParams.set(key, value);
-      }
+    const combined = { ...auditExportParams, ...params };
+    for (const [key, value] of Object.entries(combined)) {
+      if (value) url.searchParams.set(key, value);
     }
     window.open(url.toString(), "_blank");
   };

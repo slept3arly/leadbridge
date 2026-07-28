@@ -126,3 +126,63 @@ export const unmatchedActionSchema = z.object({
   vendorName: z.string().optional(),
   developerNotes: z.string().max(2000).optional(),
 });
+
+const restAuthConfigSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("NONE") }),
+  z.object({
+    type: z.literal("API_KEY"),
+    apiKey: z.object({
+      name: z.string().min(1),
+      value: z.string().min(1).optional(),
+      in: z.enum(["header", "query"]),
+    }),
+  }),
+  z.object({
+    type: z.literal("BEARER"),
+    bearerToken: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal("BASIC"),
+    basic: z.object({
+      username: z.string().min(1),
+      password: z.string().min(1).optional(),
+    }),
+  }),
+  z.object({
+    type: z.literal("CUSTOM_HEADER"),
+    customHeader: z.object({
+      name: z.string().min(1),
+      value: z.string().min(1).optional(),
+    }),
+  }),
+]);
+
+const paginationConfigSchema = z.object({
+  strategy: z.enum(["PAGE_NUMBER", "OFFSET", "CURSOR", "NEXT_URL", "TOKEN"]),
+  pageSize: z.number().int().min(1).max(1000).optional(),
+  pageParam: z.string().optional(),
+  perPageParam: z.string().optional(),
+  offsetParam: z.string().optional(),
+  limitParam: z.string().optional(),
+  cursorParam: z.string().optional(),
+  cursorPath: z.string().optional(),
+  nextUrlPath: z.string().optional(),
+  tokenParam: z.string().optional(),
+  tokenPath: z.string().optional(),
+  maxPages: z.number().int().min(1).max(1000).optional(),
+}).optional();
+
+export const restConnectorConfigSchema = z.object({
+  baseUrl: z.string().url("Must be a valid URL"),
+  endpoint: z.string().min(1, "Endpoint is required"),
+  method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  queryParams: z.record(z.string(), z.string()).optional(),
+  body: z.string().optional(),
+  auth: restAuthConfigSchema.optional(),
+  pagination: paginationConfigSchema,
+  leadArrayPath: z.string().optional(),
+  timeout: z.number().int().min(100).max(300000).optional(),
+  retryCount: z.number().int().min(0).max(10).optional(),
+  rateLimitDelayMs: z.number().int().min(0).max(60000).optional(),
+});

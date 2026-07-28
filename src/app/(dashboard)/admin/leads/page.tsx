@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { leadService } from "@/services/lead.service";
 import { userService } from "@/services/user.service";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
+import { settingsService } from "@/services/settings.service";
 import type { TableQueryState } from "@/hooks/use-table-query";
 
 export default async function AdminLeadsPage({
@@ -14,7 +15,8 @@ export default async function AdminLeadsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const resolvedSearchParams = await searchParams;
-  const query = parseListQuery(toSearchParams(resolvedSearchParams));
+  const defaultPageSize = (await settingsService.get<number>("default_page_size")) ?? 25;
+  const query = parseListQuery(toSearchParams(resolvedSearchParams), { defaultPageSize });
   const [result, assignableUsers] = await Promise.all([
     leadService.listPage(query),
     userService.listAssignable(),

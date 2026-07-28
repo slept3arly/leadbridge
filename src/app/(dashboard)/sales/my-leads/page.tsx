@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
 import { leadService } from "@/services/lead.service";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
+import { settingsService } from "@/services/settings.service";
 import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
 import { can, Permission } from "@/lib/permissions";
 import type { TableQueryState } from "@/hooks/use-table-query";
@@ -34,7 +35,8 @@ export default async function SalesMyLeadsPage({
 }) {
   const { user } = await requireSession("SALES");
   const resolvedSearchParams = await searchParams;
-  const query = parseListQuery(toSearchParams(resolvedSearchParams));
+  const defaultPageSize = (await settingsService.get<number>("default_page_size")) ?? 25;
+  const query = parseListQuery(toSearchParams(resolvedSearchParams), { defaultPageSize });
   const result = await leadService.listPage(query, user);
   const leads = result.data;
   const autoOpenLeadId = (resolvedSearchParams.leadId as string) || null;

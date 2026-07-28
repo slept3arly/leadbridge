@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { supportedConnectorTypes } from "@/connectors/registry";
+import { restConnectorConfigSchema } from "@/lib/validation";
 
 export const GET = withApiAuthorization("ADMIN", async () => {
   const types = supportedConnectorTypes();
@@ -28,6 +29,13 @@ export const POST = withApiAuthorization("ADMIN", async (request) => {
   const supported = supportedConnectorTypes();
   if (!supported.includes(type)) {
     return apiError(`Unsupported connector type: ${type}. Supported types: ${supported.join(", ")}`, 400);
+  }
+
+  if (type === "rest" && configuration !== undefined) {
+    const parsed = restConnectorConfigSchema.safeParse(configuration);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid configuration.", details: parsed.error.flatten() }, { status: 400 });
+    }
   }
 
   const connector = await prisma.connector.create({

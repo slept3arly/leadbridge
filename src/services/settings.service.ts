@@ -10,19 +10,18 @@ interface SettingDefinition<T = unknown> {
 }
 
 const SETTINGS: Record<string, SettingDefinition> = {
-  company_name: { key: "company_name", category: "company", description: "Company name", defaultValue: "LeadBridge" },
-  crm_default_status: { key: "crm_default_status", category: "crm", description: "Default lead status on creation", defaultValue: "NEW" },
-  crm_default_assignee: { key: "crm_default_assignee", category: "crm", description: "Default assignee user ID", defaultValue: null },
-  crm_auto_assign: { key: "crm_auto_assign", category: "crm", description: "Auto-assign leads to sales users", defaultValue: false },
-  connector_retry_count: { key: "connector_retry_count", category: "connector", description: "Default retry count for connectors", defaultValue: 3 },
-  connector_timeout_ms: { key: "connector_timeout_ms", category: "connector", description: "Default timeout in milliseconds", defaultValue: 30000 },
-  connector_duplicate_policy: { key: "connector_duplicate_policy", category: "connector", description: "Duplicate handling policy", defaultValue: "skip" },
-  system_timezone: { key: "system_timezone", category: "system", description: "System timezone", defaultValue: "UTC" },
-  system_date_format: { key: "system_date_format", category: "system", description: "Date format", defaultValue: "YYYY-MM-DD" },
-  system_pagination_size: { key: "system_pagination_size", category: "system", description: "Default pagination size", defaultValue: 50 },
-  notification_email_enabled: { key: "notification_email_enabled", category: "notification", description: "Enable email notifications", defaultValue: true },
-  notification_system_enabled: { key: "notification_system_enabled", category: "notification", description: "Enable system notifications", defaultValue: true },
-  audit_retention_days: { key: "audit_retention_days", category: "audit", description: "Audit log retention in days", defaultValue: 90 },
+  default_page_size: {
+    key: "default_page_size",
+    category: "System",
+    description: "Default number of items per page in tables",
+    defaultValue: 25,
+  },
+  audit_log_retention_limit: {
+    key: "audit_log_retention_limit",
+    category: "System",
+    description: "Maximum number of audit log entries to retain. Oldest entries are automatically pruned when this limit is exceeded.",
+    defaultValue: 1000,
+  },
 };
 
 export class SettingsService {

@@ -47,8 +47,24 @@ export const GET = withApiAuthorization(["ADMIN", "SALES"], async (request, _con
         csv = await exportService.exportSyncHistory({ from, to, connectorId });
         break;
       }
+      case "reports": {
+        const from = searchParams.get("from") ? new Date(searchParams.get("from")!) : undefined;
+        const to = searchParams.get("to") ? new Date(searchParams.get("to")!) : undefined;
+        csv = await exportService.exportReports({ from, to });
+        break;
+      }
+      case "audit-logs": {
+        csv = await exportService.exportAuditLogs({
+          search: searchParams.get("search") || undefined,
+          action: searchParams.get("action") || undefined,
+          entityType: searchParams.get("entityType") || undefined,
+          dateFrom: searchParams.get("dateFrom") || undefined,
+          dateTo: searchParams.get("dateTo") || undefined,
+        });
+        break;
+      }
       default:
-        return apiError(`Unknown export type: ${type}. Supported: leads, users, providers, sync-history`, 400);
+        return apiError(`Unknown export type: ${type}. Supported: leads, users, providers, sync-history, reports, audit-logs`, 400);
     }
 
     const filename = `${type}-${new Date().toISOString().split("T")[0]}.csv`;

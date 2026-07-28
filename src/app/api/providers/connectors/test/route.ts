@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
+import { prisma } from "@/lib/prisma";
 import { GmailConnector } from "@/connectors/gmail/gmail-connector";
 import { RestConnector } from "@/connectors/rest/rest-connector";
 
@@ -11,21 +12,62 @@ export const POST = withApiAuthorization("ADMIN", async (request) => {
     return apiError("Invalid JSON body.", 400);
   }
 
-  const kind = (body.kind as string) ?? (body.type as string);
+  const connectorId = body.connectorId as string;
+  if (!connectorId) return apiError("connectorId is required.", 400);
 
-  if (kind === "GMAIL" || kind === "gmail") {
-    const key = body.key as string;
-    if (!key) return apiError("Connector key is required.", 400);
-    const result = await GmailConnector.testConnection(key);
-    return NextResponse.json(result);
+  const connector = await prisma.connector.findUnique({
+    where: { id: connectorId },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      environmentKey: true,
+      configuration: true,
+    },
+  });
+
+  if (!connector) return apiError("Connector not found.", 404);
+
+  const type = connector.type.toLowerCase();
+
+  if (type === "gmail") {
+    const environmentKey = connector.environmentKey ?? "MAIN";
+    const result = await GmailConnector.testConnection(environmentKey);
+    return NextResponse.json({
+      success: result.success,
+      diagnostic: result.success
+        ? {
+            status: "authenticated",
+            email: result.emailAddress ?? null,
+            message: "Connection successful",
+          }
+        : {
+            status: "auth_failed",
+            email: result.emailAddress ?? null,
+            message: result.error ?? "Authentication failed",
+            details: result.details ?? null,
+          },
+    });
   }
 
-  if (kind === "REST" || kind === "rest") {
-    const config = body.config as Record<string, unknown>;
-    if (!config) return apiError("REST connector configuration is required.", 400);
+  if (type === "rest") {
+    const config = (connector.configuration as Record<string, unknown>) ?? {};
     const result = await RestConnector.testConnection(config);
-    return NextResponse.json(result);
+    return NextResponse.json({
+      success: result.success,
+      diagnostic: result.success
+        ? {
+            status: "reachable",
+            statusCode: result.statusCode ?? null,
+            message: "Endpoint reachable",
+          }
+        : {
+            status: "unreachable",
+            statusCode: result.statusCode ?? null,
+            message: result.error ?? "Endpoint unreachable",
+          },
+    });
   }
 
-  return apiError(`Unsupported connector kind: ${kind}`, 400);
+  return apiError(`Unsupported connector type: ${type}`, 400);
 });
