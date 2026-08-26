@@ -10,6 +10,10 @@ export interface ParserRegistry {
 export class ParserRuntime {
   constructor(private readonly registry: ParserRegistry) {}
 
+  has(key: string): boolean {
+    return this.registry.get(key) !== undefined;
+  }
+
   async parse(
     payload: RawPayload,
     parserKey: string,

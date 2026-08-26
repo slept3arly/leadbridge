@@ -37,19 +37,21 @@ export default async function SalesMyLeadsPage({
   const resolvedSearchParams = await searchParams;
   const defaultPageSize = (await settingsService.get<number>("default_page_size")) ?? 25;
   const query = parseListQuery(toSearchParams(resolvedSearchParams), { defaultPageSize });
-  const result = await leadService.listPage(query, user);
-  const leads = result.data;
   const autoOpenLeadId = (resolvedSearchParams.leadId as string) || null;
 
   const canDelete = can(user, Permission.DELETE_LEAD);
   const canArchive = can(user, Permission.ARCHIVE_LEAD);
   const canExport = can(user, Permission.EXPORT_LEADS);
 
-  const leadSources = await prisma.leadSource.findMany({
-    where: { active: true },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
+  const [result, leadSources] = await Promise.all([
+    leadService.listPage(query, user),
+    prisma.leadSource.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+  const leads = result.data;
 
   const tableInitial: Partial<TableQueryState> = {
     search: query.search ?? "",

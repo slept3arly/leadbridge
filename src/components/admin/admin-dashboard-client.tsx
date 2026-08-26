@@ -1,9 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, CardHeader, CardTitle, CardContent, CardEmptyState } from "@/components/ui/card";
-import { KpiCard } from "@/components/shared/kpi-card";
+import { Card, CardEmptyState } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime, formatTimeAgo } from "@/lib/utils";
 
@@ -17,6 +17,7 @@ interface DashboardData {
   connectorHealth: { id: string; name: string; type: string; healthStatus: string; status: string; isRunning: boolean; enabled: boolean }[];
   recentActivity: { id: string; type: string; message: string; actorName: string; leadId: string; leadName: string; leadNumber: string; createdAt: string }[];
   recentSyncs: { id: string; connectorName: string; status: string; recordsSeen: number; recordsCreated: number; startedAt: string; completedAt: string | null }[];
+  renderedAt: string;
   pending: { parserRequests: number; unmatchedEmails: number };
   insights: {
     newToday: number;
@@ -34,11 +35,15 @@ const STATUS_BADGE_MAP: Record<string, string> = {
   NEW: "NEW", ON_HOLD: "ON_HOLD", CONVERTED: "CONVERTED", LOST: "LOST", SPAM: "SPAM",
 };
 
-const todayISO = new Date().toISOString().slice(0, 10);
-
 export function AdminDashboardClient({ data }: { data: DashboardData }) {
-  const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
   const i = data.insights;
+  const todayISO = data.renderedAt.slice(0, 10);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHydrated(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -132,7 +137,8 @@ export function AdminDashboardClient({ data }: { data: DashboardData }) {
 
       {/* Admin Work Queue */}
       <section>
-        <h2 className="mb-4 text-base font-semibold text-[var(--color-ink)]">Admin Work Queue</h2>
+        <h2 className="text-base font-semibold text-[var(--color-ink)]">Needs Attention</h2>
+        <p className="mb-4 mt-1 text-sm text-[var(--color-muted)]">Items that may need an admin review or follow-up.</p>
         <Card className="p-0 overflow-hidden">
           <table className="w-full text-left text-sm">
             <thead>
@@ -187,12 +193,13 @@ export function AdminDashboardClient({ data }: { data: DashboardData }) {
 
       {/* Connector Health */}
       <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-[var(--color-ink)]">Connector Health</h2>
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-[var(--color-ink)]">Sync Health</h2>
           {data.connectorHealth.length > 0 && (
             <Link href="/admin/connectors" className="text-xs font-medium text-[var(--color-brand)] hover:underline">View All</Link>
           )}
         </div>
+        <p className="mb-4 text-sm text-[var(--color-muted)]">Whether lead sources are ready to retrieve new records.</p>
         {data.connectorHealth.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {data.connectorHealth.map((c) => (
@@ -234,7 +241,7 @@ export function AdminDashboardClient({ data }: { data: DashboardData }) {
               <tbody>
                 {data.recentActivity.map((a) => (
                   <tr key={a.id} className="border-b border-[var(--color-border)] transition hover:bg-slate-50/50 last:border-b-0">
-                    <td className="px-4 py-3 text-xs text-[var(--color-muted)] whitespace-nowrap">{formatTimeAgo(a.createdAt)}</td>
+                    <td className="px-4 py-3 text-xs text-[var(--color-muted)] whitespace-nowrap">{formatTimeAgo(a.createdAt, hydrated ? undefined : "UTC", hydrated ? undefined : data.renderedAt)}</td>
                     <td className="px-4 py-3 text-sm font-medium text-[var(--color-ink)]">{a.actorName}</td>
                     <td className="px-4 py-3 text-sm text-[var(--color-ink)]">{a.message}</td>
                     <td className="px-4 py-3 text-sm text-[var(--color-muted)]">{a.leadName}{a.leadNumber ? ` (#${a.leadNumber})` : ""}</td>
@@ -250,7 +257,8 @@ export function AdminDashboardClient({ data }: { data: DashboardData }) {
 
       {/* Recent Syncs */}
       <section>
-        <h2 className="mb-4 text-base font-semibold text-[var(--color-ink)]">Recent Syncs</h2>
+        <h2 className="text-base font-semibold text-[var(--color-ink)]">Recent Syncs</h2>
+        <p className="mb-4 mt-1 text-sm text-[var(--color-muted)]">The latest attempts to retrieve leads from connected sources.</p>
         {data.recentSyncs.length > 0 ? (
           <Card className="p-0 overflow-hidden">
             <table className="w-full text-left text-sm">
@@ -258,8 +266,8 @@ export function AdminDashboardClient({ data }: { data: DashboardData }) {
                 <tr className="border-b border-[var(--color-border)] bg-slate-50/80">
                   <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Connector</th>
                   <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Status</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Seen</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Created</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Records Received</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Leads Added</th>
                   <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Started</th>
                 </tr>
               </thead>
@@ -270,7 +278,7 @@ export function AdminDashboardClient({ data }: { data: DashboardData }) {
                     <td className="px-4 py-3"><Badge label={s.status} /></td>
                     <td className="px-4 py-3 text-sm text-[var(--color-ink)]">{s.recordsSeen}</td>
                     <td className="px-4 py-3 text-sm text-[var(--color-ink)]">{s.recordsCreated}</td>
-                    <td className="px-4 py-3 text-xs text-[var(--color-muted)] whitespace-nowrap">{formatDateTime(s.startedAt)}</td>
+                    <td className="px-4 py-3 text-xs text-[var(--color-muted)] whitespace-nowrap">{formatDateTime(s.startedAt, "-", hydrated ? undefined : "UTC")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -346,9 +354,10 @@ function HealthBadge({ status }: { status: string }) {
     : status === "WARNING"
       ? "bg-amber-50 text-amber-700"
       : "bg-rose-50 text-rose-700";
+  const label = status === "HEALTHY" ? "Healthy" : status === "WARNING" ? "Needs attention" : "Unavailable";
   return (
     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${tone}`}>
-      {status}
+      {label}
     </span>
   );
 }

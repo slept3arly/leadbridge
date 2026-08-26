@@ -8,7 +8,7 @@ export const GET = withApiAuthorization("ADMIN", async () => {
     const definitions = settingsService.getDefinitions();
     return NextResponse.json({ data: { settings, definitions } });
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Failed to fetch settings", 500);
+    return handleApiError(error, "Failed to fetch settings");
   }
 });
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
+import { invalidateAdminDashboard } from "@/lib/cache-tags";
 
 export const DELETE = withApiAuthorization("ADMIN", async (_request, context) => {
   const params = context as { params: Promise<{ id: string }> | { id: string } };
@@ -11,6 +12,7 @@ export const DELETE = withApiAuthorization("ADMIN", async (_request, context) =>
   if (!connector) return apiError("Connector not found.", 404);
 
   await prisma.connector.delete({ where: { id } });
+  invalidateAdminDashboard();
 
   return NextResponse.json({ success: true });
 });

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Plus } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { DateTimeDisplay } from "@/components/shared/date-time-display";
+import { useHydrated } from "@/hooks/use-hydrated";
 import type { TableQueryState } from "@/hooks/use-table-query";
 
 export type SerializedUser = {
@@ -38,6 +39,8 @@ export function UsersPageContent({
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<SerializedUser | null>(null);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
+  const hydrated = useHydrated();
+  const timeZone = hydrated ? undefined : "UTC";
 
   const openCreate = () => {
     setSelectedUser(null);
@@ -138,7 +141,7 @@ export function UsersPageContent({
             {
               key: "createdAt",
               header: "Created",
-              render: (user: SerializedUser) => formatDate(user.createdAt),
+              render: (user: SerializedUser) => formatDate(user.createdAt, "-", timeZone),
             },
             {
               key: "actions",

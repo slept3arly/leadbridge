@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { containsSearch, listResult, pagination, type ListQuery } from "@/lib/query-builder";
 import { ServiceError } from "@/lib/service-errors";
 import { auditService } from "@/services/audit.service";
+import { invalidateAdminDashboard } from "@/lib/cache-tags";
 import type { z } from "zod";
 import { providerSchema, routingRuleSchema } from "@/lib/validation";
 import type { Prisma } from "@/generated/prisma/client";
@@ -13,6 +14,12 @@ const providerInclude = {
   connectors: { select: { id: true, name: true, type: true, enabled: true, status: true, environmentKey: true } as const },
   routingRules: { select: { id: true, name: true, active: true, priority: true } as const },
 } satisfies Prisma.LeadSourceInclude;
+
+const routingRuleInclude = {
+  provider: { select: { id: true, name: true } },
+  parser: { select: { id: true, name: true, version: true } },
+  connector: { select: { id: true, name: true, environmentKey: true } },
+} satisfies Prisma.RoutingRuleInclude;
 
 type ProviderBase = Prisma.LeadSourceGetPayload<{ include: typeof providerInclude }>;
 
@@ -73,12 +80,14 @@ export class ProviderService {
   async create(data: ProviderInput, actorId: string) {
     const provider = await prisma.leadSource.create({ data: { ...data, sourceType: data.sourceType, description: data.description ?? null } });
     await auditService.log("provider.created", "LeadSource", provider.id, actorId, { name: provider.name });
+    invalidateAdminDashboard();
     return provider;
   }
 
   async update(id: string, data: Partial<ProviderInput>, actorId: string) {
     const provider = await prisma.leadSource.update({ where: { id }, data: { ...data, description: data.description ?? undefined } });
     await auditService.log("provider.updated", "LeadSource", id, actorId, data);
+    invalidateAdminDashboard();
     return provider;
   }
 
@@ -87,17 +96,64 @@ export class ProviderService {
     if (!provider) throw new ServiceError("Provider not found.", 404);
     await prisma.leadSource.update({ where: { id }, data: { active: false, connectors: { set: [] } } });
     await auditService.log("provider.deleted", "LeadSource", id, actorId, { name: provider.name });
+    invalidateAdminDashboard();
     return provider;
   }
 
   async createRoutingRule(data: RoutingInput, actorId: string) {
-    const rule = await prisma.routingRule.create({ data: { ...data, priority: data.priority ?? 100, fallback: data.fallback ?? false, active: data.active ?? true } });
+    const rule = await prisma.routingRule.create({
+      data: { ...data, priority: data.priority ?? 100, fallback: data.fallback ?? false, active: data.active ?? true },
+      include: routingRuleInclude,
+    });
     await auditService.log("routing_rule.created", "RoutingRule", rule.id, actorId, { providerId: rule.providerId, parserId: rule.parserId });
+    invalidateAdminDashboard();
+    return rule;
+  }
+
+  async updateRoutingRule(id: string, data: Partial<RoutingInput>, actorId: string) {
+    const existing = await prisma.routingRule.findUnique({
+      where: { id },
+      select: { id: true, name: true, providerId: true, parserId: true, connectorId: true },
+    });
+    if (!existing) {
+      throw new ServiceError("Routing rule not found.", 404);
+    }
+
+    const cleaned = Object.fromEntries(
+      Object.entries(data).filter(([, value]) => value !== undefined),
+    ) as Partial<RoutingInput>;
+
+    const rule = await prisma.routingRule.update({
+      where: { id },
+      data: cleaned as Record<string, unknown>,
+      include: routingRuleInclude,
+    });
+
+    await auditService.log("routing_rule.updated", "RoutingRule", id, actorId, {
+      before: existing,
+      after: cleaned,
+    });
+    invalidateAdminDashboard();
+    return rule;
+  }
+
+  async deleteRoutingRule(id: string, actorId: string) {
+    const rule = await prisma.routingRule.findUnique({
+      where: { id },
+      select: { id: true, name: true, providerId: true, parserId: true },
+    });
+    if (!rule) {
+      throw new ServiceError("Routing rule not found.", 404);
+    }
+
+    await prisma.routingRule.delete({ where: { id } });
+    await auditService.log("routing_rule.deleted", "RoutingRule", id, actorId, rule);
+    invalidateAdminDashboard();
     return rule;
   }
 
   async listRoutingRules() {
-    return prisma.routingRule.findMany({ orderBy: [{ priority: "asc" }, { createdAt: "asc" }], include: { provider: { select: { id: true, name: true } }, parser: { select: { id: true, name: true, version: true } }, connector: { select: { id: true, name: true, environmentKey: true } } } });
+    return prisma.routingRule.findMany({ orderBy: [{ priority: "asc" }, { createdAt: "asc" }], include: routingRuleInclude });
   }
 
   // Legacy compatibility for smoke scripts. Routing is now owned by the runtime.

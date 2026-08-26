@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withApiAuthorization, apiError } from "@/lib/api";
+import { withApiAuthorization, handleApiError } from "@/lib/api";
 import { connectorScheduler } from "@/services/scheduler.service";
 
 export const POST = withApiAuthorization("ADMIN", async (request) => {
@@ -28,6 +28,6 @@ export const POST = withApiAuthorization("ADMIN", async (request) => {
       },
     });
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Scheduler execution failed", 500);
+    return handleApiError(error, "Scheduler execution failed");
   }
 });

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { withApiAuthorization, apiError } from "@/lib/api";
 import { userSchema } from "@/lib/validation";
 import { userService } from "@/services/user.service";
+import { invalidateAdminDashboard } from "@/lib/cache-tags";
 
 export const GET = withApiAuthorization("ADMIN", async (request) => {
   const users = await userService.listPage(new URL(request.url).searchParams);
@@ -31,6 +32,7 @@ export const POST = withApiAuthorization("ADMIN", async (request, _context, sess
   });
 
   await userService.markCreated(created.user.id, session.user.id);
+  invalidateAdminDashboard();
 
   return NextResponse.json(created, { status: 201 });
 });

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SearchToolbar } from "@/components/shared/search-toolbar";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ProviderEditModal } from "@/components/providers/provider-edit-modal";
+import { RoutingRulesManager } from "@/components/providers/routing-rules-manager";
 import {
   Plus, RefreshCw, Wifi, WifiOff, AlertTriangle,
   ChevronDown, ChevronRight, Trash2,
@@ -33,26 +34,60 @@ type Provider = {
   updatedAt: string;
 };
 
-function relativeTime(dateStr: string | null): string {
+type RoutingParser = {
+  id: string;
+  name: string;
+  version: string | null;
+  description: string | null;
+  providerTypesSupported: string[];
+  enabled: boolean;
+};
+
+type RoutingRule = {
+  id: string;
+  name: string;
+  recipientGmailAccount: string | null;
+  senderEmail: string | null;
+  senderDomain: string | null;
+  subjectContains: string | null;
+  gmailLabel: string | null;
+  priority: number;
+  fallback: boolean;
+  active: boolean;
+  provider: { id: string; name: string };
+  parser: { id: string; name: string; version: string | null };
+  connector: { id: string; name: string; environmentKey: string | null } | null;
+};
+
+function dateParts(value: Date | string | number, timeZone?: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    ...(timeZone ? { timeZone } : {}),
+    year: "numeric", month: "numeric", day: "numeric",
+  }).formatToParts(new Date(value));
+  return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+}
+
+function relativeTime(dateStr: string | null, timeZone?: string, now: Date | string | number = Date.now()): string {
   if (!dateStr) return "Never";
-  const now = Date.now();
   const date = new Date(dateStr).getTime();
-  const diffMin = Math.floor((now - date) / 60000);
+  const diffMin = Math.floor((new Date(now).getTime() - date) / 60000);
   if (diffMin < 1) return "Just now";
   if (diffMin < 60) return `${diffMin}m ago`;
-  const today = new Date();
-  const entryDate = new Date(dateStr);
-  const isToday = entryDate.toDateString() === today.toDateString();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const isYesterday = entryDate.toDateString() === yesterday.toDateString();
-  const timeStr = entryDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  const today = dateParts(now, timeZone);
+  const entryDate = dateParts(dateStr, timeZone);
+  const yesterday = dateParts(new Date(new Date(now).getTime() - 86400000), timeZone);
+  const isToday = entryDate.year === today.year && entryDate.month === today.month && entryDate.day === today.day;
+  const isYesterday = entryDate.year === yesterday.year && entryDate.month === yesterday.month && entryDate.day === yesterday.day;
+  const timeStr = new Intl.DateTimeFormat("en-US", {
+    ...(timeZone ? { timeZone } : {}), hour: "numeric", minute: "2-digit", hour12: true,
+  }).format(new Date(dateStr));
   if (isToday) return `Today \u2022 ${timeStr}`;
   if (isYesterday) return `Yesterday \u2022 ${timeStr}`;
-  const month = entryDate.toLocaleDateString("en-US", { month: "short" });
-  const day = entryDate.getDate();
-  const year = entryDate.getFullYear() !== today.getFullYear() ? ` ${entryDate.getFullYear()}` : "";
-  return `${day} ${month}${year} \u2022 ${timeStr}`;
+  const month = new Intl.DateTimeFormat("en-US", {
+    ...(timeZone ? { timeZone } : {}), month: "short",
+  }).format(new Date(dateStr));
+  const year = entryDate.year !== today.year ? ` ${entryDate.year}` : "";
+  return `${entryDate.day} ${month}${year} \u2022 ${timeStr}`;
 }
 
 function statusBadge(active: boolean) {
@@ -84,7 +119,23 @@ function connectorHealthBadge(connectors: ProviderConnector[]) {
   return null;
 }
 
-export function ProvidersPageContent({ providers }: { providers: Provider[] }) {
+export function ProvidersPageContent({
+  providers,
+  parsers,
+  routingRules,
+  renderedAt,
+}: {
+  providers: Provider[];
+  parsers: RoutingParser[];
+  routingRules: RoutingRule[];
+  renderedAt: string;
+}) {
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHydrated(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -132,6 +183,10 @@ export function ProvidersPageContent({ providers }: { providers: Provider[] }) {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const openRoutingRule = (providerId?: string) => {
+    window.dispatchEvent(new CustomEvent("leadbridge:open-routing-rule-modal", { detail: { providerId } }));
   };
 
   return (
@@ -237,12 +292,12 @@ export function ProvidersPageContent({ providers }: { providers: Provider[] }) {
                       </td>
                       <td className="px-5 py-4">
                         <span className="text-xs text-[var(--color-muted)] tabular-nums">
-                          {relativeTime(provider.lastSyncAt ?? provider.lastSuccessAt)}
+                          {relativeTime(provider.lastSyncAt ?? provider.lastSuccessAt, hydrated ? undefined : "UTC", hydrated ? undefined : renderedAt)}
                         </span>
                       </td>
                       <td className="px-5 py-4">
                         <span className="text-sm font-semibold text-[var(--color-ink)] tabular-nums">
-                          {provider.leadCount.toLocaleString()}
+                          {provider.leadCount.toLocaleString("en-IN")}
                         </span>
                       </td>
                       <td className="px-5 py-4">
@@ -312,7 +367,19 @@ export function ProvidersPageContent({ providers }: { providers: Provider[] }) {
                                   ))}
                                 </div>
                               ) : (
-                                <p className="text-sm text-[var(--color-muted)] italic">None configured</p>
+                                <div className="space-y-3">
+                                  <p className="text-sm text-[var(--color-muted)] italic">
+                                    No active routing rules. Payloads from this provider will be recorded as unmatched.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => openRoutingRule(provider.id)}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-ink)] transition hover:bg-slate-50"
+                                  >
+                                    <Plus size={14} />
+                                    Configure Routing
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -327,6 +394,8 @@ export function ProvidersPageContent({ providers }: { providers: Provider[] }) {
           </div>
         </div>
       )}
+
+      <RoutingRulesManager providers={providers} parsers={parsers} rules={routingRules} />
 
       <ProviderEditModal
         open={modalOpen}

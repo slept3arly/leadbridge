@@ -56,6 +56,10 @@ function toApiLead<T extends { displayName: string }>(lead: T) {
   return { ...lead, name: lead.displayName };
 }
 
+export type CreateLeadResult =
+  | { status: "created"; lead: { id: string } }
+  | { status: "skipped"; reason: string };
+
 export class LeadService {
   private accessWhere(actor?: Actor) {
     return actor?.role === "SALES" ? { assignedUserId: actor.id } : {};
@@ -143,8 +147,10 @@ export class LeadService {
     const orderBy = ["createdAt", "updatedAt", "displayName", "status", "priority", "category", "nextFollowUpAt"].includes(query.sortBy ?? "")
       ? { [query.sortBy!]: query.sortDirection }
       : { updatedAt: "desc" as const };
-    const data = await prisma.lead.findMany({ where, select: leadListSelect, orderBy, ...pagination(query) });
-    const total = await prisma.lead.count({ where });
+    const [data, total] = await Promise.all([
+      prisma.lead.findMany({ where, select: leadListSelect, orderBy, ...pagination(query) }),
+      prisma.lead.count({ where }),
+    ]);
     return listResult(data.map(toApiLead), total, query);
   }
 
@@ -167,8 +173,23 @@ export class LeadService {
     return leads.map(toApiLead);
   }
 
-  async create(data: LeadInput, actor: Actor) {
+  async create(data: LeadInput, actor: Actor): Promise<CreateLeadResult> {
     await this.assertAssignableUser(data.assignedUserId, actor);
+
+    if (data.connectorId && data.sourceReferenceId) {
+      const existing = await prisma.lead.findFirst({
+        where: {
+          connectorId: data.connectorId,
+          sourceReferenceId: data.sourceReferenceId,
+          isDeleted: false,
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        return { status: "skipped", reason: "Duplicate lead detected." };
+      }
+    }
+
     const duplicates = await duplicateService.findPotentialDuplicates(data);
     const { name, customFields, rawPayload, status, priority, category, ...rest } = data;
     return prisma.$transaction(async (tx) => {
@@ -188,10 +209,10 @@ export class LeadService {
         });
         await activityService.record(lead.id, "CREATED", "Lead created", actor.id, duplicates.length ? { duplicateCandidates: duplicates } : undefined, tx);
         await auditService.log("lead.created", "Lead", lead.id, actor.id, { duplicateCandidates: duplicates.length }, undefined, tx);
-        return toApiLead(lead);
+        return { status: "created", lead: toApiLead(lead) };
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-          throw new ServiceError("Duplicate lead detected.", 409);
+          return { status: "skipped", reason: "Duplicate lead detected (concurrent insert)." };
         }
         throw error;
       }
@@ -245,28 +266,12 @@ export class LeadService {
     if (!can(actor, Permission.DELETE_LEAD)) throw new ServiceError("You do not have permission to delete leads.", 403);
     await this.assertAccess(id, actor);
     await prisma.$transaction(async (tx) => {
-      await tx.lead.update({ where: { id }, data: { isDeleted: true, deletedAt: new Date(), deletedById: actor.id } });
-      await activityService.record(id, "DELETED", "Lead deleted", actor.id, undefined, tx);
+      await tx.lead.delete({ where: { id } });
       await auditService.log("lead.deleted", "Lead", id, actor.id, undefined, undefined, tx);
     });
   }
 
-  async restore(id: string, actor: Actor) {
-    if (actor.role !== "ADMIN") throw new ServiceError("Only admins can restore leads.", 403);
-    await this.assertAccess(id, actor, true);
-    await prisma.$transaction(async (tx) => {
-      await tx.lead.update({ where: { id }, data: { isDeleted: false, deletedAt: null, deletedById: null, updatedById: actor.id } });
-      await activityService.record(id, "RESTORED", "Lead restored", actor.id, undefined, tx);
-      await auditService.log("lead.restored", "Lead", id, actor.id, undefined, undefined, tx);
-    });
-  }
 
-  async permanentlyDelete(id: string, actor: Actor) {
-    if (actor.role !== "ADMIN") throw new ServiceError("Only admins can permanently delete leads.", 403);
-    const lead = await this.assertAccess(id, actor, true);
-    if (!lead.isDeleted) throw new ServiceError("Only soft-deleted leads can be permanently deleted.", 400);
-    return prisma.lead.delete({ where: { id } });
-  }
 }
 
 export const leadService = new LeadService();

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { restConnectorConfigSchema } from "@/lib/validation";
+import { invalidateAdminDashboard } from "@/lib/cache-tags";
 
 function retainSecrets(
   incoming: Record<string, unknown>,
@@ -10,6 +11,18 @@ function retainSecrets(
   if (!existing) return incoming;
 
   const merged = { ...incoming };
+  for (const key of ["headers", "queryParams", "body"] as const) {
+    if (merged[key] === undefined && existing[key] !== undefined) merged[key] = existing[key];
+  }
+
+  const existingPagination = existing.pagination as Record<string, unknown> | undefined;
+  const incomingPagination = incoming.pagination as Record<string, unknown> | undefined;
+  if (existingPagination && incomingPagination) {
+    merged.pagination = { ...existingPagination, ...incomingPagination };
+  } else if (existingPagination && !incomingPagination) {
+    merged.pagination = existingPagination;
+  }
+
   const existingAuth = existing.auth as Record<string, unknown> | undefined;
   const incomingAuth = incoming.auth as Record<string, unknown> | undefined;
 
@@ -19,8 +32,14 @@ function retainSecrets(
     if (incomingAuth.type === "API_KEY") {
       const existingKey = existingAuth.apiKey as Record<string, unknown> | undefined;
       const incomingKey = incomingAuth.apiKey as Record<string, unknown> | undefined;
-      if (existingKey && incomingKey && !incomingKey.value) {
-        mergedAuth.apiKey = { ...incomingKey, value: existingKey.value };
+      if (existingKey) {
+        mergedAuth.apiKey = {
+          ...existingKey,
+          ...incomingKey,
+          ...(incomingKey?.name ? {} : { name: existingKey.name }),
+          ...(incomingKey?.in ? {} : { in: existingKey.in }),
+          ...(incomingKey?.value ? {} : { value: existingKey.value }),
+        };
       }
     }
 
@@ -31,16 +50,26 @@ function retainSecrets(
     if (incomingAuth.type === "BASIC") {
       const existingBasic = existingAuth.basic as Record<string, unknown> | undefined;
       const incomingBasic = incomingAuth.basic as Record<string, unknown> | undefined;
-      if (existingBasic && incomingBasic && !incomingBasic.password) {
-        mergedAuth.basic = { ...incomingBasic, password: existingBasic.password };
+      if (existingBasic) {
+        mergedAuth.basic = {
+          ...existingBasic,
+          ...incomingBasic,
+          ...(incomingBasic?.username ? {} : { username: existingBasic.username }),
+          ...(incomingBasic?.password ? {} : { password: existingBasic.password }),
+        };
       }
     }
 
     if (incomingAuth.type === "CUSTOM_HEADER") {
       const existingCh = existingAuth.customHeader as Record<string, unknown> | undefined;
       const incomingCh = incomingAuth.customHeader as Record<string, unknown> | undefined;
-      if (existingCh && incomingCh && !incomingCh.value) {
-        mergedAuth.customHeader = { ...incomingCh, value: existingCh.value };
+      if (existingCh) {
+        mergedAuth.customHeader = {
+          ...existingCh,
+          ...incomingCh,
+          ...(incomingCh?.name ? {} : { name: existingCh.name }),
+          ...(incomingCh?.value ? {} : { value: existingCh.value }),
+        };
       }
     }
 
@@ -96,6 +125,18 @@ export const PATCH = withApiAuthorization("ADMIN", async (request, context) => {
     updateData.configuration = parsed.data as object;
   }
 
+  if (body.sourceId !== undefined) {
+    if (body.sourceId === null) {
+      updateData.sourceId = null;
+    } else if (typeof body.sourceId === "string" && body.sourceId.trim()) {
+      const provider = await prisma.leadSource.findUnique({ where: { id: body.sourceId }, select: { id: true } });
+      if (!provider) return apiError("Provider not found.", 404);
+      updateData.sourceId = body.sourceId;
+    } else {
+      return apiError("sourceId must be a string or null.", 400);
+    }
+  }
+
   if (Object.keys(updateData).length === 0) {
     return apiError("No valid fields to update.", 400);
   }
@@ -104,6 +145,7 @@ export const PATCH = withApiAuthorization("ADMIN", async (request, context) => {
     where: { id },
     data: updateData as Record<string, unknown>,
   });
+  invalidateAdminDashboard();
 
   return NextResponse.json({ success: true });
 });

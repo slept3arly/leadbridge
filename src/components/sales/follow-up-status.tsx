@@ -1,3 +1,8 @@
+"use client";
+
+import { formatDate } from "@/lib/utils";
+import { useHydrated } from "@/hooks/use-hydrated";
+
 function formatTime(time: string) {
   const [h, m] = time.split(":").map(Number);
   if (isNaN(h) || isNaN(m)) return time;
@@ -15,10 +20,11 @@ export function FollowUpStatus({
   dueTime: string | null;
   status: string;
 }) {
+  const hydrated = useHydrated();
   if (!dueDate) return null;
 
   const d = new Date(dueDate);
-  const isOverdue = new Date() > d && status === "PENDING";
+  const isOverdue = hydrated && new Date() > d && status === "PENDING";
 
   const config =
     status === "COMPLETED"
@@ -39,11 +45,7 @@ export function FollowUpStatus({
             dot: "bg-amber-500",
           };
 
-  const dateStr = d.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const dateStr = formatDate(dueDate, "-", hydrated ? undefined : "UTC");
 
   return (
     <div className={`rounded-lg border p-3 space-y-1 ${config.color}`}>

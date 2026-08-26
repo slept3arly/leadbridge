@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, CardEmptyState } from "@/components/ui/card";
 import { KpiCard } from "@/components/shared/kpi-card";
 import { Badge } from "@/components/ui/badge";
 import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
-import { formatTime } from "@/lib/utils";
+import { formatDate, formatTime } from "@/lib/utils";
 
 interface AttentionCounts {
   todayFollowUpCount: number;
@@ -58,9 +58,16 @@ function PipelineCard({ status, count }: { status: string; count: number }) {
 }
 
 function AgendaRow({ item, onOpen }: { item: UpcomingFollowUp; onOpen: (leadId: string) => void }) {
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHydrated(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const timeStr = item.dueTime
     ? formatTime(item.dueTime)
-    : new Date(item.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+    : formatDate(item.dueDate, "-", hydrated ? undefined : "UTC");
 
   return (
     <tr

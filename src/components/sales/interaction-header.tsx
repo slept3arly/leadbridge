@@ -1,3 +1,8 @@
+"use client";
+
+import { formatDate, formatTimeValue } from "@/lib/utils";
+import { useHydrated } from "@/hooks/use-hydrated";
+
 export function InteractionHeader({
   name,
   createdAt,
@@ -5,22 +10,14 @@ export function InteractionHeader({
   name: string;
   createdAt: string;
 }) {
-  const d = new Date(createdAt);
-  const date = d.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-  const time = d.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const hydrated = useHydrated();
+  const timeZone = hydrated ? undefined : "UTC";
 
   return (
     <div>
       <p className="text-sm font-bold text-[var(--color-ink)]">{name}</p>
       <p className="text-xs text-[var(--color-muted)]">
-        {date} · {time}
+        {formatDate(createdAt, "-", timeZone)} · {formatTimeValue(createdAt, "-", timeZone)}
       </p>
     </div>
   );

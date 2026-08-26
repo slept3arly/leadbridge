@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withApiAuthorization, apiError } from "@/lib/api";
+import { withApiAuthorization, handleApiError } from "@/lib/api";
 import { dashboardService } from "@/services/dashboard.service";
 
 export const GET = withApiAuthorization(["ADMIN", "SALES"], async (request, _ctx, session) => {
@@ -12,6 +12,6 @@ export const GET = withApiAuthorization(["ADMIN", "SALES"], async (request, _ctx
     const data = await dashboardService.sales(session.user.id);
     return NextResponse.json({ data });
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Dashboard data fetch failed", 500);
+    return handleApiError(error, "Dashboard data fetch failed");
   }
 });

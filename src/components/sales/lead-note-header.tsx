@@ -1,4 +1,8 @@
+"use client";
+
 import { FollowUpBadge } from "@/components/sales/follow-up-badge";
+import { formatDate, formatTimeValue } from "@/lib/utils";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 function Avatar({ name }: { name: string }) {
   const initials = name
@@ -23,16 +27,8 @@ export function LeadNoteHeader({
   createdAt: string;
   followUp?: { id: string; dueDate: string | null; dueTime: string | null; status: string } | null;
 }) {
-  const created = new Date(createdAt);
-  const date = created.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-  const time = created.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const hydrated = useHydrated();
+  const timeZone = hydrated ? undefined : "UTC";
 
   return (
     <div className="flex items-center gap-3">
@@ -51,7 +47,7 @@ export function LeadNoteHeader({
           )}
         </div>
         <div className="text-xs text-[var(--color-muted)]">
-          {date} · {time}
+          {formatDate(createdAt, "-", timeZone)} · {formatTimeValue(createdAt, "-", timeZone)}
         </div>
       </div>
     </div>

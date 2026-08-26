@@ -1,253 +1,248 @@
-# Connector & Parser Developer Guide
+# LeadBridge Developer Guidelines & Extension Reference
 
 ## Purpose
 
-This guide explains how to add or modify integrations without reading the entire
-repository.
+This document provides developer instructions for contributing to LeadBridge. It details project conventions, component catalog, connector development, parser authoring, routing rule configuration, export engine integration, runtime validation, testing workflows, and known system limitations.
 
-It covers:
+---
 
-- connector contract and registry behavior
-- parser contract and registry behavior
-- runtime execution and error handling
-- testing and validation expectations
+## Non-Negotiable Principles
 
-## Scope
+1. **Extend Existing Architecture**: Retain the existing service boundaries, runtime pipelines, and component structure.
+2. **Isolate Integrations**: Keep connector payload fetching and parser transformations isolated from core CRM domain services and UI code.
+3. **Deterministic Parsers**: Parsers must remain side-effect free, deterministic, and isolated from database operations.
+4. **Server-Enforced Authorization**: Client UI state, middleware, and navigation menus are for UX only. All data security must be enforced on the server via `requireSession`, `withApiAuthorization`, or `withPermissionAuthorization`.
+5. **Disabled Public Signup**: Public account creation must remain disabled. Users are provisioned exclusively by administrators.
+6. **Design System & UI Consistency**: Sales and Admin panel pages must conform to the surface hierarchy, component density, and design tokens established in [02_ARCHITECTURE.md](./02_ARCHITECTURE.md).
 
-- Backend integration code only
-- Static connector and parser registration
-- In-process execution, not queue workers
-- Small internal CRM usage
+---
 
-## Non-negotiable principles
+## Project Conventions & Directory Structure
 
-1. Extend the existing architecture; do not rewrite working foundations for stylistic preference.
-2. Keep connector behavior isolated from lead persistence and UI code.
-3. Keep parser code deterministic and side-effect free.
-4. Enforce security on the server. Client state and middleware are not authorization.
-5. Preserve the internal-only account model: public signup must remain disabled.
-6. **UI consistency is a project requirement.** All Sales Panel pages must follow the design principles in [docs/02_ARCHITECTURE.md](./02_ARCHITECTURE.md#sales-ui-design-principles). Reuse existing shared components before introducing new ones. The Sales Dashboard is the visual baseline for all Sales UI.
+| Concern | Convention | Example |
+| --- | --- | --- |
+| **Files** | `kebab-case` | `lead-edit-modal.tsx`, `export.service.ts` |
+| **Components** | `PascalCase` | `LeadEditModal`, `KpiCard` |
+| **Services** | `src/services/<domain>.service.ts` | Export one class and one singleton instance (`leadService`) |
+| **Route Handlers** | `src/app/api/.../route.ts` | Use Next.js App Router HTTP verb exports (`GET`, `POST`, `PATCH`, `DELETE`) |
+| **Imports** | Use `@/` alias for `src/` root | `import { prisma } from "@/lib/prisma";` |
 
-## Project, naming, and folder conventions
+```text
+src/
+├── app/                      # Next.js App Router pages and API routes
+├── components/               # React components divided by domain & scope
+│   ├── admin/                # Admin dashboard, reports, settings
+│   ├── audit/                # Audit log viewer, human-readable actions
+│   ├── connectors/           # Connector table, modal, sync history
+│   ├── leads/                # Lead list, edit modal, table controls
+│   ├── providers/            # Provider management, edit modal, queues
+│   ├── sales/                # Sales dashboard, Attention Center, follow-ups, notes
+│   ├── shared/               # Navbar, BottomNavigation, SearchToolbar, ExportButton
+│   ├── ui/                   # Generic primitives (Button, Card, Badge, Input, Select)
+│   └── users/                # User table, edit modal, controls
+├── connectors/               # Connector contracts (IConnector), Gmail, REST, registry
+├── lib/                      # Auth, Prisma client, session, navigation, validation
+├── parsers/                  # BaseParser, registry, example, gmail parsers
+├── runtime/                  # ConnectorRuntime, RoutingEngine, ParserRuntime, LeadNormalizer
+├── services/                 # 22 business domain services
+└── types/                    # Shared TypeScript types
+```
 
-| Concern | Convention |
-| --- | --- |
-| Files | kebab-case: `lead-delete-button.tsx`, `connector.service.ts`. |
-| React components/classes | PascalCase: `LeadForm`, `LeadService`. |
-| Functions/variables | camelCase. |
-| Domain types | PascalCase; use `type` for shared data shapes unless interface extension is useful. |
-| Services | Place in `src/services/<domain>.service.ts`; export one named class and one shared instance. |
-| Route handlers | Place under `src/app/api/.../route.ts`; follow App Router HTTP method exports. |
-| Pages/layouts | Use App Router conventions in `src/app`; use route groups for organization only. |
-| Components | Keep generic UI primitives in `src/components/ui`, cross-feature business components in `src/components/shared`, admin-only components in `src/components/admin`, and sales-only components in `src/components/sales`. Follow the conventions in [docs/02_ARCHITECTURE.md#sales-ui-design-principles](./02_ARCHITECTURE.md#sales-ui-design-principles) when building Sales Panel pages. |
-| Integrations | Connector contracts/implementations in `src/connectors`; parser implementations/registry entries in `src/parsers`; runtime flow in `src/runtime`. |
+---
 
-Use the `@/` alias for imports rooted at `src`. Do not edit `src/generated/prisma`; regenerate it with `pnpm prisma generate` after schema changes.
+## Shared UI Component Catalog
 
-## Connector model
+Always reuse existing primitives and shared components before creating custom UI elements:
 
-The connector contract is defined in [`src/runtime/runtime-types.ts`](../src/runtime/runtime-types.ts).
-The registry is in [`src/connectors/registry.ts`](../src/connectors/registry.ts).
+| Category | Component | Path | Description |
+| --- | --- | --- | --- |
+| **UI Primitive** | `Button` | `src/components/ui/button.tsx` | Standard button with variant, size, and `isLoading` spinner state |
+| **UI Primitive** | `Card` / `CardEmptyState` | `src/components/ui/card.tsx` | Elevated container surface adhering to surface hierarchy |
+| **UI Primitive** | `Badge` | `src/components/ui/badge.tsx` | Status, priority, and channel indicator badge |
+| **UI Primitive** | `Input` / `Select` / `Textarea` | `src/components/ui/` | Standardized form input primitives |
+| **UI Primitive** | `Pagination` | `src/components/ui/pagination.tsx` | Page controls matching `{ page, limit, total, totalPages }` |
+| **UI Primitive** | `SegmentedControl` | `src/components/ui/segmented-control.tsx` | Horizontal tab/pill toggle control |
+| **UI Primitive** | `DateTimeCell` | `src/components/ui/date-time-cell.tsx` | Formatted date and time display component |
+| **Shared** | `Navbar` | `src/components/shared/navbar.tsx` | Header navigation bar |
+| **Shared** | `BottomNavigation` | `src/components/shared/navigation/BottomNavigation.tsx` | Fixed responsive bottom navigation bar |
+| **Shared** | `BottomNavigationMenu` | `src/components/shared/navigation/BottomNavigationMenu.tsx` | Drawer menu for secondary admin links |
+| **Shared** | `DataTable` | `src/components/shared/data-table.tsx` | Reusable data table with loading and empty states |
+| **Shared** | `ExportButton` | `src/components/shared/export-button.tsx` | Triggers CSV exports with loading toast feedback |
+| **Shared** | `DateRangePicker` | `src/components/shared/date-range-picker.tsx` | Date range selector for reports and exports |
+| **Shared** | `KpiCard` | `src/components/shared/kpi-card.tsx` | Standard summary metric display card |
+| **Shared** | `ResyncButton` | `src/components/shared/resync-button.tsx` | Manual UI refresh and resync action |
+| **Shared** | `BlueprintBackground` | `src/components/shared/blueprint-background.tsx` | Grid backdrop for utility screens |
 
-Current connector interface:
+---
 
-```ts
-interface IConnector {
+## Connector Development
+
+Connectors extract raw lead payloads from external platforms and convert them into standard `RawPayload[]` arrays.
+
+### 1. Implement `IConnector`
+
+Contract location: `src/runtime/runtime-types.ts`.
+
+```typescript
+export interface IConnector {
   readonly key: string;
   execute(context: ExecutionContext): Promise<RawPayload[]>;
 }
 ```
 
-Where the runtime expects the connector to behave:
+Rules for connector implementations:
+- Return source-shaped raw payloads inside `RawPayload[]`.
+- Populate `_routing` hints (`senderEmail`, `senderDomain`, `subject`, `recipientGmailAccount`) whenever available.
+- Populate `_duplicateKey` when an external stable reference ID is present.
+- Throw typed runtime errors (`RestAuthError`, `RestNetworkError`, etc.) on failure.
+- Do **not** call Prisma or modify the database inside connector code.
 
-- Return raw, source-shaped payloads.
-- Include routing hints in `_routing` when possible.
-- Include a `_duplicateKey` when the source has a stable external ID.
-- Throw meaningful errors when the source is misconfigured or unreachable.
+### 2. Register Connector Factory
 
-### Current connector implementations
+Register new connector types in `src/connectors/registry.ts`:
 
-- `GmailConnector` in `src/connectors/gmail/gmail-connector.ts`
-- `RestConnector` in `src/connectors/rest/rest-connector.ts`
-
-Both are registered statically in `src/connectors/registry.ts`.
-
-### Adding a connector
-
-1. Implement `IConnector`.
-2. Register the factory in `src/connectors/registry.ts`.
-3. Validate configuration before making network calls.
-4. Return raw payloads only; do not write Prisma data from the connector.
-5. Let the runtime handle routing, parsing, normalization, and persistence.
-6. Add a connection test path if admins need to validate configuration before syncing.
-7. Document required environment variables or connector config fields.
-
-### Connector configuration rules
-
-- Gmail uses environment variables, not database-stored secrets.
-- REST connectors store non-secret configuration in `Connector.configuration`.
-- Do not store raw tokens in client-visible state.
-- Keep the `type` value aligned with the registered factory key.
-
-### Connector runtime lifecycle
-
-The execution path is:
-
-```text
-Connector -> ConnectorRuntime -> RoutingEngine -> ParserRuntime -> LeadNormalizer -> LeadService
+```typescript
+factoryRegistry.set("custom_type", (config) => new CustomConnector(config));
 ```
 
-Execution helpers:
+### 3. Current Registered Connectors
 
-- `ConnectorRuntime` runs the connector, retries transient failures, resolves routing, and persists sync history.
-- `ExecutionLock` prevents concurrent runs of the same connector.
-- `ConnectorHealthService` updates health state and failure counters.
-- `RetryPolicy` retries only when the error is considered retryable.
+- **`gmail`** (`GmailConnector`): Uses `GMAIL_<KEY>_*` environment variables to access Gmail via OAuth2.
+- **`rest`** (`RestConnector`): Uses `RestClient` to fetch endpoints supporting `PAGE_NUMBER`, `OFFSET`, `CURSOR`, `NEXT_URL`, and `TOKEN` pagination, and `BASIC`, `BEARER`, `API_KEY`, or `CUSTOM_HEADER` auth.
 
-Common runtime outputs:
+---
 
-- `success`
-- `failed`
-- `skipped`
-- `retry`
-- `cancelled`
+## Parser Development
 
-## Parser model
+Parsers accept raw payload objects and return a clean `NormalizedLead` object.
 
-The parser base class is in [`src/parsers/base-parser.ts`](../src/parsers/base-parser.ts).
-The registry is in [`src/parsers/registry.ts`](../src/parsers/registry.ts).
+### 1. Extend `BaseParser`
 
-Current parser interface:
+Base class location: `src/parsers/base-parser.ts`.
 
-```ts
-abstract class BaseParser<T = unknown> {
-  abstract key: string;
-  abstract parse(input: T): NormalizedLead;
+```typescript
+import { BaseParser } from "./base-parser";
+import { NormalizedLead } from "@/types";
+
+export class CustomParser extends BaseParser<Record<string, unknown>> {
+  key = "custom_parser_key";
+
+  parse(input: Record<string, unknown>): NormalizedLead {
+    return {
+      name: String(input.name ?? input.fullName ?? "Unknown Lead"),
+      email: typeof input.email === "string" ? input.email : undefined,
+      phone: typeof input.phone === "string" ? input.phone : undefined,
+      company: typeof input.company === "string" ? input.company : undefined,
+      requirement: typeof input.requirement === "string" ? input.requirement : undefined,
+      rawPayload: input,
+    };
+  }
 }
 ```
 
-### Current parsers
+### 2. Register in Parser Registry
 
-- `example`
-- `gmail`
+Add the parser instance to `parserRegistry` in `src/parsers/registry.ts`:
 
-`MockParser` exists as a dev helper under `src/runtime/mock`, but it is not registered in the main parser registry.
-
-`parserService.listForManagement()` upserts the registered parser manifests into the `Parser` table so the admin UI can display them.
-
-### Adding a parser
-
-1. Extend `BaseParser<T>`.
-2. Give it a stable `key`.
-3. Return a `NormalizedLead` and nothing else.
-4. Register it in `parserRegistry`.
-5. Keep it deterministic.
-6. Add a manifest that accurately describes supported provider types and attachments.
-7. Add a preview or fixture if operators need to validate sample payloads.
-
-### Parser manifests
-
-The manifest is what the admin UI consumes. It should stay honest:
-
-- `key`
-- `name`
-- `version`
-- `description`
-- `providerTypesSupported`
-- `developerNotes`
-- `supportsAttachments`
-- `enabled`
-
-## Runtime flow
-
-The connector runtime does not trust raw connector payloads.
-
-```mermaid
-flowchart TD
-  A[Connector execute] --> B[Raw payloads]
-  B --> C{Duplicate key?}
-  C -->|yes| D[Skip and record breakdown]
-  C -->|no| E{Routing rule match?}
-  E -->|no| F[Record unmatched email if available]
-  E -->|yes| G[Select parser]
-  G --> H[ParserRuntime.parse]
-  H --> I[LeadNormalizer.validate]
-  I --> J[LeadNormalizer.enrich]
-  J --> K[LeadService.create]
-  K --> L[LeadActivity + AuditLog]
+```typescript
+parserRegistry.set("custom_parser_key", new CustomParser());
 ```
 
-Implementation details that matter:
+### 3. Parser Manifests
 
-- Routing is priority-based and the first match wins.
-- No parser match means the payload is skipped.
-- Duplicate detection is source-reference aware when `_duplicateKey` is available.
-- Normalization adds warnings but does not block imports by itself.
-- Lead creation writes activity and audit rows.
+Manifests inform the admin UI about parser capabilities. Update `parserService.listForManagement()` in `src/services/parser.service.ts` so the manifest is synced into the `Parser` table.
 
-## Error handling
+---
 
-Use the runtime error classes in `src/runtime/runtime-errors.ts` when a failure
-needs to be classified.
+## Adding Providers & Routing Rules
 
-| Error class | Meaning |
-| --- | --- |
-| `ConfigurationError` | Missing or invalid connector/parser configuration. |
-| `ConnectorError` | Source-side failure that is not necessarily retryable. |
-| `ParserError` | Parsing failed for a payload. |
-| `ValidationError` | Payload or normalized lead failed validation. |
-| `RetryableError` | A transient failure that should be retried. |
+1. **Provider (`LeadSource`)**: Created via `POST /api/providers`. Providers group routing rules and connectors under a common vendor slug.
+2. **Routing Rules (`RoutingRule`)**: Created via `POST /api/providers/routing-rules`. Rules match inbound payloads by:
+   - `senderEmail`: Exact match (case-insensitive)
+   - `senderDomain`: Domain suffix match (`@example.com`)
+   - `subjectContains`: Substring match on subject line
+   - `recipientGmailAccount`: Exact match on recipient email
+   - `fallback`: Boolean catch-all flag matching all payloads
+   - Each rule specifies a target `providerId` and `parserId`.
 
-The current retry policy retries network-like and rate-limit errors. Do not
-swallow failures silently. If the connector cannot proceed, surface a meaningful
-error and let the runtime persist the failed run.
+---
 
-## Testing
+## Export System Architecture
 
-Use the API endpoints that already exist for validation:
+The export system is handled by `ExportService` (`src/services/export.service.ts`):
 
-- `POST /api/providers/connectors/test` checks Gmail or REST configuration.
-- `POST /api/parsers/preview` runs a parser against a sample payload.
-- `POST /api/connectors/[id]/sync` exercises the end-to-end runtime.
+- **Supported Types**: `leads`, `users`, `providers`, `sync-runs`, `audit-logs`.
+- **Supported Formats**: CSV (`format=csv`).
+- **Endpoint**: `GET /api/export` (and `GET /api/audit-logs/export`).
+- **Implementation**: Queries Prisma records using filters (`dateRange`, `status`, `role`, etc.), sanitizes fields, builds CSV rows, and sets `Content-Type: text/csv` headers.
 
-Suggested test cases:
+---
 
-- valid payload
-- payload missing expected keys
-- malformed email or phone values
-- routing miss
-- duplicate payload
-- transient connector failure
-- invalid connector configuration
+## Runtime Validation & Error Handling
 
-## Common mistakes
+Validation is performed at the route boundary using Zod schemas (`src/lib/validation.ts`) and at the runtime boundary using `LeadNormalizer` (`src/runtime/lead-normalizer.ts`).
 
-- Returning raw vendor data from a parser.
-- Reading Prisma directly from connector code.
-- Registering a parser but not exposing a manifest that matches its behavior.
-- Assuming the mock runtime is production wiring. It is not.
-- Using a parser to fetch data or manage retries.
-- Storing secrets in database configuration where they should remain in env vars.
+### Runtime Error Hierarchy (`src/runtime/runtime-errors.ts`)
 
-## Workflow reminders
+- `RuntimeError`: Base error class.
+  - `ConfigurationError`: Invalid connector or parser configuration.
+  - `ConnectorError`: Source fetching failure.
+  - `ParserError`: Failure during payload parsing.
+  - `ValidationError`: Lead payload failed normalization validation.
+  - `RetryableError`: Transient network/rate-limit error eligible for automatic retries.
 
-- Run `pnpm typecheck` after connector or parser changes.
-- Run the relevant API preview or connection-test routes.
-- Add focused fixtures when a payload shape is source-specific.
-- Keep any new runtime helper narrow and testable.
+---
 
-## Related files
+## Testing Workflow
 
-- [`src/connectors/types.ts`](../src/connectors/types.ts)
-- [`src/connectors/registry.ts`](../src/connectors/registry.ts)
-- [`src/connectors/gmail/gmail-connector.ts`](../src/connectors/gmail/gmail-connector.ts)
-- [`src/connectors/rest/rest-connector.ts`](../src/connectors/rest/rest-connector.ts)
-- [`src/parsers/base-parser.ts`](../src/parsers/base-parser.ts)
-- [`src/parsers/registry.ts`](../src/parsers/registry.ts)
-- [`src/parsers/example-parser.ts`](../src/parsers/example-parser.ts)
-- [`src/connectors/gmail/gmail-parser.ts`](../src/connectors/gmail/gmail-parser.ts)
+1. **Parser Preview**: Test parser output against sample JSON payloads using `POST /api/parsers/preview`.
+2. **Connector Connection Test**: Test Gmail or REST connector configuration using `POST /api/providers/connectors/test`.
+3. **Manual Sync Execution**: Exercise end-to-end sync, duplicate detection, and lead creation using `POST /api/connectors/[id]/sync`.
+4. **REST Connector Testing**: Use an externally supplied test fixture or a separately hosted local JSON endpoint; the production application does not expose mock data routes.
+5. **Type Checking & Linting**:
+   ```bash
+   pnpm typecheck
+   pnpm lint
+   ```
+
+---
+
+## Known Limitations & Planned Enhancements
+
+This section explicitly documents intentionally incomplete features and architectural trade-offs:
+
+1. **Secret Management UI vs Server Environment / DB Storage**:
+   - Gmail OAuth credentials are stored strictly in server environment variables (`GMAIL_<KEY>_*`).
+   - REST connector auth tokens/keys are stored in `Connector.configuration` (DB JSON column) and intentionally excluded from client serialization.
+   - *Future Enhancement*: Implement a encrypted secrets manager for editing REST API keys in the Admin UI.
+
+2. **REST Configuration Form UI**:
+   - Connectors can be created and toggled in the Admin UI, but REST-specific endpoints, headers, and pagination parameters must be set via direct API calls (`PATCH /api/connectors/[id]/settings`) or database seeds.
+   - *Future Enhancement*: Add a form tab in `ConnectorEditModal` for editing REST endpoints and pagination settings.
+
+3. **Routing Rules for Non-Email REST Payloads**:
+   - The `RoutingRule` model is oriented toward email fields (`senderEmail`, `senderDomain`, `subjectContains`). REST payloads derive routing hints from matching record fields (`email`, `domain`, `subject`). REST payloads lacking email fields rely on catch-all fallback rules (`fallback: true`).
+   - *Future Enhancement*: Expand `RoutingRule` with generic JSON payload field matching.
+
+4. **In-Process Scheduler vs Distributed Job Queue**:
+   - The scheduler (`ConnectorScheduler`) and manual syncs run synchronously in-process using database locks (`ExecutionLock`). There is no external Redis/BullMQ worker pool.
+   - *Future Enhancement*: Migrate sync execution to a distributed background worker system if scale demands it.
+
+5. **Audit Log Retention & Automated Purging**:
+   - `AuditLog` records persist indefinitely in PostgreSQL. CSV exports allow archiving, but automated cron-based log purging is not currently enabled.
+   - *Future Enhancement*: Add a background retention cleanup job to archive/purge audit logs older than a configurable retention period (e.g. 90 days).
+
+6. **Lead Sync Update Matching**:
+   - Sync executions create new leads when external IDs are unknown or unmatched. Re-importing existing leads with modified fields updates sync history counters, but lead field merging for existing leads is not yet implemented.
+   - *Future Enhancement*: Implement field-level merge strategies for updated inbound leads.
+
+---
+
+## Related Files
+
 - [`src/runtime/connector-runtime.ts`](../src/runtime/connector-runtime.ts)
-- [`src/runtime/parser-runtime.ts`](../src/runtime/parser-runtime.ts)
-- [`src/runtime/lead-normalizer.ts`](../src/runtime/lead-normalizer.ts)
-- [`src/runtime/retry-policy.ts`](../src/runtime/retry-policy.ts)
 - [`src/runtime/routing-engine.ts`](../src/runtime/routing-engine.ts)
+- [`src/connectors/registry.ts`](../src/connectors/registry.ts)
+- [`src/parsers/registry.ts`](../src/parsers/registry.ts)
+- [`src/services/export.service.ts`](../src/services/export.service.ts)
+- [`src/lib/validation.ts`](../src/lib/validation.ts)

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withApiAuthorization, apiError } from "@/lib/api";
+import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { exportService } from "@/services/export.service";
 import { Permission, can } from "@/lib/permissions";
 
@@ -29,7 +29,7 @@ export const GET = withApiAuthorization(["ADMIN", "SALES"], async (request, _con
         const from = searchParams.get("from") ? new Date(searchParams.get("from")!) : undefined;
         const to = searchParams.get("to") ? new Date(searchParams.get("to")!) : undefined;
         const search = searchParams.get("search") || undefined;
-        csv = await exportService.exportLeads({ status, assignedUserId, from, to, search });
+        csv = await exportService.exportLeads({ status, assignedUserId, from, to, search }, session.user);
         break;
       }
       case "users": {
@@ -76,6 +76,6 @@ export const GET = withApiAuthorization(["ADMIN", "SALES"], async (request, _con
       },
     });
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Export failed", 500);
+    return handleApiError(error, "Export failed");
   }
 });

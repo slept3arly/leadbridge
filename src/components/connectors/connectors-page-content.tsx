@@ -44,9 +44,11 @@ const SCHEDULE_LABELS: Record<string, string> = {
 export function ConnectorsPageContent({
   connectors,
   kpi,
+  providers,
 }: {
   connectors: SerializedConnector[];
   kpi: KpiMetrics;
+  providers: Array<{ id: string; name: string; active: boolean }>;
 }) {
   const router = useRouter();
 
@@ -191,7 +193,19 @@ export function ConnectorsPageContent({
                 <div>
                   <p className="font-semibold">{c.name}</p>
                   <p className="text-xs text-[var(--color-muted)]">{c.type.toUpperCase()}</p>
+                  <p className="text-xs text-[var(--color-muted)]">
+                    {c.source?.name ? `Provider: ${c.source.name}` : "Provider: Unassigned"}
+                  </p>
                 </div>
+              ),
+            },
+            {
+              key: "provider",
+              header: "Provider",
+              render: (c: SerializedConnector) => (
+                <span className="text-sm text-[var(--color-ink)]">
+                  {c.source?.name ?? "Unassigned"}
+                </span>
               ),
             },
             {
@@ -325,6 +339,7 @@ export function ConnectorsPageContent({
         open={editOpen}
         onClose={closeEdit}
         connector={editMode === "edit" && selectedConnector ? selectedConnector : null}
+        providers={providers}
       />
 
       <SyncHistoryModal

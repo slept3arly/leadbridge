@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { after } from "next/server";
 import { settingsService } from "@/services/settings.service";
 
 type DbClient = Pick<typeof prisma, "auditLog">;
@@ -11,6 +12,27 @@ export class AuditService {
       return typeof limit === "number" && limit > 0 ? limit : 1000;
     } catch {
       return 1000;
+    }
+  }
+
+  private async cleanupRetention() {
+    try {
+      const maxLogCount = await this.getRetentionLimit();
+      const total = await prisma.auditLog.count();
+      if (total <= maxLogCount) return;
+
+      const oldest = await prisma.auditLog.findMany({
+        select: { id: true },
+        orderBy: { createdAt: "asc" },
+        take: total - maxLogCount,
+      });
+      if (oldest.length > 0) {
+        await prisma.auditLog.deleteMany({
+          where: { id: { in: oldest.map((o) => o.id) } },
+        });
+      }
+    } catch (e) {
+      logger.error(e, "audit retention cleanup failed");
     }
   }
 
@@ -37,23 +59,10 @@ export class AuditService {
     });
 
     try {
-      const maxLogCount = await this.getRetentionLimit();
-      const total = await prisma.auditLog.count();
-      if (total > maxLogCount) {
-        const overflow = total - maxLogCount;
-        const oldest = await prisma.auditLog.findMany({
-          select: { id: true },
-          orderBy: { createdAt: "asc" },
-          take: overflow,
-        });
-        if (oldest.length > 0) {
-          await prisma.auditLog.deleteMany({
-            where: { id: { in: oldest.map((o) => o.id) } },
-          });
-        }
-      }
-    } catch (e) {
-      logger.error(e, "audit retention cleanup failed");
+      after(() => this.cleanupRetention());
+    } catch {
+      // Service calls outside a request (for example smoke tests) still enforce retention synchronously.
+      await this.cleanupRetention();
     }
 
     return entry;

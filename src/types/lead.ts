@@ -17,6 +17,7 @@ export type NormalizedLead = {
   requirement?: string;
   sourceId?: string;
   sourceReferenceId?: string;
+  connectorId?: string;
   assignedUserId?: string;
   status?: LeadStatus;
   priority?: LeadPriority;

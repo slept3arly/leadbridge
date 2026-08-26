@@ -73,6 +73,7 @@ export const leadSchema = z.object({
   rawPayload: z.record(z.string(), z.unknown()).optional().nullable(),
   sourceId: z.string().optional().nullable(),
   sourceReferenceId: optionalString(120),
+  connectorId: z.string().optional().nullable(),
   assignedUserId: z.string().optional().nullable(),
   status: leadStatusSchema.optional(),
   priority: leadPrioritySchema.optional(),
@@ -119,6 +120,8 @@ export const routingRuleSchema = z.object({
   parserId: z.string().min(1),
   connectorId: z.string().optional().nullable(),
 });
+
+export const routingRuleUpdateSchema = routingRuleSchema.partial();
 
 export const unmatchedActionSchema = z.object({
   action: z.enum(["ASSIGN", "CREATE_PROVIDER", "IGNORE", "SPAM", "REQUEST_PARSER"]),

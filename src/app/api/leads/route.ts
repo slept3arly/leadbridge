@@ -20,9 +20,12 @@ export const POST = withApiAuthorization(undefined, async (request, _context, se
   }
 
   try {
-    const lead = await leadService.create(parsed.data, session.user);
+    const result = await leadService.create(parsed.data, session.user);
+    if (result.status === "skipped") {
+      return NextResponse.json({ error: result.reason }, { status: 409 });
+    }
     invalidateAfterMutation(session.user.id);
-    return NextResponse.json(lead, { status: 201 });
+    return NextResponse.json(result.lead, { status: 201 });
   } catch (error) {
     return handleApiError(error, "Failed to create lead");
   }

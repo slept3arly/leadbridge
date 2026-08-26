@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withApiAuthorization, apiError } from "@/lib/api";
+import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { reportService } from "@/services/report.service";
 
 function parseDateRange(searchParams: URLSearchParams): { from?: Date; to?: Date } {
@@ -50,6 +50,6 @@ export const GET = withApiAuthorization("ADMIN", async (request) => {
         return apiError(`Unknown report type: ${type}. Supported: summary, sources, assignments, activity, trends, status`, 400);
     }
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Report generation failed", 500);
+    return handleApiError(error, "Report generation failed");
   }
 });

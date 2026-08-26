@@ -5,6 +5,7 @@ import { IconActionButton } from "@/components/ui/icon-action-button";
 import { Badge } from "@/components/ui/badge";
 import { Archive, Trash2 } from "lucide-react";
 import { formatDateShort as formatDate, formatTime } from "@/lib/utils";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 type AttentionCardProps = {
   leadId: string;
@@ -47,6 +48,8 @@ export function AttentionCard({
   onArchive,
   onDelete,
 }: AttentionCardProps) {
+  const hydrated = useHydrated();
+  const timeZone = hydrated ? undefined : "UTC";
   const reason =
     followUpTitle ??
     (daysSinceActivity !== undefined && daysSinceActivity > 0
@@ -82,19 +85,19 @@ export function AttentionCard({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--color-muted)]">
             {dueDate && (
               <span>
-                Due {formatDate(dueDate)}{dueTime ? ` \u2022 ${formatTime(dueTime)}` : ""}
+                Due {formatDate(dueDate, "-", timeZone)}{dueTime ? ` \u2022 ${formatTime(dueTime)}` : ""}
               </span>
             )}
             {assignedAt && !dueDate && (
               <span>
-                {formatDate(assignedAt)}
+                {formatDate(assignedAt, "-", timeZone)}
                 {source ? ` \u2022 ${source}` : ""}
                 {assignedBy ? ` \u2022 ${assignedBy}` : ""}
               </span>
             )}
             {lastActivity && !dueDate && (
               <span>
-                {formatDate(lastActivity)}
+                {formatDate(lastActivity, "-", timeZone)}
                 {source ? ` \u2022 ${source}` : ""}
               </span>
             )}

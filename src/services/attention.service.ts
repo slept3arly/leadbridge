@@ -190,24 +190,50 @@ export class AttentionService {
       lastActivityDate: Date;
       sourceName: string | null;
     }>>`
+      WITH assigned_leads AS MATERIALIZED (
+        SELECT l."id", l."name", l."company", l."phone", l."category", l."priority", l."updatedAt", l."sourceId"
+        FROM "Lead" l
+        WHERE l."assignedUserId" = ${userId}
+          AND l."isDeleted" = false
+      ),
+      note_dates AS (
+        SELECT n."leadId", MAX(n."createdAt") AS "lastNoteDate"
+        FROM "Note" n
+        INNER JOIN assigned_leads al ON al."id" = n."leadId"
+        GROUP BY n."leadId"
+      ),
+      follow_up_dates AS (
+        SELECT f."leadId", MAX(f."completedAt") AS "lastFollowUpDate"
+        FROM "FollowUp" f
+        INNER JOIN assigned_leads al ON al."id" = f."leadId"
+        WHERE f."status" = 'COMPLETED'
+        GROUP BY f."leadId"
+      ),
+      activity_dates AS (
+        SELECT a."leadId", MAX(a."createdAt") AS "lastActivityRecordDate"
+        FROM "LeadActivity" a
+        INNER JOIN assigned_leads al ON al."id" = a."leadId"
+        GROUP BY a."leadId"
+      )
       SELECT
-        l."id",
-        l."name",
-        l."company",
-        l."phone",
-        l."category",
-        l."priority",
+        al."id",
+        al."name",
+        al."company",
+        al."phone",
+        al."category",
+        al."priority",
         GREATEST(
-          l."updatedAt",
-          COALESCE((SELECT MAX(n."createdAt") FROM "Note" n WHERE n."leadId" = l."id"), '1970-01-01'::timestamp),
-          COALESCE((SELECT MAX(f."completedAt") FROM "FollowUp" f WHERE f."leadId" = l."id" AND f."status" = 'COMPLETED'), '1970-01-01'::timestamp),
-          COALESCE((SELECT MAX(a."createdAt") FROM "LeadActivity" a WHERE a."leadId" = l."id"), '1970-01-01'::timestamp)
+          al."updatedAt",
+          COALESCE(nd."lastNoteDate", '1970-01-01'::timestamp),
+          COALESCE(fd."lastFollowUpDate", '1970-01-01'::timestamp),
+          COALESCE(ad."lastActivityRecordDate", '1970-01-01'::timestamp)
         ) as "lastActivityDate",
         s."name" as "sourceName"
-      FROM "Lead" l
-      LEFT JOIN "LeadSource" s ON s."id" = l."sourceId"
-      WHERE l."assignedUserId" = ${userId}
-        AND l."isDeleted" = false
+      FROM assigned_leads al
+      LEFT JOIN note_dates nd ON nd."leadId" = al."id"
+      LEFT JOIN follow_up_dates fd ON fd."leadId" = al."id"
+      LEFT JOIN activity_dates ad ON ad."leadId" = al."id"
+      LEFT JOIN "LeadSource" s ON s."id" = al."sourceId"
       ORDER BY "lastActivityDate" ASC
       LIMIT 20
     `;

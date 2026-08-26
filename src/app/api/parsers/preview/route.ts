@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
 import { parserService } from "@/services/parser.service";
 import { LeadNormalizer } from "@/runtime/lead-normalizer";
+import { logger } from "@/lib/logger";
 
 export const POST = withApiAuthorization("ADMIN", async (request) => {
   let body: unknown;
@@ -42,10 +43,11 @@ export const POST = withApiAuthorization("ADMIN", async (request) => {
       },
     });
   } catch (error) {
+    logger.error(error, "Parser preview failed");
     return NextResponse.json({
       data: {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: "Parser preview failed. Please check the payload and parser configuration.",
         manifest: parser.manifest,
       },
     });

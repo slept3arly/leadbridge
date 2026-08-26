@@ -22,7 +22,11 @@ export function canAccessProtectedSession(session: AppSession | null): session i
 }
 
 export async function getSession() {
-  return auth.api.getSession({ headers: await headers() }) as Promise<AppSession | null>;
+  try {
+    return await auth.api.getSession({ headers: await headers() }) as AppSession | null;
+  } catch {
+    return null;
+  }
 }
 
 export async function requireSession(role?: AppRole) {

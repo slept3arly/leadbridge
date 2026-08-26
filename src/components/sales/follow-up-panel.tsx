@@ -10,6 +10,8 @@ import { FormField } from "@/components/ui/form-field";
 import { LEAD_PRIORITIES } from "@/lib/lead-constants";
 import { toast } from "@/lib/toast";
 import { useLeadDetails } from "@/hooks/use-lead-details";
+import { formatDate as formatDateValue } from "@/lib/utils";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 type User = { id: string; name: string };
 
@@ -19,6 +21,7 @@ export function FollowUpPanel({ leadId, currentUserId }: { leadId: string; curre
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const { data, loading: detailsLoading, refresh } = useLeadDetails(leadId);
+  const hydrated = useHydrated();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -95,7 +98,7 @@ export function FollowUpPanel({ leadId, currentUserId }: { leadId: string; curre
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    return formatDateValue(dateStr, "-", hydrated ? undefined : "UTC");
   }
 
   if (loading || detailsLoading) {

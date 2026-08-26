@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { withApiAuthorization, apiError } from "@/lib/api";
 import { z } from "zod";
+import { invalidateAdminDashboard } from "@/lib/cache-tags";
 
 const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
@@ -56,6 +57,7 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>("
       createdAt: true,
     },
   });
+  invalidateAdminDashboard();
 
   return NextResponse.json(updated);
 });

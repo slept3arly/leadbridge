@@ -86,6 +86,20 @@ function addApiKeyQueryParam(url: string, config: RestConnectorConfig): string {
   return url;
 }
 
+function maskSensitiveUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    for (const key of Array.from(url.searchParams.keys())) {
+      if (/(api[_-]?key|authorization|bearer|token|secret|password|client[_-]?secret|access[_-]?token|refresh[_-]?token)/i.test(key)) {
+        url.searchParams.set(key, "***masked***");
+      }
+    }
+    return url.toString();
+  } catch {
+    return value.replace(/(api[_-]?key|authorization|bearer|token|secret|password|client[_-]?secret|access[_-]?token|refresh[_-]?token)=([^&\s]*)/gi, "$1=***masked***");
+  }
+}
+
 function buildUrl(baseUrl: string, endpoint: string): string {
   const base = baseUrl.replace(/\/+$/, "");
   const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
@@ -139,7 +153,7 @@ function getPageParams(
 }
 
 function extractPaginationValue(
-  body: Record<string, unknown>,
+  body: unknown,
   path?: string,
 ): string | null {
   if (!path) return null;
@@ -155,8 +169,26 @@ function extractPaginationValue(
   return current != null ? String(current) : null;
 }
 
-function extractArray(body: Record<string, unknown>, path: string): Record<string, unknown>[] {
-  const parts = path.split(".");
+function describeJsonType(value: unknown): string {
+  if (Array.isArray(value)) return "array";
+  if (value === null) return "null";
+  return typeof value;
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function extractArray(body: unknown, path: string): Record<string, unknown>[] {
+  if (!path.trim()) {
+    return Array.isArray(body) ? (body as Record<string, unknown>[]) : [];
+  }
+
+  const parts = path.split(".").filter(Boolean);
+  if (parts.length === 0) {
+    return Array.isArray(body) ? (body as Record<string, unknown>[]) : [];
+  }
+
   let current: unknown = body;
   for (const part of parts) {
     if (current && typeof current === "object" && part in (current as Record<string, unknown>)) {
@@ -238,9 +270,18 @@ export class RestClient {
           const durationMs = Date.now() - startTime;
 
           const parsedBody = this.tryParseJson(responseData.body);
+          const records = extractArray(parsedBody, this.config.leadArrayPath);
+
+          logger.info("REST response parsed", {
+            page,
+            statusCode: responseData.status,
+            parsedJsonType: describeJsonType(parsedBody),
+            leadArrayPath: this.config.leadArrayPath,
+            extractedRecordCount: records.length,
+          });
 
           const document: RestDocument = {
-            url,
+            url: maskSensitiveUrl(url),
             method: this.config.method,
             statusCode: responseData.status,
             headers: this.maskSensitiveHeaders(responseData.headers),
@@ -256,17 +297,16 @@ export class RestClient {
               attempt,
               durationMs,
             },
-            rawPayload: parsedBody ?? {},
+            rawPayload: toRecord(parsedBody),
           };
           allDocuments.push(document);
 
           if (responseData.status >= 200 && responseData.status < 300) {
-            const records = parsedBody ? extractArray(parsedBody, this.config.leadArrayPath) : [];
             allRecords.push(...records);
 
-            cursor = extractPaginationValue(parsedBody ?? {}, this.config.pagination.cursorPath);
-            nextUrl = extractPaginationValue(parsedBody ?? {}, this.config.pagination.nextUrlPath);
-            token = extractPaginationValue(parsedBody ?? {}, this.config.pagination.tokenPath);
+            cursor = extractPaginationValue(parsedBody, this.config.pagination.cursorPath);
+            nextUrl = extractPaginationValue(parsedBody, this.config.pagination.nextUrlPath);
+            token = extractPaginationValue(parsedBody, this.config.pagination.tokenPath);
 
             logger.info("REST page fetched", {
               page,
@@ -295,12 +335,12 @@ export class RestClient {
             continue;
           }
 
-          throw classifyRestError(new Error(`HTTP ${responseData.status}: ${responseData.body.slice(0, 200)}`), responseData.status);
+          throw classifyRestError(new Error(`HTTP ${responseData.status}`), responseData.status);
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
           if (error instanceof RestRateLimitError || error instanceof RestServerError || error instanceof RestTimeoutError || error instanceof RestNetworkError) {
             if (attempt < retryCount) {
-              logger.info("Retryable error, retrying", { error: lastError.message, attempt });
+              logger.info("Retryable error, retrying", { errorType: lastError.name, attempt });
               await delay(rateLimitDelay * attempt);
               continue;
             }
@@ -310,7 +350,7 @@ export class RestClient {
       }
 
       if (lastError) {
-        logger.error("REST page failed", { error: lastError.message, page });
+        logger.error("REST page failed", { errorType: lastError.name, page });
         throw lastError;
       }
 
@@ -344,26 +384,28 @@ export class RestClient {
       });
 
       const parsedBody = this.tryParseJson(response.body);
-      const records = parsedBody ? extractArray(parsedBody, this.config.leadArrayPath) : [];
+      const records = extractArray(parsedBody, this.config.leadArrayPath);
 
       return {
         success: response.status >= 200 && response.status < 300,
         statusCode: response.status,
-        error: response.status >= 200 && response.status < 300 ? undefined : `HTTP ${response.status}: ${response.body.slice(0, 200)}`,
+        error: response.status >= 200 && response.status < 300 ? undefined : `HTTP ${response.status}`,
         details: {
           method: this.config.method,
-          url,
+          url: maskSensitiveUrl(url),
           statusCode: response.status,
           contentType: response.headers["content-type"],
           bodySize: response.body.length,
           recordsFound: records.length,
+          parsedJsonType: describeJsonType(parsedBody),
+          leadArrayPath: this.config.leadArrayPath,
           authType: this.config.auth.type,
         },
       };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? error.name : "Connection failed",
         details: {
           method: this.config.method,
           authType: this.config.auth.type,
@@ -372,7 +414,7 @@ export class RestClient {
     }
   }
 
-  private tryParseJson(body: string): Record<string, unknown> | null {
+  private tryParseJson(body: string): unknown {
     try {
       return JSON.parse(body);
     } catch {

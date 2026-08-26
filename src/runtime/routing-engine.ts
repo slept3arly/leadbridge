@@ -36,6 +36,7 @@ export class RoutingEngine {
         return { match: this.toMatch(rule) };
       }
       if (
+        (!rule.connectorId || !connectorId || rule.connectorId === connectorId) &&
         (!rule.recipientGmailAccount ||
           rule.recipientGmailAccount === hints.recipientGmailAccount) &&
         (!rule.senderEmail ||

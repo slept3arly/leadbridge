@@ -22,22 +22,24 @@ async function main() {
   const adminActor = { id: admin.id, role: UserRole.ADMIN };
   const salesActor = { id: sales.id, role: UserRole.SALES };
 
-  const lead = await leadService.create({ name: `Phase 2 Lead ${suffix}`, email: `lead-${suffix}@example.test`, phone: null, company: null, alternatePhone: null, address: null, city: null, state: null, country: null, product: null, requirement: null, industry: null, website: null, jobTitle: null, budget: null, expectedValue: null, currency: null, campaign: null, campaignId: null, utmSource: null, utmMedium: null, utmCampaign: null, utmContent: null, utmTerm: null, nextFollowUpAt: null, lostReason: null, wonAmount: null, customFields: null, rawPayload: { provider: "smoke-test" }, sourceId: null, sourceReferenceId: `ref-${suffix}`, assignedUserId: null, status: "NEW", priority: "HIGH" }, adminActor);
+  const createResult = await leadService.create({ name: `Phase 2 Lead ${suffix}`, email: `lead-${suffix}@example.test`, phone: null, company: null, alternatePhone: null, address: null, city: null, state: null, country: null, product: null, requirement: null, industry: null, website: null, jobTitle: null, budget: null, expectedValue: null, currency: null, campaign: null, campaignId: null, utmSource: null, utmMedium: null, utmCampaign: null, utmContent: null, utmTerm: null, nextFollowUpAt: null, lostReason: null, wonAmount: null, customFields: null, rawPayload: { provider: "smoke-test" }, sourceId: null, sourceReferenceId: `ref-${suffix}`, assignedUserId: null, status: "NEW", priority: "HIGH" }, adminActor);
+  if (createResult.status === "skipped") throw new Error("Lead creation returned skipped");
+  const lead = createResult.lead;
   await leadService.assign(lead.id, sales.id, adminActor);
   await leadService.update(lead.id, { status: "ON_HOLD", nextFollowUpAt: new Date(Date.now() + 86_400_000) }, salesActor);
   const note = await noteService.create(lead.id, { whatIDid: "Smoke-test follow-up note" }, salesActor);
   await noteService.update(note.id, { whatIDid: "Edited smoke-test follow-up note" }, salesActor);
 
-  const page = await leadService.listPage(parseListQuery(new URLSearchParams(`search=${encodeURIComponent(lead.name)}&pageSize=1`)), adminActor);
+  const leadName = `Phase 2 Lead ${suffix}`;
+  const page = await leadService.listPage(parseListQuery(new URLSearchParams(`search=${encodeURIComponent(leadName)}&pageSize=1`)), adminActor);
   if (page.pagination.total !== 1 || page.data[0]?.id !== lead.id) throw new Error("Lead search/pagination failed");
   const activitiesBeforeDelete = await prisma.leadActivity.count({ where: { leadId: lead.id } });
   const auditsBeforeDelete = await prisma.auditLog.count({ where: { entityId: lead.id } });
   if (activitiesBeforeDelete < 4 || auditsBeforeDelete < 3) throw new Error("Activity/audit generation failed");
 
   await leadService.remove(lead.id, adminActor);
-  if ((await leadService.listPage(parseListQuery(new URLSearchParams(`search=${encodeURIComponent(lead.name)}`)), adminActor)).pagination.total !== 0) throw new Error("Soft delete filtering failed");
-  await leadService.restore(lead.id, adminActor);
-  if ((await leadService.listPage(parseListQuery(new URLSearchParams(`search=${encodeURIComponent(lead.name)}`)), adminActor)).pagination.total !== 1) throw new Error("Lead restore failed");
+  if ((await leadService.listPage(parseListQuery(new URLSearchParams(`search=${encodeURIComponent(leadName)}`)), adminActor)).pagination.total !== 0) throw new Error("Hard delete filtering failed");
+  if (await prisma.lead.count({ where: { id: lead.id } }) !== 0) throw new Error("Lead was not hard-deleted from database");
 
   const source = await prisma.leadSource.create({ data: { name: `Phase 2 Source ${suffix}`, slug: `phase-2-source-${suffix}`, sourceType: "SMOKE_TEST" } });
   const parser = await prisma.parser.create({ data: { name: `Phase 2 Parser ${suffix}`, type: "SMOKE_TEST", version: "1.0.0" } });
@@ -45,7 +47,6 @@ async function main() {
   await connectorService.recordSyncRun(connector.id, "ACTIVE", { recordsSeen: 1, recordsCreated: 1 });
   if (await prisma.connectorSyncRun.count({ where: { connectorId: connector.id } }) !== 1) throw new Error("Connector sync history failed");
 
-  await prisma.lead.delete({ where: { id: lead.id } });
   await prisma.connector.delete({ where: { id: connector.id } });
   await prisma.parser.delete({ where: { id: parser.id } });
   await prisma.leadSource.delete({ where: { id: source.id } });

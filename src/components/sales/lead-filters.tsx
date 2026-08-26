@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Select } from "@/components/ui/select";
 import { DateRangePicker } from "@/components/shared/date-range-picker";
 import { ActiveFilters } from "@/components/shared/active-filters";
@@ -9,6 +9,7 @@ import { LeadDetailsModal } from "@/components/sales/lead-details-modal";
 import { Button } from "@/components/ui/button";
 import { Archive } from "lucide-react";
 import { LEAD_STATUSES, LEAD_PRIORITIES, LEAD_CATEGORIES } from "@/lib/lead-constants";
+import { formatDate } from "@/lib/utils";
 import type { TableQueryState } from "@/hooks/use-table-query";
 
 type LeadFiltersProps = {
@@ -23,6 +24,12 @@ const filterClass = "w-full sm:w-[135px]";
 export function LeadFilters({ query, isAdmin, currentUserId, canArchive = false }: LeadFiltersProps) {
   const [showArchived, setShowArchived] = useState(false);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHydrated(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const setFilter = (key: string, value: string) => {
     if (value) {
@@ -57,21 +64,19 @@ export function LeadFilters({ query, isAdmin, currentUserId, canArchive = false 
       labels.push({ key: "category", label: `Category: ${opt?.label ?? query.filters.category}` });
     }
     if (query.dateFrom) {
-      const d = new Date(query.dateFrom);
       labels.push({
         key: "dateFrom",
-        label: `From: ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`,
+        label: `From: ${formatDate(query.dateFrom, "-", hydrated ? undefined : "UTC")}`,
       });
     }
     if (query.dateTo) {
-      const d = new Date(query.dateTo);
       labels.push({
         key: "dateTo",
-        label: `To: ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`,
+        label: `To: ${formatDate(query.dateTo, "-", hydrated ? undefined : "UTC")}`,
       });
     }
     return labels;
-  }, [query.filters, query.dateFrom, query.dateTo]);
+  }, [query.filters, query.dateFrom, query.dateTo, hydrated]);
 
   const resetAll = () => {
     query.update({

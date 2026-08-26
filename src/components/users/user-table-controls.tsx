@@ -5,8 +5,9 @@ import { Pagination } from "@/components/ui/pagination";
 import { SearchToolbar } from "@/components/shared/search-toolbar";
 import { Select } from "@/components/ui/select";
 import { ActiveFilters } from "@/components/shared/active-filters";
-import { Filter, X, Plus } from "lucide-react";
+import { Filter, X } from "lucide-react";
 import { useTableQuery, type TableQueryState } from "@/hooks/use-table-query";
+import { formatDate } from "@/lib/utils";
 
 const SORT_OPTIONS = [
   { value: "createdAt:desc", label: "Newest Created" },
@@ -34,8 +35,14 @@ export function UserTableControls({
 }) {
   const query = useTableQuery(initial);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHydrated(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!filterOpen) return;
@@ -88,21 +95,19 @@ export function UserTableControls({
       labels.push({ key: "active", label: query.filters.active === "true" ? "Active only" : "Inactive only" });
     }
     if (query.dateFrom) {
-      const d = new Date(query.dateFrom);
       labels.push({
         key: "dateFrom",
-        label: `From: ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`,
+        label: `From: ${formatDate(query.dateFrom, "-", hydrated ? undefined : "UTC")}`,
       });
     }
     if (query.dateTo) {
-      const d = new Date(query.dateTo);
       labels.push({
         key: "dateTo",
-        label: `To: ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`,
+        label: `To: ${formatDate(query.dateTo, "-", hydrated ? undefined : "UTC")}`,
       });
     }
     return labels;
-  }, [query.filters, query.dateFrom, query.dateTo]);
+  }, [query.filters, query.dateFrom, query.dateTo, hydrated]);
 
   const resetAll = () => {
     query.update({

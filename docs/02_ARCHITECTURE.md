@@ -1,486 +1,539 @@
-# LeadBridge Backend Architecture
+# LeadBridge Architecture & System Design
 
 ## Purpose
 
-This document describes how the current backend is organized, how requests move
-through the app, and where the connector and parser execution paths fit.
+This document describes the architectural layout, system flow diagrams, data model, component boundaries, runtime pipelines, and UI design principles for LeadBridge.
 
 ## Scope
 
-- Next.js App Router application
-- One PostgreSQL database
-- Better Auth for credentials and sessions
-- Prisma 7 with the PostgreSQL adapter
-- In-process connector execution
-- Small internal CRM, not a distributed platform
+- Single-organization, single-tenant Next.js App Router architecture
+- PostgreSQL database connected via Prisma 7 and the `@prisma/adapter-pg` driver adapter
+- Credentials authentication and session management via Better Auth
+- In-process connector execution, routing engine, and lead normalization
+- Unified design system across Admin and Sales panels
 
-## Overall architecture
+---
 
-```text
-Browser
-  -> Next.js pages / route handlers
-       -> session + Zod validation
-            -> service layer
-                 -> Prisma 7 client + PrismaPg adapter
-                      -> PostgreSQL
-```
+## Overall System Architecture
 
 ```mermaid
 flowchart LR
-  Browser --> Pages[App Router pages]
-  Browser --> API[Route handlers]
-  Pages --> Session[requireSession / getSession]
-  API --> Auth[withApiAuthorization]
-  Session --> Services[Service layer]
-  Auth --> Services
-  Services --> Prisma[Prisma client]
-  Prisma --> DB[(PostgreSQL)]
-  Services --> ConnectorRuntime[Connector runtime]
-  ConnectorRuntime --> Connectors[Gmail / REST connectors]
-  ConnectorRuntime --> Parsers[Parser registry]
-  ConnectorRuntime --> LeadService[Lead service]
-  ConnectorRuntime --> SyncHistory[Sync history]
-  ConnectorRuntime --> Routing[Routing engine]
+  subgraph Client ["Client Layer"]
+    Browser["Browser / SPA"]
+  end
+
+  subgraph Edge ["Application Boundary"]
+    Middleware["src/middleware.ts (Cookie Check)"]
+    Pages["App Router Pages (src/app)"]
+    API["Route Handlers (src/app/api)"]
+    AuthHelper["requireSession / withApiAuthorization"]
+  end
+
+  subgraph Services ["Domain Services Layer (src/services)"]
+    LeadSvc["LeadService"]
+    UserSvc["UserService"]
+    ProviderSvc["ProviderService"]
+    ConnectorSvc["ConnectorService"]
+    FollowUpSvc["FollowUpService"]
+    AuditSvc["AuditService"]
+    ExportSvc["ExportService"]
+    ReportSvc["ReportService"]
+    SettingsSvc["SettingsService"]
+  end
+
+  subgraph Runtime ["Connector & Parser Runtime (src/runtime)"]
+    ConnectorRuntime["ConnectorRuntime"]
+    RoutingEngine["RoutingEngine"]
+    ParserRuntime["ParserRuntime"]
+    LeadNormalizer["LeadNormalizer"]
+    ExecLock["ExecutionLock"]
+    HealthSvc["ConnectorHealthService"]
+    SyncHist["SyncHistory"]
+  end
+
+  subgraph Database ["Infrastructure"]
+    Prisma["Prisma 7 Client (@prisma/adapter-pg)"]
+    DB[(PostgreSQL)]
+  end
+
+  Browser --> Middleware
+  Middleware --> Pages
+  Browser --> API
+  Pages --> AuthHelper
+  API --> AuthHelper
+  AuthHelper --> Services
+  Services --> Prisma
+  Prisma --> DB
+  Services --> ConnectorRuntime
+  ConnectorRuntime --> ExecLock
+  ConnectorRuntime --> RoutingEngine
+  ConnectorRuntime --> ParserRuntime
+  ParserRuntime --> LeadNormalizer
+  LeadNormalizer --> LeadSvc
+  ConnectorRuntime --> SyncHist
+  ConnectorRuntime --> HealthSvc
 ```
 
-The key design rule is simple: HTTP concerns stay at the edge, business rules
-stay in services, and connector-specific data stays inside the runtime pipeline.
+---
 
-## Layer responsibilities
+## Architecture Flow Diagrams
 
-| Layer | Locations | Responsibility |
-| --- | --- | --- |
-| Presentation | `src/app`, `src/components` | App Router pages, layouts, and feature UI. |
-| Application boundary | `src/app/api`, `src/lib/session.ts`, `src/lib/api.ts`, `src/lib/validation.ts` | Authentication, authorization, request parsing, and response shaping. |
-| Domain services | `src/services` | Lead, user, provider, connector, parser, note, audit, unmatched-email, parser-request, and scheduler orchestration. |
-| Runtime | `src/runtime` | Connector execution, routing, normalization, retries, sync history, and runtime errors. |
-| Integration contracts | `src/connectors`, `src/parsers`, `src/types` | Connector and parser contracts plus normalized shared payload shapes. |
-| Infrastructure | `src/lib/prisma.ts`, `src/lib/auth.ts`, `src/lib/logger.ts`, `prisma` | Prisma client, Better Auth, logging, schema, migrations, and seed script. |
+### 1. Request Flow
 
-## Routing and protection
+The request lifecycle ensures that HTTP concerns, authentication, and validation are handled at the edge before invoking domain services.
 
-The top-level routing model is:
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User / Client
+    participant MW as Middleware (Cookie Check)
+    participant Route as Route Handler / Page
+    participant Auth as withApiAuthorization / requireSession
+    participant Val as Zod Validation
+    participant Service as Domain Service
+    participant Prisma as Prisma 7 Client
+    participant DB as PostgreSQL DB
 
-- `/login` for credential login
-- `/admin/*` for administrator workflows
-- `/sales/*` for sales workflows
-- `/api/auth/[...all]` for Better Auth
-- `/api/*` for application routes
-
-`src/middleware.ts` performs only an early redirect based on cookie presence.
-It is a navigation optimization, not an authorization layer.
-
-Actual authorization happens in:
-
-- `requireSession`
-- `withApiAuthorization`
-
-These checks reject inactive, banned, or deleted users and enforce the expected role.
-
-## Authentication and roles
-
-Better Auth is configured for credentials-only login and disabled public signup.
-The application role model is intentionally small:
-
-| Role | Access model |
-| --- | --- |
-| `ADMIN` | Admin dashboard, user management, provider management, connector control, lead deletion and restore, assignment, and queue handling. |
-| `SALES` | Sales dashboard plus access to assigned leads and related notes. |
-
-The bootstrap seed creates the first administrator and is idempotent.
-
-## Database model
-
-Prisma connects to PostgreSQL through `PrismaPg`.
-The generated client lives in `src/generated/prisma`.
-
-Key model groups:
-
-- **Identity:** `User`, `Session`, `Account`, `Verification`
-- **CRM core:** `Lead`, `LeadSource`, `LeadActivity`, `Note`, `Attachment`
-- **Integration config:** `Connector`, `Parser`, `RoutingRule`, `FieldMapping`
-- **Operational queues:** `ConnectorSyncRun`, `UnmatchedEmail`, `ParserRequest`
-- **Operations:** `AuditLog`, `Setting`
-
-Representative indexes:
-
-- lead lookup by assigned user, status, and deletion state
-- email and phone lookups for duplicate checks
-- sync run history by connector and time
-- audit lookup by entity and actor
-
-The database is designed for bounded internal usage, not large-scale sharding.
-
-## Service layer
-
-Services are small classes exported as shared instances. They are the business
-boundary, not a repository abstraction.
-
-Important services:
-
-- `leadService` handles create, update, assign, restore, delete, stats, and paged listing.
-- `noteService` handles note list/create/update/delete with lead access checks.
-- `userService` handles list, paging, assignment candidates, stats, and bootstrap metadata.
-- `providerService` manages providers and routing rules.
-- `connectorService` handles connector listing, Gmail discovery, test helpers, and sync run listing.
-- `parserService` lists parser manifests and syncs them into the `Parser` table for admin display.
-- `unmatchedEmailService` and `parserRequestService` manage the review queues.
-- `schedulerService` triggers connector execution and records health.
-- `auditService` writes durable audit rows and structured logs.
-
-The rule of thumb is:
-
-```text
-route handler -> service -> Prisma
+    User->>MW: HTTP Request
+    MW->>Route: Pass through if cookie state valid
+    Route->>Auth: Validate Session & Role
+    alt Invalid Session or Insufficient Role
+        Auth-->>User: 401 Unauthorized / 403 Forbidden
+    else Valid Session
+        Auth->>Val: Parse & Validate Request Body/Params
+        alt Validation Fails
+            Val-->>User: 400 Bad Request (Zod Error)
+        else Validation Passes
+            Val->>Service: Execute Business Logic
+            Service->>Prisma: Database Query
+            Prisma->>DB: SQL Execution
+            DB-->>Prisma: Result Set
+            Prisma-->>Service: Typed Models
+            Service-->>Route: Service Result
+            Route-->>User: 200 OK Response (JSON / HTML)
+        end
+    end
 ```
 
-Do not scatter raw Prisma queries into new UI or route code when a service already exists.
+### 2. REST Import Flow
 
-## Connector and parser runtime
+Inbound REST payloads pass through pagination, array extraction, deduplication, routing, parsing, normalization, and lead creation.
 
-The connector runtime is the most important non-UI backend path.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Admin / Scheduler
+    participant SyncRoute as POST /api/connectors/[id]/sync
+    participant ExecLock as ExecutionLock
+    participant Runtime as ConnectorRuntime
+    participant REST as RestConnector / RestClient
+    participant ExternalAPI as External REST API
+    participant Routing as RoutingEngine
+    participant Parser as ParserRuntime (ExampleParser)
+    participant Norm as LeadNormalizer
+    participant LeadSvc as LeadService
+
+    Admin->>SyncRoute: Trigger Manual / Scheduled Sync
+    SyncRoute->>ExecLock: acquire(connectorId)
+    ExecLock-->>SyncRoute: Lock Acquired (isRunning = true)
+    SyncRoute->>Runtime: execute(connectorId, "rest", actor)
+    Runtime->>REST: execute(context)
+    REST->>ExternalAPI: HTTP GET/POST with Auth & Pagination
+    ExternalAPI-->>REST: JSON Response Body
+    REST->>REST: Extract lead array (leadArrayPath) & map RawPayloads
+    REST-->>Runtime: RawPayload[]
+    loop For Each RawPayload
+        Runtime->>Runtime: Check duplicate (_duplicateKey + connectorId)
+        alt Is Duplicate
+            Runtime->>Runtime: Increment duplicatesSkipped
+        else Is New Payload
+            Runtime->>Routing: route(routingHints)
+            Routing-->>Runtime: Matched RoutingRule (providerId, parserId)
+            Runtime->>Parser: parse(payload, parserId)
+            Parser-->>Runtime: NormalizedLead
+            Runtime->>Norm: validate(normalizedLead)
+            Norm-->>Runtime: ValidatedLead + Warnings
+            Runtime->>LeadSvc: create(leadInput)
+            LeadSvc-->>Runtime: Lead Created (Activity + Audit Log recorded)
+        end
+    end
+    Runtime->>SyncRoute: ConnectorExecutionResult
+    SyncRoute->>ExecLock: release(connectorId)
+    SyncRoute-->>Admin: 200 OK (Sync Stats)
+```
+
+### 3. Connector Lifecycle
+
+Connectors transition through initial configuration, schedule updates, execution lock acquisition, runtime execution, health recording, and sync history logging.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Inactive: Created (enabled=false)
+    Inactive --> Active: Admin enables connector
+    Active --> Locked: Sync Triggered (acquire lock)
+    
+    state Locked {
+        [*] --> Fetching: Fetch raw payloads
+        Fetching --> RoutingParsing: Match rules & parse
+        RoutingParsing --> LeadCreation: Persist leads & activity
+    }
+
+    Locked --> Healthy: Sync succeeds (consecutiveFailures=0)
+    Locked --> Warning: Sync fails (consecutiveFailures 1-2)
+    Locked --> Error: Sync fails (consecutiveFailures >= 3)
+    
+    Healthy --> Locked: Next schedule / Manual sync
+    Warning --> Locked: Next schedule / Manual sync
+    Error --> Locked: Admin fixes & triggers sync
+    
+    Healthy --> Inactive: Admin disables connector
+    Warning --> Inactive: Admin disables connector
+    Error --> Inactive: Admin disables connector
+```
+
+### 4. Lead Processing Pipeline
+
+Detailed flow showing raw lead transformation from raw source payload to fully enriched CRM record.
 
 ```mermaid
 flowchart TD
-  A[Connector execute] --> B[Raw payloads]
-  B --> C{Duplicate key?}
-  C -->|yes| D[Skip and record breakdown]
-  C -->|no| E{Routing rule match?}
-  E -->|no| F[Record unmatched email if available]
-  E -->|yes| G[Select parser]
-  G --> H[ParserRuntime.parse]
-  H --> I[LeadNormalizer.validate]
-  I --> J[LeadNormalizer.enrich]
-  J --> K[LeadService.create]
-  K --> L[LeadActivity + AuditLog]
+    A[Raw Source Record] --> B{Source Reference ID exists?}
+    B -->|Yes| C[Check DB for connectorId + sourceReferenceId]
+    B -->|No| D[Generate fallback duplicate key]
+    D --> C
+    C -->|Match Found| E[Skip Payload & Record Duplicate Count]
+    C -->|No Match| F[Routing Engine Evaluation]
+    F -->|No Match| G{Sender Email present?}
+    G -->|Yes| H[Create UnmatchedEmail Record]
+    G -->|No| I[Log Warning & Skip]
+    F -->|Match Found| J[Select Parser via RoutingRule]
+    J --> K[ParserRuntime.parse]
+    K --> L[LeadNormalizer.validate]
+    L --> M[LeadNormalizer.enrich]
+    M --> N[LeadService.create Transaction]
+    N --> O[Create Lead Row]
+    N --> P[Create LeadActivity - IMPORTED]
+    N --> Q[Create AuditLog - lead.created]
+    O --> R[Lead Available in CRM]
 ```
 
-Runtime responsibilities:
+### 5. Parser Flow
 
-- `ConnectorRuntime` runs the connector, retries transient failures, resolves routing, and persists sync history.
-- `RoutingEngine` matches incoming hints against active routing rules.
-- `ParserRuntime` resolves a parser by key and executes it.
-- `LeadNormalizer` validates the normalized lead and adds import metadata.
-- `SyncHistory` stores the run record and updates connector status fields.
-- `ExecutionLock` prevents concurrent runs of the same connector.
-- `ConnectorHealthService` updates health counters and status after each run.
+Parsers convert vendor-specific or channel-specific payload structures into normalized lead shapes.
 
-### Connector registration
+```mermaid
+flowchart LR
+    subgraph ParserRegistry ["Static Parser Registry"]
+        Example["ExampleParser ('example')"]
+        Gmail["GmailParser ('gmail')"]
+    end
 
-Current registered connector factories:
+    RawInput["RawPayload Input"] --> ParserRuntime["ParserRuntime.parse()"]
+    ParserRuntime --> RegistryLookup{Lookup parser key}
+    RegistryLookup -->|key = 'example'| Example
+    RegistryLookup -->|key = 'gmail'| Gmail
+    
+    Example --> Extractor1["Extract flat JSON fields (name, email, phone, company)"]
+    Gmail --> Extractor2["Extract headers, MIME body, plainText, html"]
+    
+    Extractor1 --> NormLead["NormalizedLead Output"]
+    Extractor2 --> NormLead
+```
 
-- `gmail`
-- `rest`
+### 6. Routing Flow
 
-The registry is static. New connector types must be added in code.
+The routing engine evaluates incoming payloads against active rules sorted by priority.
 
-### Parser registration
+```mermaid
+flowchart TD
+    InboundHints["Inbound Routing Hints (senderEmail, senderDomain, subject, recipient)"] --> QueryRules["Query Active RoutingRules (ordered by fallback ASC, priority ASC)"]
+    QueryRules --> RuleLoop{Iterate Rules}
+    
+    RuleLoop --> MatchCheck{Check Rule Criteria}
+    MatchCheck -->|Matches recipient, sender, domain, or subject| MatchFound[Return Match: providerId, parserId, ruleId]
+    MatchCheck -->|rule.fallback == true| MatchFound
+    MatchCheck -->|No match| NextRule{More Rules?}
+    
+    NextRule -->|Yes| RuleLoop
+    NextRule -->|No| CheckEmail{Sender Email present?}
+    
+    CheckEmail -->|Yes| QueueUnmatched[Create UnmatchedEmail Row]
+    CheckEmail -->|No| Unrouted[Return Null Routing Result]
+```
 
-Current parser registry entries:
+### 7. Admin Operations Flow
 
-- `example`
-- `gmail`
+Administrative actions flow through dedicated route handlers, performing authorized operations with structured audit logging.
 
-The parser registry is also static. `parserService.listForManagement()` mirrors
-the current parser catalog into the database for the admin UI.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Administrator
+    participant UI as Admin UI Component
+    participant API as Admin Route Handler
+    participant Service as Domain Service
+    participant Audit as AuditService
+    participant DB as PostgreSQL
 
-## API surface
+    Admin->>UI: Perform Action (User Provisioning, Provider Edit, Connector Edit)
+    UI->>API: HTTP Request (POST / PATCH / DELETE)
+    API->>API: withApiAuthorization("ADMIN")
+    API->>Service: Execute Operation
+    Service->>DB: Perform Database Mutation
+    DB-->>Service: Mutation Success
+    Service->>Audit: log(action, entityType, entityId, oldData, newData, actor)
+    Audit->>DB: INSERT INTO audit_logs
+    Audit-->>Service: Audit Row Created
+    Service-->>API: Operation Result
+    API-->>UI: 200 OK Response
+    UI-->>Admin: Refresh UI & Show Success Toast
+```
 
-Important backend routes:
+### 8. Dashboard Data Flow
 
-- `/api/leads`
-- `/api/users`
-- `/api/providers`
-- `/api/providers/routing-rules`
-- `/api/providers/unmatched`
-- `/api/providers/parser-requests`
-- `/api/providers/sync-runs`
-- `/api/connectors`
-- `/api/connectors/[id]/settings`
-- `/api/connectors/[id]/sync`
-- `/api/parsers`
-- `/api/parsers/preview`
-- `/api/scheduler/trigger`
+Dashboard metrics are aggregated directly from the database based on the caller's session role.
 
-Operational APIs that are implemented and documented elsewhere:
+```mermaid
+flowchart TD
+    Session["Authenticated Session"] --> RoleCheck{Role Check}
+    
+    RoleCheck -->|Role = ADMIN| AdminDash["DashboardService.getAdminMetrics()"]
+    RoleCheck -->|Role = SALES| SalesDash["DashboardService.getSalesMetrics(userId)"]
+    
+    AdminDash --> Ag1["Aggregate Total Leads & Conversion Rates"]
+    AdminDash --> Ag2["Aggregate Lead Priority Distribution"]
+    AdminDash --> Ag3["Aggregate Active Connectors & Health Status"]
+    AdminDash --> Ag4["Fetch Recent Lead Activities & Queue Counts"]
+    
+    SalesDash --> S1["Fetch Assigned Leads & Priority Counts"]
+    SalesDash --> S2["Fetch Pending & Due Follow-ups (Attention Center)"]
+    SalesDash --> S3["Fetch Salesperson Activity Feed"]
+    
+    Ag1 & Ag2 & Ag3 & Ag4 --> AdminResponse["Render Admin Dashboard Cards & Charts"]
+    S1 & S2 & S3 --> SalesResponse["Render Sales Dashboard & Attention Grid"]
+```
 
-- `/api/reports`
-- `/api/settings`
-- `/api/export`
-- `/api/sync` remains a legacy compatibility route
+### 9. Export Flow
 
-## Validation, errors, and logging
+The export system streams CSV reports directly from domain database queries.
 
-Validation happens at the route boundary with Zod.
-`safeParse` is used for external input and invalid requests return `400`.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Admin / Sales User
+    participant ExportUI as ExportButton / Modal
+    participant API as GET /api/export
+    participant ExportSvc as ExportService
+    participant DB as PostgreSQL
 
-Errors are split across layers:
+    User->>ExportUI: Click Export (Type: leads | users | providers | sync-runs | audit-logs)
+    ExportUI->>API: HTTP GET /api/export?type=leads&format=csv&from=...&to=...
+    API->>API: Verify Session Authorization
+    API->>ExportSvc: generateExport(type, format, dateRange, filters)
+    ExportSvc->>DB: Query Records with Filters
+    DB-->>ExportSvc: Model Records
+    ExportSvc->>ExportSvc: Transform Records to CSV String
+    ExportSvc-->>API: CSV Buffer / String
+    API-->>ExportUI: HTTP 200 OK (Content-Type: text/csv, Content-Disposition: attachment)
+    ExportUI-->>User: File Download Prompt (.csv)
+```
 
-- Better Auth owns auth failures.
-- `ServiceError` handles service-level not-found and forbidden cases.
-- Connector runtime errors cover connector, parser, validation, retryable, and configuration failures.
-- Some routes still let framework errors bubble up, so the error model is not fully unified yet.
+### 10. Audit Logging Flow
 
-Logging is handled by Pino via `src/lib/logger.ts`.
-`auditService.log()` writes both a durable row and a structured log entry.
+Every mutating administrative and domain event produces structured log outputs and durable audit records.
 
-## Operational constraints
+```mermaid
+flowchart LR
+    DomainEvent["Domain Event (e.g., lead.created, user.updated, connector.synced)"] --> AuditSvc["AuditService.log()"]
+    
+    AuditSvc --> WriteDB["INSERT INTO audit_logs (id, action, entityType, entityId, metadata, oldData, newData, actorId, ipAddress, userAgent)"]
+    AuditSvc --> WritePino["Logger.info() / Logger.warn() (Structured JSON Log via Pino)"]
+    
+    WriteDB --> AuditTable[(audit_logs Table)]
+    WritePino --> Stdout[Stdout / Log Collector]
+```
 
-This backend is intentionally simple:
+---
 
-- one deployment
-- one database
-- one in-process execution path
-- no distributed workers
-- no multi-region behavior
+## Layer Responsibilities
 
-Treat sync runs as database-backed operations, not queue jobs.
+| Layer | Path | Responsibility |
+| --- | --- | --- |
+| **Presentation (Pages)** | `src/app/(dashboard)/admin`, `src/app/(dashboard)/sales`, `src/app/login` | Next.js Server Components, layouts, and page routes. |
+| **Presentation (Components)** | `src/components/admin`, `src/components/sales`, `src/components/shared`, `src/components/ui`, `src/components/audit`, `src/components/connectors`, `src/components/leads`, `src/components/providers`, `src/components/users` | UI component tree organized by feature domain and reuse tier. |
+| **Application Boundary** | `src/app/api`, `src/lib/session.ts`, `src/lib/api.ts`, `src/lib/validation.ts` | Route handlers, session extraction, authorization guards, request schema validation. |
+| **Domain Services** | `src/services/*.service.ts` (22 services) | Business logic orchestration, Prisma queries, transaction boundaries, activity and audit recording. |
+| **Integration Runtime** | `src/runtime` | Connector execution, routing rule matching, parser execution, normalization, execution locks, retry policies, sync history. |
+| **Integration Contracts** | `src/connectors`, `src/parsers`, `src/types` | Vendor connector implementations, parser base classes, registry definitions, domain data contracts. |
+| **Infrastructure** | `src/lib/prisma.ts`, `src/lib/auth.ts`, `src/lib/logger.ts`, `prisma` | Prisma 7 client initialization, Better Auth configuration, Pino logger, schema migrations, and seed scripts. |
 
-## Sales UI Design Principles
+---
 
-All Sales Panel pages must inherit a single, cohesive design language. The Sales
-Dashboard (`/sales`) is the visual baseline and reference implementation.
+## Database Model Architecture
 
-### 1. Dashboard as the Design Reference
+The PostgreSQL database schema is defined in `prisma/schema.prisma` and generated into `src/generated/prisma`.
 
-The Sales Dashboard establishes the visual conventions for the entire Sales
-Panel. Every new or modified Sales page should use the same:
-
-- spacing and layout rhythm
-- typography scale and weights
-- border radius tokens
-- card styling and surface hierarchy
-- action button sizing and placement
-- component sizing and density
-
-Avoid introducing page-specific design languages. If a pattern exists on the
-Dashboard, extend it rather than recreate it.
-
-### 2. Consistent Page Structure
-
-Sales pages should follow a predictable layout order:
+### Entity Map & Schema Summary
 
 ```text
-Page Header (Navbar with title + actions)
-       ↓
-Primary Actions / Dropdowns
-       ↓
-Summary / KPI Cards (when applicable)
-       ↓
-Toolbar (Search / Filters)
-       ↓
-Main Content (table, list, or detail view)
-       ↓
-Pagination / Footer (when applicable)
+Identity Group:
+  User ──< Session
+  User ──< Account
+  Verification
+
+Core CRM Group:
+  LeadSource (Provider) ──< Lead
+  LeadSource ──< Connector
+  LeadSource ──< RoutingRule
+  LeadSource ──< UnmatchedEmail
+  Lead ──< LeadActivity
+  Lead ──< Note ──< FollowUp
+  Lead ──< FollowUp
+  Lead ──< Attachment
+  User ──< AssignedLeads (Lead)
+
+Integrations & Config Group:
+  Connector ──< ConnectorSyncRun
+  Connector ──< FieldMapping
+  Parser ──< Connector
+  Parser ──< RoutingRule
+
+Operational Queues & Ops:
+  UnmatchedEmail ──< ParserRequest
+  User ──< AuditLog
+  User ──< Setting
 ```
 
-Do not embed duplicate navigation inside page content. The bottom navigation and
-header actions are the sole navigation surface.
+### Table Definitions
 
-### 3. Surface Hierarchy
+1. **`users` (`User`)**: Internal team accounts (`ADMIN`, `SALES`). Tracks active state, ban status, employee codes, sales privilege level (`JUNIOR`, `SENIOR`), and creation hierarchy.
+2. **`sessions` (`Session`)**: Better Auth active user sessions.
+3. **`accounts` (`Account`)**: Better Auth credential store and authentication provider keys.
+4. **`verifications` (`Verification`)**: Auth verification tokens.
+5. **`LeadSource`**: Represents a vendor lead provider (e.g. "IndiaMART", "TradeIndia", "Website REST"). Corresponds to "Provider" in the admin UI.
+6. **`Lead`**: Core lead record containing contact details, company, financial fields (budget, expected value, currency), UTM parameters, lead status (`NEW`, `CONVERTED`, `LOST`, `SPAM`, `ON_HOLD`), priority (`LOW`, `MEDIUM`, `HIGH`, `URGENT`), category, assignment, and soft deletion state (`isDeleted`, `deletedAt`).
+7. **`LeadActivity`**: Immutable activity log for lead timeline (`CREATED`, `UPDATED`, `ASSIGNED`, `NOTE_ADDED`, `IMPORTED`, `STATUS_CHANGED`, `FOLLOW_UP`, `DELETED`, `RESTORED`).
+8. **`Note`**: Interaction notes attached to leads with author references, pinned status, and structured fields ("what I did" / "what customer said").
+9. **`FollowUp`**: Scheduled follow-up tasks linked to leads and notes, with due dates, times, priority, assignee, creator, and completion state.
+10. **`Attachment`**: File metadata attached to leads with storage keys and checksums.
+11. **`Connector`**: External integration config storing type (`gmail`, `rest`), schedule type (`MANUAL`, `EVERY_5_MIN`, `HOURLY`, etc.), status, health status, failure metrics, execution lock state (`isRunning`, `lockedAt`, `lockedBy`), and non-secret JSON configuration.
+12. **`Parser`**: Catalog of registered parsers storing parser type, key, version, and configuration.
+13. **`ConnectorSyncRun`**: Execution history for connector sync runs recording started/completed timestamps, records seen/created/updated/skipped, error messages, and breakdown JSON.
+14. **`RoutingRule`**: Priority-ordered routing rules mapping recipient Gmail accounts, sender emails, sender domains, subject patterns, or catch-all fallbacks to a specific Provider and Parser.
+15. **`UnmatchedEmail`**: Operational queue storing inbound emails that failed routing rule matches.
+16. **`ParserRequest`**: Vendor sample review queue tracking vendor leads requiring custom parser development.
+17. **`FieldMapping`**: Custom source-to-target field mappings associated with connectors.
+18. **`AuditLog`**: System audit log recording action name, entity type, entity ID, actor reference, IP address, user agent, old JSON data, and new JSON data.
+19. **`Setting`**: Categorized system settings store storing key-value JSON configurations.
 
-Maintain three distinct visual layers:
+---
 
-1. **Application background** – the page canvas
-2. **Cards** – elevated containers for grouped content
-3. **Content** – text, badges, tables inside cards
+## Authentication and Roles
 
-Cards must feel visually distinct from the page background. Use consistent
-surface colors, border treatment, and shadow elevation to achieve separation.
-Do not flatten layers by reducing background contrast or removing card shadows.
+Better Auth is configured strictly for internal credential authentication with public signup disabled.
 
-### 4. Component Reuse
+### Role Hierarchy
 
-Before creating a new UI element, check the component directories in order:
-`src/components/ui` (generic primitives), `src/components/shared`
-(cross-feature business components), then `src/components/sales` or
-`src/components/admin` for domain-specific components.
+- **`ADMIN`**: Complete system access. Manages users, providers, routing rules, connectors, sync triggers, execution locks, review queues, reports, settings, audit logs, lead deletion, assignment, and CSV exports.
+- **`SALES`**: Sales operations access. Works assigned leads, creates and edits notes, schedules and completes follow-ups, updates lead status/priority, views personal dashboard, and exports assigned leads.
+  - **`SalesPrivilege.JUNIOR`**: Standard salesperson access to assigned leads.
+  - **`SalesPrivilege.SENIOR`**: Senior salesperson with expanded lead visibility within sales workflows.
 
-Directory structure:
+---
 
-| Directory | Purpose |
-|---|---|
-| `src/components/ui` | Generic reusable UI primitives (design system) |
-| `src/components/shared` | Cross-feature business components used by both Admin and Sales |
-| `src/components/admin` | Components used exclusively by the Admin application |
-| `src/components/sales` | Components used exclusively by the Sales application |
+## UI Architecture & Design System
 
-Known components include:
+### Navigation Architecture
 
-| Component | Location |
-|---|---|
-| `Button` | `src/components/ui/button.tsx` |
-| `Card` / `CardEmptyState` | `src/components/ui/card.tsx` |
-| `Badge` | `src/components/ui/badge.tsx` |
-| `Select` | `src/components/ui/select.tsx` |
-| `EmptyState` | `src/components/ui/empty-state.tsx` |
-| `Pagination` | `src/components/ui/pagination.tsx` |
-| `FilterChip` | `src/components/ui/filter-chip.tsx` |
-| `DateTimeCell` | `src/components/ui/date-time-cell.tsx` |
-| `IconActionButton` | `src/components/ui/icon-action-button.tsx` |
-| `ExpandableSection` | `src/components/ui/expandable-section.tsx` |
-| `AnimatedReveal` | `src/components/ui/animated-reveal.tsx` |
-| `ActiveFilters` | `src/components/shared/active-filters.tsx` |
-| `SearchToolbar` | `src/components/shared/search-toolbar.tsx` |
-| `Navbar` | `src/components/shared/navbar.tsx` |
-| `DataTable` | `src/components/shared/data-table.tsx` |
-| `ExportButton` | `src/components/shared/export-button.tsx` |
-| `KpiCard` | `src/components/shared/kpi-card.tsx` |
-| `ResyncButton` | `src/components/shared/resync-button.tsx` |
-| `SignOutButton` | `src/components/shared/sign-out-button.tsx` |
-| `DateRangePicker` | `src/components/shared/date-range-picker.tsx` |
-| `AttentionCenter` | `src/components/sales/attention-center.tsx` |
-| `AttentionCard` | `src/components/sales/attention-card.tsx` |
-| `BlueprintBackground` | `src/components/shared/blueprint-background.tsx` |
+The application uses a multi-tier navigation pattern implemented in `src/components/shared/navigation/`:
 
-### 4a. Attention Center Filter Behaviour
+- **Top Navbar (`src/components/shared/navbar.tsx`)**: Header containing logo, section title, global search/filter triggers, resync button, user avatar, and sign-out menu.
+- **Bottom Navigation Bar (`BottomNavigation.tsx`)**: Fixed bottom navigation bar on mobile and desktop viewports, displaying primary role items:
+  - **Admin Navigation**: Dashboard (`/admin`), Leads (`/admin/leads`), Reports (`/admin/reports`), and a "More" drawer trigger.
+  - **Sales Navigation**: Dashboard (`/sales`), My Leads (`/sales/my-leads`), Attention Center (`/sales/tasks`), and Profile (`/sales/profile`).
+- **"More" Drawer Menu (`BottomNavigationMenu.tsx`)**: Popover/slide-up menu rendering secondary administrative links: Connectors (`/admin/connectors`), User Administration (`/admin/users`), Providers (`/admin/providers`), Audit Logs (`/admin/audit-logs`), and Settings (`/admin/settings`).
 
-The Attention Center (`src/components/sales/attention-center.tsx`) renders all
-attention items as a **single unified card grid** (2 columns desktop, 1 column
-mobile). The filter pills select which category of cards is visible — they do
-not restructure the page into separate sections. Behaviour:
+### Design Tokens & Surface Hierarchy
 
-- **Default (no pill active):** All cards are shown in priority order: Pending
-  → Today → New → Needs Attention (within each category, existing server-side
-  sort is preserved).
-- **Pill click:** Single-select filter — only cards matching the category
-  remain visible. Clicking the same pill again clears the filter.
-- **Clear button (✕):** Always occupies layout space but is invisible and
-  pointer-events-disabled when no filter is active. Fades in when a filter is
-  active. Clicking it resets to the default unfiltered state.
-  **No layout shift** occurs when toggling the filter.
-- **Pill styling:** Matches the `SegmentedControl` pattern from My Leads:
-  `inline-flex rounded-xl bg-slate-100/80 p-1` container, `rounded-lg px-3
-  py-1.5 text-sm font-medium` buttons, `bg-white shadow-sm` active state.
-- **Pill labels:** Compact single-word labels (`Pending`, `Today`, `New`,
-  `Attention`).
-- **Empty state:** When a filter is active and yields zero results, a single
-  centered empty card is shown with a category-specific message (e.g. "No
-  pending follow-ups.").
-- **Needs Attention actions:** Cards in the "stale" category include Archive
-  (`isArchived: true`) and Delete (permanent) icon buttons reusing
-  `IconActionButton` from `src/components/ui/icon-action-button.tsx`. The
-  API-call and confirmation patterns mirror `LeadActions` in
-  `src/components/shared/lead-actions.tsx`.
-- **No section headings:** The page has no "Pending Follow-ups", "Today's
-  Follow-ups", etc. headings. The filter pills are the only navigation between
-  categories.
+The design system is built using CSS custom properties in `src/app/globals.css`:
 
-### 4b. Login Page
+```css
+:root {
+  --color-surface: #f8fafc;
+  --color-panel: #ffffff;
+  --color-border: #e2e8f0;
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  --color-brand: #2563eb;
+}
+```
 
-The login page (`src/app/login/page.tsx`) follows the same Surface Hierarchy,
-spacing, and component conventions as the rest of the application. It is **not**
-a standalone marketing or branded page — it is the first page of the CRM.
+1. **Layer 1 (Canvas)**: Background canvas (`var(--color-surface)`).
+2. **Layer 2 (Cards & Panels)**: Elevated containers (`var(--color-panel)`) with subtle borders (`var(--color-border)`) and light shadows (`shadow-xs`).
+3. **Layer 3 (Content Elements)**: Text, badges, tables, and form inputs inside cards.
+4. **Blueprint Canvas (`BlueprintBackground`)**: Optional technical background grid with radial mask fading used for standalone utility pages (login, empty states, 404).
 
-- **Layout:** Two-column grid on desktop (`md:grid-cols-2`). Left column
-  contains brand copy; right column contains the authentication card. On mobile
-  the left column is hidden and only the centered card is shown.
-- **Card:** Uses the shared `Card` component with `p-8` for a calmer feel.
-  Inner copy uses `CardTitle` ("Welcome back") and `CardDescription` for the
-  subheading. No page-specific card variant.
-- **Form fields:** Uses the shared `Input` component with identical height,
-  radius, padding, border, hover, and focus-ring as every other input in the
-  app. Inputs are `disabled` while authentication is pending.
-- **Button:** Uses the shared `Button` component with `isLoading` prop to show
-  `ButtonSpinner` during authentication. `disabled` is managed automatically by
-  the `isLoading` state.
-- **Validation errors:** Uses the shared `ErrorState` component (`rounded-xl
-  bg-red-50 px-4 py-3 text-sm text-red-700`).
-- **Brand copy:** "LEADBRIDGE" rendered in `text-xs font-semibold uppercase
-  tracking-[0.1em] text-[var(--color-muted)]` — subtle, not branded.
-- **No page-specific primitives:** All visual elements come from
-  `src/components/ui/`. The form logic lives in `src/components/login-form.tsx`
-  but has zero page-specific CSS or layout wrappers.
+---
 
-### 4c. Blueprint Grid Background
+## Complete API Surface
 
-The `BlueprintBackground` component (`src/components/shared/blueprint-background.tsx`)
-provides an optional engineering-grid background for standalone pages (login,
-error, setup wizard, empty states). It is **not** used on dashboard pages,
-which retain the plain `var(--color-surface)` background.
+| Endpoint | Method | Authorization | Purpose |
+| --- | --- | --- | --- |
+| `/api/auth/[...all]` | ALL | Public | Better Auth authentication handlers |
+| `/api/dashboard` | GET | ADMIN, SALES | Role-derived dashboard metrics |
+| `/api/leads` | GET | ADMIN, SALES | List leads with pagination, search, filters |
+| `/api/leads` | POST | ADMIN, SALES | Manually create lead |
+| `/api/leads/[id]` | GET | ADMIN, SALES | Get lead details |
+| `/api/leads/[id]` | PATCH | ADMIN, SALES | Update lead fields |
+| `/api/leads/[id]` | DELETE | DELETE_LEAD Permission | Soft-delete lead |
+| `/api/leads/[id]/assign` | POST | ADMIN | Assign lead to sales user |
+| `/api/leads/[id]/activities` | GET | ADMIN, SALES | Get lead activity timeline |
+| `/api/leads/[id]/notes` | GET | ADMIN, SALES | List lead notes |
+| `/api/leads/[id]/notes` | POST | ADMIN, SALES | Add note to lead |
+| `/api/leads/[id]/follow-ups` | GET | ADMIN, SALES | List lead follow-ups |
+| `/api/leads/[id]/follow-ups` | POST | ADMIN, SALES | Create follow-up for lead |
+| `/api/follow-ups/[id]` | PATCH | ADMIN, SALES | Update follow-up status/priority |
+| `/api/follow-ups/[id]` | DELETE | ADMIN, SALES | Delete follow-up task |
+| `/api/notes/[id]` | PATCH | ADMIN, SALES | Update note content / pinned state |
+| `/api/notes/[id]` | DELETE | ADMIN, SALES | Delete note |
+| `/api/users` | GET | ADMIN | List users with pagination and search |
+| `/api/users` | POST | ADMIN | Provision new user |
+| `/api/users/[id]` | PATCH | ADMIN | Update user role, status, or details |
+| `/api/providers` | GET | ADMIN | List providers with connector & routing info |
+| `/api/providers` | POST | ADMIN | Create new provider |
+| `/api/providers/[id]` | PATCH | ADMIN | Update provider details |
+| `/api/providers/[id]` | DELETE | ADMIN | Delete provider |
+| `/api/providers/routing-rules` | GET | ADMIN | List routing rules |
+| `/api/providers/routing-rules` | POST | ADMIN | Create routing rule |
+| `/api/providers/connectors/test` | POST | ADMIN | Test Gmail or REST connector connection |
+| `/api/providers/gmail` | GET | ADMIN | List discovered environment Gmail accounts |
+| `/api/providers/unmatched` | GET | ADMIN | List unmatched email queue |
+| `/api/providers/unmatched` | PATCH | ADMIN | Process unmatched email item |
+| `/api/providers/parser-requests` | GET | ADMIN | List parser requests queue |
+| `/api/providers/parser-requests` | PATCH | ADMIN | Update parser request status |
+| `/api/providers/parsers` | GET | ADMIN | List parser catalog for management |
+| `/api/providers/sync-runs` | GET | ADMIN | List connector sync run history |
+| `/api/connectors` | GET | ADMIN | List supported connector types |
+| `/api/connectors` | POST | ADMIN | Create new connector |
+| `/api/connectors/[id]` | DELETE | ADMIN | Delete connector |
+| `/api/connectors/[id]/settings` | PATCH | ADMIN | Update connector enabled/schedule/health |
+| `/api/connectors/[id]/sync` | POST | ADMIN | Trigger manual connector sync |
+| `/api/parsers` | GET | ADMIN | List registered parser manifests |
+| `/api/parsers/preview` | POST | ADMIN | Preview parser parsing on sample payload |
+| `/api/scheduler/trigger` | POST | ADMIN | Trigger due connectors or specific connector |
+| `/api/reports` | GET | ADMIN | Generate summary, source, activity, status reports |
+| `/api/settings` | GET | ADMIN | Get system settings |
+| `/api/settings` | PATCH | ADMIN | Update system settings |
+| `/api/audit-logs` | GET | ADMIN | Search audit logs with filters |
+| `/api/export` | GET | ADMIN, SALES | Download CSV export (leads, users, etc.) |
+| `/api/resync` | POST | ADMIN, SALES | Re-sync state helper |
 
-**Implementation:**
-- **Grid:** Two `repeating-linear-gradient` layers (horizontal + vertical) at
-  `1px` stroke, `32px` spacing, `4%` opacity of `var(--color-ink)`.
-- **Mask:** A `radial-gradient` mask fades the grid from nearly invisible at
-  center to visible at the edges, keeping the content area clean.
-- **Accents:** Three inline SVG elements — a quarter-circle arc (top-left), a
-  partial circle arc (bottom-right), and a dashed vertical construction line.
-  All at very low opacity with `0.5px` stroke.
-- **No JavaScript**, no images, no external dependencies. Pure CSS + SVG.
-- **ARIA:** `aria-hidden="true"` with `pointer-events-none`.
-- **Responsive:** `viewBox="0 0 1440 900"` with `preserveAspectRatio="xMidYMid
-  slice"` on the SVG; grid fills the viewport via `fixed inset-0`.
+---
 
-**Usage guidelines:**
-- Suitable for pages where the plain background feels too sparse: login, 404,
-  setup wizard, onboarding, empty state pages.
-- Dashboard, table, and detail pages should **not** use this background. The
-  plain `--color-surface` is the established dashboard background.
-- If used on a page with a `Card`, ensure the card surface (`--color-panel`,
-  `--color-border`, `shadow-xs`) sits visually above the grid without
-  competing. The grid's low opacity and radial mask guarantee this.
+## Related Documents
 
-Avoid duplicate implementations. If a component needs customization, extend it
-with props or composition rather than copying the source.
-
-### 5. Action Placement
-
-Primary page actions belong in the page header — either in the Navbar or as
-header-level buttons. Do not scatter action shortcuts (navigation links, export
-buttons, secondary CTAs) within page body content when they duplicate
-functionality available in the header or bottom navigation.
-
-### 6. Empty States
-
-Every Sales page should handle the empty state consistently. Use the shared
-`EmptyState` or `CardEmptyState` component with:
-
-- a clear, concise title
-- a short description explaining what the user should expect
-- consistent icon usage (when applicable)
-- consistent spacing and typography
-- an optional action button when the user can resolve the empty state
-
-### 7. Terminology
-
-Use consistent labels across the Sales Panel. For example, refer to the
-salesperson's owned leads as **"My Leads"** everywhere (not "My Pipeline" on one
-page and "My Leads" on another). Follow the existing label conventions in
-`src/lib/lead-constants.ts` and `src/lib/navigation.tsx`.
-
-### 8. Design Consistency for New Pages
-
-When introducing a new Sales page:
-
-- It should visually feel like it belongs to the same application as the
-  Dashboard.
-- Extend the existing design system — do not invent new layout patterns,
-  spacing scales, or component variants without a project-wide rationale.
-- Use the same CSS custom properties defined in `src/app/globals.css`:
-  `--color-ink`, `--color-muted`, `--color-border`, `--color-brand`,
-  `--color-panel`, `--color-surface`, etc.
-- Match the Dashboard's header structure (Navbar), card density, button
-  sizing, and surface hierarchy.
-
-## Related files
-
-- [`docs/01_PROJECT_OVERVIEW.md`](./01_PROJECT_OVERVIEW.md)
-- [`docs/03_DEVELOPMENT_GUIDELINES.md`](./03_DEVELOPMENT_GUIDELINES.md)
-- [`docs/04_ADMINISTRATION_AND_OPERATIONS.md`](./04_ADMINISTRATION_AND_OPERATIONS.md)
-- [`src/lib/session.ts`](../src/lib/session.ts)
-- [`src/lib/api.ts`](../src/lib/api.ts)
-- [`src/lib/prisma.ts`](../src/lib/prisma.ts)
-- [`src/services/lead.service.ts`](../src/services/lead.service.ts)
-- [`src/services/provider.service.ts`](../src/services/provider.service.ts)
-- [`src/services/connector.service.ts`](../src/services/connector.service.ts)
-- [`src/runtime/connector-runtime.ts`](../src/runtime/connector-runtime.ts)
-- [`src/runtime/routing-engine.ts`](../src/runtime/routing-engine.ts)
-- [`src/connectors/registry.ts`](../src/connectors/registry.ts)
-- [`src/parsers/registry.ts`](../src/parsers/registry.ts)
-- [`src/app/globals.css`](../src/app/globals.css)
-- [`src/lib/navigation.tsx`](../src/lib/navigation.tsx)
-- [`src/components/ui`](../src/components/ui)
-- [`src/components/shared`](../src/components/shared)
-- [`src/components/sales`](../src/components/sales)
-- [`src/components/admin`](../src/components/admin)
+- [01_PROJECT_OVERVIEW.md](./01_PROJECT_OVERVIEW.md)
+- [03_DEVELOPMENT_GUIDELINES.md](./03_DEVELOPMENT_GUIDELINES.md)
+- [04_ADMINISTRATION_AND_OPERATIONS.md](./04_ADMINISTRATION_AND_OPERATIONS.md)
+- [05_ARCHITECTURE_AUDIT.md](./05_ARCHITECTURE_AUDIT.md)
+- [06_REST_CONNECTOR_IMPLEMENTATION_REPORT.md](./06_REST_CONNECTOR_IMPLEMENTATION_REPORT.md)

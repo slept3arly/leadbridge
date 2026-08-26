@@ -15,7 +15,7 @@ import type { NormalizedLead } from "@/types/lead";
 import { LeadService, type LeadInput } from "@/services/lead.service";
 import { activityService } from "@/services/activity.service";
 import { prisma } from "@/lib/prisma";
-import { ServiceError } from "@/lib/service-errors";
+
 
 export interface RuntimeOptions {
   connectorRegistry: ConnectorRegistry;
@@ -156,14 +156,6 @@ export class ConnectorRuntime {
 
     for (const payload of payloads) {
       try {
-        if (await this.isDuplicate(payload, context)) {
-          context.logger.info("Skipping duplicate payload", {
-            duplicateKey: payload._duplicateKey,
-          });
-          breakdown.duplicatesSkipped++;
-          continue;
-        }
-
         const routing = await this.resolveRouting(payload, context);
 
         if (!routing.match) {
@@ -181,8 +173,8 @@ export class ConnectorRuntime {
         }
 
         const match = routing.match;
-        const parserId = match.parserId ?? context.parserId;
-        if (!parserId) {
+        const parserResolution = await this.resolveParser(match.parserId ?? context.parserId, match.ruleId, context);
+        if (!parserResolution) {
           breakdown.parserFailures++;
           context.logger.warn("No parser resolved for payload, skipping", {
             payloadPreview: JSON.stringify(payload).slice(0, 200),
@@ -190,7 +182,7 @@ export class ConnectorRuntime {
           continue;
         }
 
-        const lead = await this.parserRuntime.parse(payload, parserId, context);
+        const lead = await this.parserRuntime.parse(payload, parserResolution.registryKey, context);
         const { lead: validatedLead, warnings } = this.normalizer.validate(lead);
 
         if (warnings.length > 0) {
@@ -201,26 +193,31 @@ export class ConnectorRuntime {
           });
         }
 
-        const enrichedLead = this.normalizer.enrich(validatedLead, {
+        const enrichedLead = this.normalizer.enrich(
+          {
+            ...validatedLead,
+            sourceReferenceId: validatedLead.sourceReferenceId ?? payload._duplicateKey,
+          },
+          {
           sourceId: match?.providerId ?? context.providerId,
           sourceType: context.connectorType,
           parserVersion: "1.0",
+          },
+        );
+
+        const leadInput = this.toLeadInput({
+          ...enrichedLead,
+          connectorId: context.connectorId,
+        });
+        context.logger.debug("Lead insert prepared", {
+          connectorId: leadInput.connectorId ?? null,
+          sourceReferenceId: leadInput.sourceReferenceId ?? null,
         });
 
-        const leadInput = this.toLeadInput(enrichedLead);
-
-        let created;
+        let createResult;
         try {
-          created = await this.leadService.create(leadInput, actor);
+          createResult = await this.leadService.create(leadInput, actor);
         } catch (error) {
-          if (error instanceof ServiceError && error.status === 409) {
-            breakdown.duplicatesSkipped++;
-            context.logger.info("Duplicate lead skipped during import", {
-              leadName: enrichedLead.name,
-              email: enrichedLead.email,
-            });
-            continue;
-          }
           breakdown.validationFailures++;
           context.logger.error("Lead creation failed", {
             leadName: enrichedLead.name,
@@ -229,6 +226,17 @@ export class ConnectorRuntime {
           });
           continue;
         }
+
+        if (createResult.status === "skipped") {
+          breakdown.duplicatesSkipped++;
+          context.logger.info("Duplicate lead skipped during import", {
+            leadName: enrichedLead.name,
+            email: enrichedLead.email,
+          });
+          continue;
+        }
+
+        const created = createResult.lead;
 
         await activityService.record(
           created.id,
@@ -256,24 +264,6 @@ export class ConnectorRuntime {
     return { leads: createdLeads, breakdown };
   }
 
-  private async isDuplicate(
-    payload: RawPayload,
-    context: ExecutionContext,
-  ): Promise<boolean> {
-    const duplicateKey = payload._duplicateKey;
-    if (!duplicateKey) return false;
-
-    const existing = await prisma.lead.findFirst({
-      where: {
-        connectorId: context.connectorId,
-        sourceReferenceId: duplicateKey,
-      },
-      select: { id: true },
-    });
-
-    return existing !== null;
-  }
-
   private async resolveRouting(
     payload: RawPayload,
     context: ExecutionContext,
@@ -282,6 +272,47 @@ export class ConnectorRuntime {
     if (!hints) return { match: null };
 
     return this.routingEngine.route(hints, payload, context.connectorId);
+  }
+
+  private async resolveParser(
+    parserDatabaseId: string | undefined,
+    routingRuleId: string,
+    context: ExecutionContext,
+  ): Promise<{ databaseId: string; registryKey: string } | null> {
+    if (!parserDatabaseId) {
+      context.logger.debug("Routing parser resolution skipped", {
+        routingRuleId,
+        parserDatabaseId: null,
+        parserRegistryKey: null,
+        registryLookupResult: false,
+      });
+      return null;
+    }
+
+    const parserRecord = await prisma.parser.findUnique({
+      where: { id: parserDatabaseId },
+      select: { id: true, name: true, active: true },
+    });
+
+    const registryKey = parserRecord?.name ?? null;
+    const registryLookupResult = registryKey ? this.parserRuntime.has(registryKey) : false;
+
+    context.logger.debug("Routing parser resolved", {
+      routingRuleId,
+      parserDatabaseId,
+      parserRegistryKey: registryKey,
+      registryLookupResult,
+      parserActive: parserRecord?.active ?? null,
+    });
+
+    if (!parserRecord || !registryKey || !registryLookupResult) {
+      return null;
+    }
+
+    return {
+      databaseId: parserRecord.id,
+      registryKey,
+    };
   }
 
   private toLeadInput(lead: NormalizedLead): LeadInput {
@@ -315,6 +346,7 @@ export class ConnectorRuntime {
       wonAmount: null,
       sourceId: lead.sourceId ?? null,
       sourceReferenceId: lead.sourceReferenceId ?? null,
+      connectorId: lead.connectorId ?? null,
       assignedUserId: lead.assignedUserId ?? null,
       status: lead.status,
       priority: lead.priority,

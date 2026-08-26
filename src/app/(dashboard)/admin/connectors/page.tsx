@@ -5,6 +5,8 @@ export type SerializedConnector = {
   id: string;
   name: string;
   type: string;
+  sourceId: string | null;
+  source: { id: string; name: string } | null;
   enabled: boolean;
   status: string;
   healthStatus: string;
@@ -18,8 +20,118 @@ export type SerializedConnector = {
   isRunning: boolean;
   averageDurationMs: number | null;
   lastDurationMs: number | null;
-  runtimeMetadata: Record<string, unknown> | null;
+  runtimeMetadata: SafeConnectorRuntimeMetadata | null;
+  configuration: SafeConnectorConfiguration | null;
 };
+
+export type SafeConnectorConfiguration = {
+  baseUrl?: string;
+  endpoint?: string;
+  method?: string;
+  leadArrayPath?: string;
+  timeout?: number;
+  retryCount?: number;
+  rateLimitDelayMs?: number;
+  headersConfigured: boolean;
+  queryParamsConfigured: boolean;
+  bodyConfigured: boolean;
+  auth?: {
+    type?: string;
+    apiKey?: { name?: string; in?: string; configured: boolean };
+    bearerTokenConfigured: boolean;
+    basic?: { usernameConfigured: boolean; passwordConfigured: boolean };
+    customHeader?: { name?: string; valueConfigured: boolean };
+  };
+  pagination?: {
+    strategy?: string;
+    pageSize?: number;
+    maxPages?: number;
+  };
+};
+
+export type SafeConnectorRuntimeMetadata = {
+  lastSyncResult?: string;
+  lastSyncAt?: string;
+  lastSyncLeadCount?: number;
+  lastSyncPayloadCount?: number;
+  lastSyncWarningCount?: number;
+  lastSyncErrorCount?: number;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function hasValue(value: unknown): boolean {
+  return typeof value === "string" ? value.length > 0 : value != null;
+}
+
+function toSafeConfiguration(value: unknown): SafeConnectorConfiguration | null {
+  const config = asRecord(value);
+  if (Object.keys(config).length === 0) return null;
+
+  const auth = asRecord(config.auth);
+  const apiKey = asRecord(auth.apiKey);
+  const basic = asRecord(auth.basic);
+  const customHeader = asRecord(auth.customHeader);
+  const pagination = asRecord(config.pagination);
+
+  return {
+    ...(typeof config.baseUrl === "string" ? { baseUrl: config.baseUrl } : {}),
+    ...(typeof config.endpoint === "string" ? { endpoint: config.endpoint } : {}),
+    ...(typeof config.method === "string" ? { method: config.method } : {}),
+    ...(typeof config.leadArrayPath === "string" ? { leadArrayPath: config.leadArrayPath } : {}),
+    ...(typeof config.timeout === "number" ? { timeout: config.timeout } : {}),
+    ...(typeof config.retryCount === "number" ? { retryCount: config.retryCount } : {}),
+    ...(typeof config.rateLimitDelayMs === "number" ? { rateLimitDelayMs: config.rateLimitDelayMs } : {}),
+    headersConfigured: hasValue(config.headers) && Object.keys(asRecord(config.headers)).length > 0,
+    queryParamsConfigured: hasValue(config.queryParams) && Object.keys(asRecord(config.queryParams)).length > 0,
+    bodyConfigured: hasValue(config.body),
+    auth: {
+      ...(typeof auth.type === "string" ? { type: auth.type } : {}),
+      ...(Object.keys(apiKey).length > 0 ? {
+        apiKey: {
+          ...(typeof apiKey.name === "string" ? { name: apiKey.name } : {}),
+          ...(typeof apiKey.in === "string" ? { in: apiKey.in } : {}),
+          configured: hasValue(apiKey.value),
+        },
+      } : {}),
+      bearerTokenConfigured: hasValue(auth.bearerToken),
+      ...(Object.keys(basic).length > 0 ? {
+        basic: {
+          usernameConfigured: hasValue(basic.username),
+          passwordConfigured: hasValue(basic.password),
+        },
+      } : {}),
+      ...(Object.keys(customHeader).length > 0 ? {
+        customHeader: {
+          ...(typeof customHeader.name === "string" ? { name: customHeader.name } : {}),
+          valueConfigured: hasValue(customHeader.value),
+        },
+      } : {}),
+    },
+    ...(Object.keys(pagination).length > 0 ? {
+      pagination: {
+        ...(typeof pagination.strategy === "string" ? { strategy: pagination.strategy } : {}),
+        ...(typeof pagination.pageSize === "number" ? { pageSize: pagination.pageSize } : {}),
+        ...(typeof pagination.maxPages === "number" ? { maxPages: pagination.maxPages } : {}),
+      },
+    } : {}),
+  };
+}
+
+function toSafeRuntimeMetadata(value: unknown): SafeConnectorRuntimeMetadata | null {
+  const metadata = asRecord(value);
+  const safe: SafeConnectorRuntimeMetadata = {};
+  if (typeof metadata.lastSyncResult === "string") safe.lastSyncResult = metadata.lastSyncResult;
+  if (typeof metadata.lastSyncAt === "string") safe.lastSyncAt = metadata.lastSyncAt;
+  for (const key of ["lastSyncLeadCount", "lastSyncPayloadCount", "lastSyncWarningCount", "lastSyncErrorCount"] as const) {
+    if (typeof metadata[key] === "number") safe[key] = metadata[key];
+  }
+  return Object.keys(safe).length > 0 ? safe : null;
+}
 
 export type KpiMetrics = {
   total: number;
@@ -30,14 +142,44 @@ export type KpiMetrics = {
 };
 
 export default async function AdminConnectorsPage() {
-  const connectors = await prisma.connector.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  const [connectors, providers] = await Promise.all([
+    prisma.connector.findMany({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        sourceId: true,
+        enabled: true,
+        status: true,
+        healthStatus: true,
+        consecutiveFailures: true,
+        lastSyncedAt: true,
+        lastSuccessAt: true,
+        lastFailureAt: true,
+        lastError: true,
+        nextScheduledRun: true,
+        scheduleType: true,
+        isRunning: true,
+        averageDurationMs: true,
+        lastDurationMs: true,
+        runtimeMetadata: true,
+        configuration: true,
+        source: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.leadSource.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, active: true },
+    }),
+  ]);
 
   const serialized: SerializedConnector[] = connectors.map((c) => ({
     id: c.id,
     name: c.name,
     type: c.type,
+    sourceId: c.sourceId,
+    source: c.source ? { id: c.source.id, name: c.source.name } : null,
     enabled: c.enabled,
     status: c.status,
     healthStatus: c.healthStatus,
@@ -51,7 +193,14 @@ export default async function AdminConnectorsPage() {
     isRunning: c.isRunning,
     averageDurationMs: c.averageDurationMs,
     lastDurationMs: c.lastDurationMs,
-    runtimeMetadata: c.runtimeMetadata as Record<string, unknown> | null,
+    runtimeMetadata: toSafeRuntimeMetadata(c.runtimeMetadata),
+    configuration: toSafeConfiguration(c.configuration),
+  }));
+
+  const serializedProviders = providers.map((provider) => ({
+    id: provider.id,
+    name: provider.name,
+    active: provider.active,
   }));
 
   const kpi: KpiMetrics = {
@@ -66,6 +215,7 @@ export default async function AdminConnectorsPage() {
     <ConnectorsPageContent
       connectors={serialized}
       kpi={kpi}
+      providers={serializedProviders}
     />
   );
 }

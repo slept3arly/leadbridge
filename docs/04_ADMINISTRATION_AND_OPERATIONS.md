@@ -2,285 +2,245 @@
 
 ## Purpose
 
-This document is for the small internal team that runs LeadBridge day to day.
-It covers the real admin workflows in the current codebase and the operational
-steps needed to deploy and recover the app.
+This document serves as the operational manual for LeadBridge administrators. It details all current administrative UI workflows, management tools, review queues, system monitoring, deployment instructions, and disaster recovery procedures.
 
-## Scope
+---
 
-- Single organization
-- One PostgreSQL database
-- One Next.js deployment
-- About 2 administrators and 8 to 10 sales users
-- Internal CRM usage only
+## Administration Workflows & UI Guide
 
-Do not use this document to plan multi-tenant, distributed, or enterprise-scale
-operations. Those assumptions do not apply here.
-
-## Administration workflows
-
-### User management
-
-Admins can provision internal users from the Admin dashboard and `POST /api/users`.
-The backend path is:
+The Admin panel is accessed via `/admin` and requires an authenticated session with the `ADMIN` role.
 
 ```text
-Admin UI -> /api/users -> auth.api.createUser -> Better Auth + Prisma
+Admin Navigation Structure:
+- Top Header Navbar: Global search, user profile, sign-out button
+- Primary Bottom Bar:
+  ├── Dashboard (/admin)
+  ├── Leads (/admin/leads)
+  └── Reports (/admin/reports)
+- "More" Drawer Menu:
+  ├── Connectors (/admin/connectors)
+  ├── User Administration (/admin/users)
+  ├── Providers (/admin/providers)
+  ├── Audit Logs (/admin/audit-logs)
+  └── Settings (/admin/settings)
 ```
 
-What this means in practice:
+---
 
-- Public signup stays disabled.
-- The seed script creates the first administrator.
-- Subsequent users are created by an admin.
-- Roles are limited to `ADMIN` and `SALES`.
+### 1. Admin Dashboard (`/admin`)
 
-> Screenshot placeholder: Admin > Users page showing the create-user form and user table.
+The Admin Dashboard (`src/components/admin/admin-dashboard-client.tsx`) provides high-level organizational oversight:
 
-### Lead management
+- **Summary KPI Cards**: Total Leads, Active Connectors, Global Conversion Rate, and Monthly New Leads.
+- **Priority Breakdown**: Visual distribution of leads categorized by priority (`URGENT`, `HIGH`, `MEDIUM`, `LOW`).
+- **Recent Activity Feed**: Real-time log of recent lead creations, assignments, status updates, and connector syncs.
+- **Quick Action Bar**: Fast shortcuts to provision users, add providers, manage connectors, and view reports.
 
-Admins can create, edit, delete, restore, and assign leads from the Admin > Leads
-screen. Sales users can view assigned leads and work the leads that belong to them.
+---
 
-Typical lead workflows:
+### 2. Lead Management (`/admin/leads`)
 
-1. Create a lead manually when a record has not yet been imported.
-2. Assign the lead to a sales user.
-3. Add notes and follow-up dates as the lead progresses.
-4. Restore a soft-deleted lead if it was removed in error.
+Location: `src/components/leads/admin-leads-page-content.tsx`.
 
-Important behavior:
+- **Lead Table & Toolbar**: Displays all leads across the organization with pagination, search, status filters (`NEW`, `CONVERTED`, `LOST`, `SPAM`, `ON_HOLD`), and priority filters.
+- **Creating Leads**: Admins can manually create leads via the "Create Lead" modal.
+- **Editing Leads**: Clicking a lead row opens `LeadEditModal`, enabling updates to contact info, company details, financial budget/expected value, currency, status, priority, and custom fields.
+- **Assigning Leads**: Admins assign leads to sales representatives using `POST /api/leads/[id]/assign`.
+- **Soft Deletion**: Admins can soft-delete leads (`DELETE /api/leads/[id]`). Soft-deleted records remain retained in the database for audit and retention workflows.
 
-- `DELETE /api/leads/[id]` is admin-only and soft-deletes.
-- `POST /api/leads/[id]/assign` is admin-only and validates the assignee.
-- `POST /api/leads/[id]/notes` and `PATCH /api/notes/[id]` enforce lead access.
-- `POST /api/leads/[id]/restore` reactivates a soft-deleted lead.
+---
 
-> Screenshot placeholder: Admin > Leads page with create form, table, and restore section.
+### 3. User Administration (`/admin/users`)
 
-### Providers and routing
+Location: `src/components/users/users-page-content.tsx`.
 
-The Providers area is the control center for source ownership, routing rules,
-connector configuration, and sync visibility.
+- **User Provisioning**: Admins provision internal users via `UserTableControls` and `POST /api/users`. Public registration remains disabled.
+- **Role Assignment**: Assign roles (`ADMIN` or `SALES`) and sales privilege levels (`JUNIOR` or `SENIOR`).
+- **User Editing**: Modify name, email, phone, employee code, designation, and active status using `UserEditModal` (`PATCH /api/users/[id]`).
+- **Ban & Deactivation**: Deactivate or ban users with optional ban reasons and expiration timestamps.
 
-Current provider workflows:
+---
 
-- Create a provider record with a name, slug, and source type.
-- Link routing rules to a provider and parser.
-- Review discovered Gmail accounts from environment variables.
-- Create a generic REST connector configuration.
+### 4. Providers & Routing (`/admin/providers`)
 
-Routing rules are evaluated in priority order. The first matching rule wins.
-If a routed Gmail payload has no match, the system can record it in the
-`UnmatchedEmail` queue for review.
+Location: `src/components/providers/providers-page-content.tsx`.
 
-> Screenshot placeholder: Admin > Providers page showing provider list, routing rules, connector cards, and queues.
+- **Provider Management**: Create and edit vendor records (`LeadSource`) with unique names, slugs, and source types using `ProviderEditModal`.
+- **Routing Rule Engine**: Configure priority-based routing rules (`RoutingRule`) matching sender email, domain, subject line, recipient Gmail account, or fallback catch-all rules.
+- **Gmail Account Discovery**: Inspect discovered Gmail accounts configured via `GMAIL_<KEY>_*` environment variables.
+- **Unmatched Email Queue**: Review inbound emails that failed routing matches (`UnmatchedEmail`). Actions include assigning to a provider, creating a new provider, marking as ignored/spam, or opening a parser request.
+- **Parser Request Queue**: Review vendor sample requests (`ParserRequest`) requiring developer attention for new parser creation.
 
-### Connectors
+---
 
-The connector screen is operational, not hypothetical.
+### 5. Connector Management (`/admin/connectors`)
 
-Admins can:
+Location: `src/components/connectors/connectors-page-content.tsx`.
 
-- Enable or disable a connector.
-- Change its schedule type.
-- Trigger a manual sync.
-- Reset a stuck lock.
-- Review health state, last sync time, and error history.
+- **Connector Controls**: Enable/disable connectors, configure polling schedule types (`MANUAL`, `EVERY_5_MIN`, `HOURLY`, etc.), and set schedule parameters via `ConnectorEditModal` (`PATCH /api/connectors/[id]/settings`).
+- **Manual Sync Execution**: Trigger an immediate sync for any connector via the "Sync" action (`POST /api/connectors/[id]/sync`).
+- **Execution Lock Management**: If a connector remains stuck in `isRunning=true` due to a server crash, admins can force-release the lock.
+- **Connection Testing**: Test Gmail OAuth or REST configuration using the "Test Connection" action (`POST /api/providers/connectors/test`).
+- **Connector Deletion**: Delete obsolete connectors (`DELETE /api/connectors/[id]`).
 
-Supported runtime types in the current codebase:
+---
 
-- `gmail`
-- `rest`
+### 6. Sync History (`SyncHistoryModal`)
 
-Connector status and health are persisted in the database.
+Location: `src/components/connectors/sync-history-modal.tsx`.
 
-### Gmail accounts
+- Inspect detailed `ConnectorSyncRun` execution history for any connector (`GET /api/providers/sync-runs?connectorId=<id>`).
+- View started/completed timestamps, records seen, created, updated, and skipped.
+- Review error messages and JSON breakdown metadata for failed or partial sync runs.
 
-Environment discovery looks for `GMAIL_<KEY>_CLIENT_ID`,
-`GMAIL_<KEY>_CLIENT_SECRET`, and `GMAIL_<KEY>_REFRESH_TOKEN`.
+---
 
-The Providers page lists each discovered account and shows whether it is ready.
-Admin actions include:
+### 7. Analytics & Reports (`/admin/reports`)
 
-- Test the credentials.
-- Sync the associated connector.
-- Review imported history and last run metadata.
+Location: `src/components/admin/admin-reports.tsx`.
 
-### Sync history
+- **Date Range Picker**: Filter report data by presets (Today, Last 7 Days, Last 30 Days, This Month, Custom Range).
+- **Summary Metrics**: High-level lead generation totals, conversion rates, and average resolution times.
+- **Source Distribution**: Breakdown of lead volume by provider source.
+- **Assignment Analytics**: Lead distribution across sales team members.
+- **Status & Activity Metrics**: Lead status funnel and daily activity volume charts.
+- **Monthly Conversion Trends**: Historical monthly lead creation vs conversion trends.
 
-Each connector run writes a `ConnectorSyncRun` row. The Providers page shows:
+---
 
-- records seen
-- records created
-- records updated
-- records skipped
-- duration
-- errors
-- breakdown metadata
+### 8. Audit Logs (`/admin/audit-logs`)
 
-This is the primary place to inspect what happened during a sync.
+Location: `src/components/audit/audit-log-viewer.tsx`.
 
-### Unmatched emails and parser requests
+- **Human-Readable Action Descriptions**: Formats raw action keys into readable text (e.g. "Created lead John Doe", "Updated user role to ADMIN", "Triggered manual connector sync").
+- **Filtering**: Filter logs by Activity Type, Entity Type (`Lead`, `User`, `Connector`, `Setting`), Actor, or Date Range.
+- **JSON Diff Viewer**: Expandable inspector showing `oldData` vs `newData` side-by-side.
+- **CSV Audit Export**: Export filtered audit logs directly to CSV via `ExportButton` (`GET /api/audit-logs/export`).
 
-The app keeps two review queues:
+---
 
-- `UnmatchedEmail` for emails that did not route cleanly.
-- `ParserRequest` for vendor samples that need a parser authored later.
+### 9. System Settings (`/admin/settings`)
 
-Admin actions available on the Providers page:
+Location: `src/components/admin/admin-settings.tsx`.
 
-- Assign the email to a provider.
-- Create a new provider from the email.
-- Mark the item ignored or spam.
-- Open a parser request.
+- **Categorized System Settings**: Configure system-wide parameters grouped into General, Notifications, Integrations, and Security categories.
+- **Reading & Saving**: Fetched via `GET /api/settings` and updated atomically via `PATCH /api/settings`.
 
-### Settings, reports, and exports
+---
 
-The current UI includes Settings and Reports pages, and the backing APIs are
-implemented.
+### 10. Follow-ups System
 
-- `GET /api/settings` returns the current configuration and setting definitions.
-- `PATCH /api/settings` validates input and updates settings atomically.
-- `GET /api/reports` supports `summary`, `sources`, `assignments`, `activity`, `trends`, and `status`.
-- `GET /api/export` supports CSV downloads for leads, users, providers, and sync history.
-- `GET /api/dashboard` serves role-derived admin or sales metrics.
+Location: `src/components/sales/follow-up-panel.tsx` & `/sales/tasks`.
 
-Operational notes:
+- **Scheduling Follow-ups**: Schedule tasks for specific leads with due dates, due times, and priority levels (`LOW`, `MEDIUM`, `HIGH`, `URGENT`).
+- **Status Tracking**: Transition follow-up tasks between `PENDING`, `COMPLETED`, and `CANCELLED` (`PATCH /api/follow-ups/[id]`).
+- **Attention Center Grid**: View urgent, pending, and today's follow-ups in a unified filterable card grid (`attention-center.tsx`).
 
-- Settings writes are validated server-side before they reach Prisma.
-- Reports and exports are admin-only.
-- Dashboard data is derived from the authenticated session, not query parameters.
+---
 
-> Screenshot placeholder: Admin > Settings page with grouped setting sections.
-> Screenshot placeholder: Admin > Reports page with filters and summary cards.
-> Screenshot placeholder: Admin > Export action dropdown or modal.
+### 11. Data Export System
 
-## Deployment and operations
+Location: `src/components/shared/export-button.tsx`.
 
-### Environment variables
+- Export CSV reports for **Leads**, **Users**, **Providers**, **Sync Runs**, and **Audit Logs**.
+- Triggers server-side CSV streaming (`GET /api/export?type=...&format=csv`).
 
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string used by Prisma and the seed script. |
-| `BETTER_AUTH_SECRET` | Better Auth secret for sessions and credential handling. |
-| `BETTER_AUTH_URL` | Canonical server URL for Better Auth. |
-| `NEXT_PUBLIC_APP_URL` | Browser-visible base URL used by the auth client. |
-| `ADMIN_NAME` | Initial admin name used by `prisma db seed`. |
-| `ADMIN_EMAIL` | Initial admin email used by `prisma db seed`. |
-| `ADMIN_PASSWORD` | Initial admin password used by `prisma db seed`. |
-| `LOG_LEVEL` | Pino logging level. |
-| `GMAIL_<KEY>_CLIENT_ID` | Gmail OAuth client ID for a discovered account. |
-| `GMAIL_<KEY>_CLIENT_SECRET` | Gmail OAuth client secret for a discovered account. |
-| `GMAIL_<KEY>_REFRESH_TOKEN` | Gmail refresh token for a discovered account. |
+---
 
-Keep secrets out of Git. Use your platform environment store or a local `.env`.
+## Operations, Deployment & Recovery
 
-### Local bootstrap
+### Environment Variables
+
+| Variable | Description | Required |
+| --- | --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string | Yes |
+| `BETTER_AUTH_SECRET` | Secret key for Better Auth sessions | Yes |
+| `BETTER_AUTH_URL` | Canonical app URL for Better Auth callbacks | Yes |
+| `NEXT_PUBLIC_APP_URL` | Client-side base URL for auth client | Yes |
+| `ADMIN_NAME` | Initial administrator name for database seed | Yes |
+| `ADMIN_EMAIL` | Initial administrator email for database seed | Yes |
+| `ADMIN_PASSWORD` | Initial administrator password for database seed | Yes |
+| `LOG_LEVEL` | Pino logging level (`info`, `debug`, `warn`, `error`) | No (default: `info`) |
+| `GMAIL_<KEY>_CLIENT_ID` | OAuth2 Client ID for discovered Gmail account | Conditional |
+| `GMAIL_<KEY>_CLIENT_SECRET` | OAuth2 Client Secret for discovered Gmail account | Conditional |
+| `GMAIL_<KEY>_REFRESH_TOKEN` | OAuth2 Refresh Token for discovered Gmail account | Conditional |
+
+---
+
+### Local Setup & Bootstrap
 
 ```bash
+# 1. Install dependencies
 pnpm install
+
+# 2. Generate Prisma Client
 pnpm db:generate
-pnpm prisma migrate dev
+
+# 3. Apply database migrations
+pnpm db:migrate
+
+# 4. Seed initial admin account & defaults
 pnpm prisma db seed
+
+# 5. Launch development server
 pnpm dev
 ```
 
-If you change the schema:
+---
 
-1. Update `prisma/schema.prisma`.
-2. Create or review the migration.
-3. Regenerate the Prisma client.
-4. Typecheck before handoff.
-
-### Production build
+### Production Deployment
 
 ```bash
+# 1. Generate client and typecheck
 pnpm db:generate
 pnpm typecheck
 pnpm lint
+
+# 2. Build production bundle
 pnpm build
+
+# 3. Start production server
+pnpm start
 ```
 
-Use the same commands in CI if you want a simple, reproducible release check.
+---
 
-### Scheduler and sync entry points
+### In-Process Scheduler
 
-There are two operational sync entry points:
+The scheduler service (`schedulerService`) discovers due connectors and executes them sequentially. It is triggered via:
 
-- `POST /api/connectors/[id]/sync` runs one connector immediately.
-- `POST /api/scheduler/trigger` runs due connectors or a specific connector ID.
+```bash
+POST /api/scheduler/trigger
+```
 
-Important caveat:
+Set up an external cron service (e.g. Vercel Cron, system crontab, or GitHub Actions) to call `POST /api/scheduler/trigger` at your desired interval (e.g., every 5 minutes).
 
-- The scheduler is in-process and uses a database lock.
-- It is not a queue worker and it is not a distributed scheduler.
-- Only one execution per connector should run at a time.
+---
 
-### Database and backups
+### System Monitoring & Troubleshooting
 
-Current operating assumptions:
+1. **Stuck Connector Lock**:
+   - Symptoms: Connector status displays `isRunning=true` indefinitely.
+   - Fix: Open Admin > Connectors, click the Edit modal for the connector, and select "Force Release Lock".
 
-- One PostgreSQL database.
-- Prisma owns schema changes.
-- Connector syncs and admin edits write directly to the database.
+2. **Connector Health Degraded (`WARNING` / `ERROR`)**:
+   - Symptoms: Health badge shows `WARNING` (1-2 consecutive failures) or `ERROR` (>= 3 failures).
+   - Fix: Inspect Admin > Connectors > Sync History modal for error trace. Validate credentials or API endpoint. Re-run manually.
 
-Recommended operational baseline:
+3. **Routing Failures & Unmatched Emails**:
+   - Symptoms: Connector executes successfully but 0 leads are created.
+   - Fix: Open Admin > Providers > Unmatched Emails queue. Assign unmatched emails to providers or update routing rules.
 
-1. Back up the database regularly.
-2. Verify restore procedures before you need them.
-3. Keep migration history under version control.
-4. Treat connector configuration as production data.
+4. **Database Recovery**:
+   - Perform regular PostgreSQL backups (`pg_dump`).
+   - Run standard Prisma migration procedures (`prisma migrate deploy`) during production releases.
 
-### Logging and monitoring
+---
 
-Logging is through Pino and the audit service:
+## Related Documents
 
-- `src/lib/logger.ts` sets the log level.
-- `auditService.log()` writes a durable audit row and a structured log entry.
-- Sync runs persist counts and errors in `ConnectorSyncRun`.
-
-Monitor at least:
-
-- failed auth attempts
-- connector health warnings
-- consecutive connector failures
-- stuck execution locks
-- sync duration trends
-
-### Recovery
-
-If a connector appears stuck:
-
-1. Check the connector status and lock state in Admin > Providers.
-2. Review the last sync run and error message.
-3. Use the lock reset action only if the current execution is genuinely stale.
-4. Re-run the sync manually after correcting the underlying issue.
-
-If a schema or deployment change breaks the app:
-
-1. Revert the deployment.
-2. Check the latest migration.
-3. Inspect the audit log and sync run records.
-4. Restore the database from backup if the change was destructive.
-
-### Common mistakes
-
-- Treating the `sync` compatibility route as a production workflow.
-- Assuming the scheduler is a queue service.
-- Forgetting to configure Gmail credentials for every discovered environment key.
-- Creating connector configs without matching them to a registered connector type.
-- Leaving a connector enabled without a valid parser and routing rule.
-
-## Related files
-
-- [docs/01_PROJECT_OVERVIEW.md](./01_PROJECT_OVERVIEW.md)
-- [docs/02_ARCHITECTURE.md](./02_ARCHITECTURE.md) — includes Sales UI Design Principles that also apply to Admin UI conventions where relevant.
-- [docs/03_DEVELOPMENT_GUIDELINES.md](./03_DEVELOPMENT_GUIDELINES.md)
-- [`prisma/schema.prisma`](../prisma/schema.prisma)
-- [`prisma/seed.ts`](../prisma/seed.ts)
-- [`src/app/api/providers/route.ts`](../src/app/api/providers/route.ts)
-- [`src/app/api/connectors/route.ts`](../src/app/api/connectors/route.ts)
-- [`src/app/api/connectors/[id]/sync/route.ts`](../src/app/api/connectors/[id]/sync/route.ts)
-- [`src/app/api/scheduler/trigger/route.ts`](../src/app/api/scheduler/trigger/route.ts)
-- [`src/components/admin/provider-management.tsx`](../src/components/admin/provider-management.tsx)
+- [01_PROJECT_OVERVIEW.md](./01_PROJECT_OVERVIEW.md)
+- [02_ARCHITECTURE.md](./02_ARCHITECTURE.md)
+- [03_DEVELOPMENT_GUIDELINES.md](./03_DEVELOPMENT_GUIDELINES.md)
+- [05_ARCHITECTURE_AUDIT.md](./05_ARCHITECTURE_AUDIT.md)
+- [06_REST_CONNECTOR_IMPLEMENTATION_REPORT.md](./06_REST_CONNECTOR_IMPLEMENTATION_REPORT.md)

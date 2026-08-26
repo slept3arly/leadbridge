@@ -1,23 +1,7 @@
-function fmtDate(value: string | Date) {
-  const d = value instanceof Date ? value : new Date(value);
-  return d.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
+"use client";
 
-function fmtTime(value: string | Date) {
-  if (typeof value === "string" && !value.includes("T")) {
-    const [h, m] = value.split(":").map(Number);
-    if (!isNaN(h) && !isNaN(m)) {
-      const ampm = h >= 12 ? "PM" : "AM";
-      return `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${ampm}`;
-    }
-  }
-  const d = value instanceof Date ? value : new Date(value);
-  return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-}
+import { formatDate, formatTime, formatTimeValue } from "@/lib/utils";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 export function FollowUpSummary({
   status,
@@ -30,10 +14,12 @@ export function FollowUpSummary({
   dueTime: string | null;
   completedAt: string | null;
 }) {
+  const hydrated = useHydrated();
+  const timeZone = hydrated ? undefined : "UTC";
   if (!dueDate && status !== "COMPLETED") return null;
 
   const isOverdue =
-    status === "PENDING" && !!dueDate && new Date(dueDate) < new Date();
+    hydrated && status === "PENDING" && !!dueDate && new Date(dueDate) < new Date();
 
   const displayStatus =
     status === "COMPLETED"
@@ -67,8 +53,8 @@ export function FollowUpSummary({
               Scheduled
             </span>
             <span>
-              {fmtDate(dueDate)}
-              {dueTime ? ` · ${fmtTime(dueTime)}` : ""}
+              {formatDate(dueDate, "-", timeZone)}
+              {dueTime ? ` · ${formatTime(dueTime)}` : ""}
             </span>
           </div>
         )}
@@ -78,7 +64,7 @@ export function FollowUpSummary({
               Completed
             </span>
             <span>
-              {fmtDate(completedAt)} · {fmtTime(completedAt)}
+              {formatDate(completedAt, "-", timeZone)} · {formatTimeValue(completedAt, "-", timeZone)}
             </span>
           </div>
         )}

@@ -3,6 +3,7 @@ import { withApiAuthorization, apiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { supportedConnectorTypes } from "@/connectors/registry";
 import { restConnectorConfigSchema } from "@/lib/validation";
+import { invalidateAdminDashboard } from "@/lib/cache-tags";
 
 export const GET = withApiAuthorization("ADMIN", async () => {
   const types = supportedConnectorTypes();
@@ -21,6 +22,7 @@ export const POST = withApiAuthorization("ADMIN", async (request) => {
   const type = (body.type as string)?.toLowerCase();
   const configuration = body.configuration as Record<string, unknown> | undefined;
   const environmentKey = body.environmentKey as string | undefined;
+  const sourceId = body.sourceId as string | null | undefined;
 
   if (!name || !type) {
     return apiError("Name and type are required.", 400);
@@ -38,6 +40,11 @@ export const POST = withApiAuthorization("ADMIN", async (request) => {
     }
   }
 
+  if (sourceId) {
+    const provider = await prisma.leadSource.findUnique({ where: { id: sourceId }, select: { id: true } });
+    if (!provider) return apiError("Provider not found.", 404);
+  }
+
   const connector = await prisma.connector.create({
     data: {
       name,
@@ -46,8 +53,10 @@ export const POST = withApiAuthorization("ADMIN", async (request) => {
       status: "INACTIVE",
       configuration: (configuration ?? {}) as object,
       environmentKey: environmentKey ?? null,
+      sourceId: sourceId ?? null,
     },
   });
+  invalidateAdminDashboard();
 
   return NextResponse.json({ data: { id: connector.id, name: connector.name, type: connector.type } });
 });

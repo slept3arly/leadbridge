@@ -1,4 +1,5 @@
 import { revalidateTag } from "next/cache";
+import { logger } from "@/lib/logger";
 
 const REV_PROFILE = "max" as const;
 
@@ -13,12 +14,21 @@ export const TAG = {
   USERS_LIST: "users-list",
   CONNECTORS: "connectors",
   PROVIDERS: "providers",
+  ADMIN_DASHBOARD: "dashboard:admin",
+  SETTINGS: "settings:global",
 } as const;
 
 // ─── Invalidation helpers ──────────────────────────────────────
 
 function rt(tag: string) {
-  revalidateTag(tag, REV_PROFILE);
+  try {
+    revalidateTag(tag, REV_PROFILE);
+  } catch (error) {
+    if (error instanceof Error && /static generation store missing|incrementalCache missing/.test(error.message)) {
+      return;
+    }
+    logger.warn({ error, tag }, "cache invalidation failed");
+  }
 }
 
 export function invalidateDashboard(userId: string) {
@@ -44,4 +54,13 @@ export function invalidateProfile(userId: string) {
 export function invalidateAfterMutation(userId: string) {
   invalidateDashboard(userId);
   invalidateAttention(userId);
+  invalidateAdminDashboard();
+}
+
+export function invalidateAdminDashboard() {
+  rt(TAG.ADMIN_DASHBOARD);
+}
+
+export function invalidateSettings() {
+  rt(TAG.SETTINGS);
 }

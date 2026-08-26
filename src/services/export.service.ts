@@ -3,6 +3,9 @@ import { Prisma } from "@/generated/prisma/client";
 import { STATUS_VALUES } from "@/lib/lead-constants";
 import { reportService } from "@/services/report.service";
 import { auditService } from "@/services/audit.service";
+import type { UserRole } from "@/generated/prisma/client";
+
+type ExportActor = { id: string; role: UserRole };
 
 function escapeCsv(value: unknown): string {
   const str = value == null ? "" : String(value);
@@ -45,10 +48,11 @@ export class ExportService {
     from?: Date;
     to?: Date;
     search?: string;
-  }): Promise<string> {
+  }, actor: ExportActor): Promise<string> {
     const where: Prisma.LeadWhereInput = { isDeleted: false };
+    if (actor?.role === "SALES") where.assignedUserId = actor.id;
     if (params.status?.length) where.status = { in: params.status.filter((status) => STATUS_VALUES.includes(status as (typeof STATUS_VALUES)[number])) as (typeof STATUS_VALUES)[number][] };
-    if (params.assignedUserId) where.assignedUserId = params.assignedUserId;
+    if (actor?.role !== "SALES" && params.assignedUserId) where.assignedUserId = params.assignedUserId;
     if (params.from || params.to) {
       where.createdAt = {};
       if (params.from) where.createdAt.gte = params.from;

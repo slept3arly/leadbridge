@@ -10,6 +10,7 @@ export const POST = withApiAuthorization(undefined, async (_request, _context, s
 
   revalidateTag(TAG.DASHBOARD(userId), REV);
   revalidateTag(TAG.ATTENTION(userId), REV);
+  if (session.user.role === "ADMIN") revalidateTag(TAG.ADMIN_DASHBOARD, REV);
 
   return NextResponse.json({ success: true });
 });

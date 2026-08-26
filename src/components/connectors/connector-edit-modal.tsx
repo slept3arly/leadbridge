@@ -11,7 +11,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Badge } from "@/components/ui/badge";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { toast } from "@/lib/toast";
-import type { SerializedConnector } from "@/app/(dashboard)/admin/connectors/page";
+import type { SafeConnectorConfiguration, SerializedConnector } from "@/app/(dashboard)/admin/connectors/page";
 
 type TabId = "general" | "configuration" | "scheduling" | "runtime";
 
@@ -43,11 +43,16 @@ type RestConfig = {
   apiKeyName: string;
   apiKeyValue: string;
   apiKeyIn: string;
+  apiKeyConfigured: boolean;
   bearerToken: string;
+  bearerTokenConfigured: boolean;
   basicUsername: string;
+  basicUsernameConfigured: boolean;
   basicPassword: string;
+  basicPasswordConfigured: boolean;
   customHeaderName: string;
   customHeaderValue: string;
+  customHeaderValueConfigured: boolean;
   leadArrayPath: string;
   timeout: string;
   retryCount: string;
@@ -68,11 +73,16 @@ const EMPTY_CONFIG: RestConfig = {
   apiKeyName: "",
   apiKeyValue: "",
   apiKeyIn: "header",
+  apiKeyConfigured: false,
   bearerToken: "",
+  bearerTokenConfigured: false,
   basicUsername: "",
+  basicUsernameConfigured: false,
   basicPassword: "",
+  basicPasswordConfigured: false,
   customHeaderName: "",
   customHeaderValue: "",
+  customHeaderValueConfigured: false,
   leadArrayPath: "data",
   timeout: "30000",
   retryCount: "3",
@@ -103,14 +113,60 @@ function parseJsonLines(input: string): Record<string, string> {
   return result;
 }
 
-function formatRecord(input: Record<string, string> | undefined | null): string {
-  if (!input || Object.keys(input).length === 0) return "";
-  return Object.entries(input)
-    .map(([k, v]) => `${k}: ${v}`)
-    .join("\n");
+function stringValue(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
 }
 
-function buildConfiguration(c: RestConfig): Record<string, unknown> | null {
+function numberStringValue(value: unknown, fallback: string): string {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string" && value.trim() !== "") return value;
+  return fallback;
+}
+
+export function normalizeRestConfig(configuration: SafeConnectorConfiguration | null | undefined): RestConfig {
+  const config: SafeConnectorConfiguration = configuration ?? {
+    headersConfigured: false,
+    queryParamsConfigured: false,
+    bodyConfigured: false,
+  };
+  const auth = (config.auth as Record<string, unknown> | undefined) ?? {};
+  const apiKey = (auth.apiKey as Record<string, unknown> | undefined) ?? {};
+  const basic = (auth.basic as Record<string, unknown> | undefined) ?? {};
+  const customHeader = (auth.customHeader as Record<string, unknown> | undefined) ?? {};
+  const pagination = (config.pagination as Record<string, unknown> | undefined) ?? {};
+
+  return {
+    baseUrl: stringValue(config.baseUrl),
+    endpoint: stringValue(config.endpoint),
+    method: stringValue(config.method, "GET"),
+    headers: "",
+    queryParams: "",
+    body: "",
+    authType: stringValue(auth.type, "NONE"),
+    apiKeyName: stringValue(apiKey.name),
+    apiKeyValue: "",
+    apiKeyIn: apiKey.in === "query" ? "query" : "header",
+    apiKeyConfigured: apiKey.configured === true,
+    bearerToken: "",
+    bearerTokenConfigured: auth.bearerTokenConfigured === true,
+    basicUsername: "",
+    basicUsernameConfigured: basic.usernameConfigured === true,
+    basicPassword: "",
+    basicPasswordConfigured: basic.passwordConfigured === true,
+    customHeaderName: stringValue(customHeader.name),
+    customHeaderValue: "",
+    customHeaderValueConfigured: customHeader.valueConfigured === true,
+    leadArrayPath: stringValue(config.leadArrayPath, "data"),
+    timeout: numberStringValue(config.timeout, "30000"),
+    retryCount: numberStringValue(config.retryCount, "3"),
+    rateLimitDelayMs: numberStringValue(config.rateLimitDelayMs, "200"),
+    paginationStrategy: stringValue(pagination.strategy, "PAGE_NUMBER"),
+    pageSize: numberStringValue(pagination.pageSize, "50"),
+    maxPages: numberStringValue(pagination.maxPages, "50"),
+  };
+}
+
+export function buildConfiguration(c: RestConfig): Record<string, unknown> | null {
   if (!c.baseUrl || !c.endpoint) return null;
 
   const auth: Record<string, unknown> = { type: c.authType };
@@ -139,7 +195,7 @@ function buildConfiguration(c: RestConfig): Record<string, unknown> | null {
     method: c.method,
     auth,
     pagination,
-    leadArrayPath: c.leadArrayPath || "data",
+    leadArrayPath: c.leadArrayPath,
     timeout: Number(c.timeout) || 30000,
     retryCount: Number(c.retryCount) || 3,
     rateLimitDelayMs: Number(c.rateLimitDelayMs) || 200,
@@ -162,10 +218,12 @@ export function ConnectorEditModal({
   open,
   onClose,
   connector,
+  providers,
 }: {
   open: boolean;
   onClose: () => void;
   connector?: SerializedConnector | null;
+  providers: Array<{ id: string; name: string; active: boolean }>;
 }) {
   const router = useRouter();
   const isEdit = !!connector;
@@ -175,6 +233,7 @@ export function ConnectorEditModal({
 
   const [name, setName] = useState("");
   const [type, setType] = useState("rest");
+  const [sourceId, setSourceId] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [scheduleType, setScheduleType] = useState("MANUAL");
   const [restConfig, setRestConfig] = useState<RestConfig>(EMPTY_CONFIG);
@@ -183,20 +242,26 @@ export function ConnectorEditModal({
 
   useEffect(() => {
     if (!open) return;
-    if (connector) {
-      setName(connector.name);
-      setType(connector.type);
-      setEnabled(connector.enabled);
-      setScheduleType(connector.scheduleType);
-    } else {
-      setName("");
-      setType("rest");
-      setEnabled(false);
-      setScheduleType("MANUAL");
-    }
-    setRestConfig(EMPTY_CONFIG);
-    setActiveTab("general");
-    setError(null);
+    const timer = window.setTimeout(() => {
+      if (connector) {
+        setName(connector.name);
+        setType(connector.type);
+        setSourceId(connector.sourceId ?? "");
+        setEnabled(connector.enabled);
+        setScheduleType(connector.scheduleType);
+        setRestConfig(connector.type === "rest" ? normalizeRestConfig(connector.configuration) : EMPTY_CONFIG);
+      } else {
+        setName("");
+        setType("rest");
+        setSourceId("");
+        setEnabled(false);
+        setScheduleType("MANUAL");
+        setRestConfig(EMPTY_CONFIG);
+      }
+      setActiveTab("general");
+      setError(null);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [open, connector]);
 
   useEffect(() => {
@@ -226,6 +291,7 @@ export function ConnectorEditModal({
         await axios.patch(`/api/connectors/${connector!.id}/settings`, {
           enabled,
           scheduleType,
+          sourceId: sourceId || null,
           ...(configuration ? { configuration } : {}),
         });
         toast.success("Connector updated");
@@ -234,6 +300,7 @@ export function ConnectorEditModal({
           name,
           type,
           enabled: false,
+          sourceId: sourceId || null,
           ...(configuration ? { configuration } : {}),
         });
         toast.success("Connector created");
@@ -253,10 +320,8 @@ export function ConnectorEditModal({
 
   if (!open) return null;
 
-  const showConfigTab = activeTab === "configuration";
-
   const healthStatusLabel = connector?.healthStatus ?? "HEALTHY";
-  const runtimeMeta = connector?.runtimeMetadata as Record<string, unknown> | null ?? {};
+  const runtimeMeta = connector?.runtimeMetadata ?? {};
 
   const visibleTabs = tabs.filter((t) => t.id !== "configuration" || isRest);
 
@@ -326,6 +391,20 @@ export function ConnectorEditModal({
                       <option value="rest">REST API</option>
                     </Select>
                   </FormField>
+                  <FormField label="Provider" htmlFor="connector-provider">
+                    <Select
+                      id="connector-provider"
+                      value={sourceId}
+                      onChange={(e) => setSourceId(e.target.value)}
+                    >
+                      <option value="">Unassigned</option>
+                      {providers.map((provider) => (
+                        <option key={provider.id} value={provider.id}>
+                          {provider.name}{provider.active ? "" : " (inactive)"}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormField>
                   <FormField label="Enabled" htmlFor="connector-enabled">
                     <label className="flex items-center gap-2 cursor-pointer h-10">
                       <input
@@ -341,6 +420,9 @@ export function ConnectorEditModal({
                     </label>
                   </FormField>
                 </div>
+                <p className="text-xs text-[var(--color-muted)]">
+                  Assigning a provider makes the connector visible under that provider and keeps the ownership model explicit.
+                </p>
               </div>
             )}
 
@@ -405,10 +487,10 @@ export function ConnectorEditModal({
                     {restConfig.authType === "API_KEY" && (
                       <>
                         <FormField label="Key Name" htmlFor="cfg-api-key-name">
-                          <Input id="cfg-api-key-name" value={restConfig.apiKeyName} onChange={(e) => updateConfig("apiKeyName", e.target.value)} placeholder="X-API-Key" />
+                        <Input id="cfg-api-key-name" value={restConfig.apiKeyName} onChange={(e) => updateConfig("apiKeyName", e.target.value)} placeholder={restConfig.apiKeyConfigured ? "Configured — leave blank to keep existing" : "X-API-Key"} />
                         </FormField>
                         <FormField label="Key Value" htmlFor="cfg-api-key-value">
-                          <Input id="cfg-api-key-value" type="password" value={restConfig.apiKeyValue} onChange={(e) => updateConfig("apiKeyValue", e.target.value)} placeholder="Leave blank to keep existing" autoComplete="off" />
+                        <Input id="cfg-api-key-value" type="password" value={restConfig.apiKeyValue} onChange={(e) => updateConfig("apiKeyValue", e.target.value)} placeholder={restConfig.apiKeyConfigured ? "Configured — leave blank to keep existing" : "Enter API key"} autoComplete="off" />
                         </FormField>
                         <FormField label="Location" htmlFor="cfg-api-key-in">
                           <Select id="cfg-api-key-in" value={restConfig.apiKeyIn} onChange={(e) => updateConfig("apiKeyIn", e.target.value)}>
@@ -421,17 +503,17 @@ export function ConnectorEditModal({
 
                     {restConfig.authType === "BEARER" && (
                       <FormField label="Token" htmlFor="cfg-bearer-token" className="col-span-2">
-                        <Input id="cfg-bearer-token" type="password" value={restConfig.bearerToken} onChange={(e) => updateConfig("bearerToken", e.target.value)} placeholder="Leave blank to keep existing" autoComplete="off" />
+                        <Input id="cfg-bearer-token" type="password" value={restConfig.bearerToken} onChange={(e) => updateConfig("bearerToken", e.target.value)} placeholder={restConfig.bearerTokenConfigured ? "Configured — leave blank to keep existing" : "Enter bearer token"} autoComplete="off" />
                       </FormField>
                     )}
 
                     {restConfig.authType === "BASIC" && (
                       <>
                         <FormField label="Username" htmlFor="cfg-basic-username">
-                          <Input id="cfg-basic-username" value={restConfig.basicUsername} onChange={(e) => updateConfig("basicUsername", e.target.value)} />
+                          <Input id="cfg-basic-username" value={restConfig.basicUsername} onChange={(e) => updateConfig("basicUsername", e.target.value)} placeholder={restConfig.basicUsernameConfigured ? "Configured — leave blank to keep existing" : "Username"} autoComplete="off" />
                         </FormField>
                         <FormField label="Password" htmlFor="cfg-basic-password">
-                          <Input id="cfg-basic-password" type="password" value={restConfig.basicPassword} onChange={(e) => updateConfig("basicPassword", e.target.value)} placeholder="Leave blank to keep existing" autoComplete="off" />
+                        <Input id="cfg-basic-password" type="password" value={restConfig.basicPassword} onChange={(e) => updateConfig("basicPassword", e.target.value)} placeholder={restConfig.basicPasswordConfigured ? "Configured — leave blank to keep existing" : "Enter password"} autoComplete="off" />
                         </FormField>
                       </>
                     )}
@@ -442,7 +524,7 @@ export function ConnectorEditModal({
                           <Input id="cfg-custom-header-name" value={restConfig.customHeaderName} onChange={(e) => updateConfig("customHeaderName", e.target.value)} placeholder="X-Custom" />
                         </FormField>
                         <FormField label="Header Value" htmlFor="cfg-custom-header-value">
-                          <Input id="cfg-custom-header-value" type="password" value={restConfig.customHeaderValue} onChange={(e) => updateConfig("customHeaderValue", e.target.value)} placeholder="Leave blank to keep existing" autoComplete="off" />
+                          <Input id="cfg-custom-header-value" type="password" value={restConfig.customHeaderValue} onChange={(e) => updateConfig("customHeaderValue", e.target.value)} placeholder={restConfig.customHeaderValueConfigured ? "Configured — leave blank to keep existing" : "Enter header value"} autoComplete="off" />
                         </FormField>
                       </>
                     )}
@@ -460,7 +542,7 @@ export function ConnectorEditModal({
                         value={restConfig.headers}
                         onChange={(e) => updateConfig("headers", e.target.value)}
                         rows={3}
-                        placeholder="Content-Type: application/json"
+                        placeholder="Leave blank to keep existing, or enter Content-Type: application/json"
                       />
                     </FormField>
                     <FormField label="Query Parameters (key: value per line)" htmlFor="cfg-query-params" className="col-span-2">
@@ -469,7 +551,7 @@ export function ConnectorEditModal({
                         value={restConfig.queryParams}
                         onChange={(e) => updateConfig("queryParams", e.target.value)}
                         rows={3}
-                        placeholder="status: active&#10;limit: 100"
+                        placeholder="Leave blank to keep existing, or enter status: active"
                       />
                     </FormField>
                     {restConfig.method !== "GET" && (
@@ -479,7 +561,7 @@ export function ConnectorEditModal({
                           value={restConfig.body}
                           onChange={(e) => updateConfig("body", e.target.value)}
                           rows={4}
-                          placeholder='{"filter": {"status": "new"}}'
+                        placeholder="Leave blank to keep existing, or enter a request body"
                         />
                       </FormField>
                     )}

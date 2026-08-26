@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession, canAccessProtectedSession, type AppRole, type AppSession } from "@/lib/session";
 import { ServiceError } from "@/lib/service-errors";
 import { can, type Permission } from "@/lib/permissions";
+import { logger } from "@/lib/logger";
 
 export function apiError(message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: message, ...(details ? { details } : {}) }, { status });
@@ -49,9 +50,11 @@ export function parseJsonError(error: unknown) {
 }
 
 export function handleApiError(error: unknown, fallbackMessage: string) {
+  void fallbackMessage;
   if (error instanceof ServiceError) {
     return apiError(error.message, error.status);
   }
 
-  return apiError(error instanceof Error ? error.message : fallbackMessage, 500);
+  logger.error(error, "Unexpected API error");
+  return apiError("Something went wrong. Please try again.", 500);
 }

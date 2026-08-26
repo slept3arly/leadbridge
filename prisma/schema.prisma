@@ -297,6 +297,8 @@ model Lead {
   updatedAt         DateTime       @updatedAt
 
   @@index([assignedUserId, status, isDeleted])
+  @@index([assignedUserId, isDeleted, updatedAt])
+  @@index([isDeleted, createdAt])
   @@index([status, isArchived, isDeleted])
   @@index([nextFollowUpAt, isDeleted])
   @@index([connectorId, sourceId])

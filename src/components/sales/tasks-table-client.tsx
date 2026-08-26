@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 import { toast } from "@/lib/toast";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { Check, X, Clock } from "lucide-react";
 
 type FollowUpRow = {
@@ -24,6 +25,7 @@ type FollowUpRow = {
 
 export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }) {
   const router = useRouter();
+  const hydrated = useHydrated();
   const [rows, setRows] = useState(initialRows);
 
   async function updateStatus(id: string, status: string) {
@@ -39,7 +41,7 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
 
   function isOverdue(dueDate: Date | null) {
     if (!dueDate) return false;
-    return new Date(dueDate) < new Date();
+    return hydrated && new Date(dueDate) < new Date();
   }
 
   return (

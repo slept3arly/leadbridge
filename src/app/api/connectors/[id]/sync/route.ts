@@ -7,6 +7,7 @@ import { createConnector } from "@/connectors/registry";
 import { executionLock } from "@/services/execution-lock.service";
 import { connectorHealthService } from "@/services/connector-health.service";
 import { randomUUID } from "crypto";
+import { invalidateAdminDashboard } from "@/lib/cache-tags";
 
 export const POST = withApiAuthorization("ADMIN", async (_request, context, session) => {
   const params = context as { params: Promise<{ id: string }> | { id: string } };
@@ -84,6 +85,7 @@ export const POST = withApiAuthorization("ADMIN", async (_request, context, sess
       where: { id: connector.id },
       data: { runtimeMetadata: updatedMeta as object },
     });
+    invalidateAdminDashboard();
 
     return NextResponse.json({ data: result });
   } finally {

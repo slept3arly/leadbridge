@@ -29,6 +29,7 @@ All REST connector files live under `src/connectors/rest/` and are consumed by t
 | `src/services/connector-health.service.ts` | `ConnectorHealthService.recordCompletion()` — updates `consecutiveFailures`, `averageDurationMs`, `healthStatus` after each run. |
 | `src/services/execution-lock.service.ts` | `ExecutionLock` — prevents concurrent runs by setting `isRunning=true` on the connector row. Releases after completion. |
 | `src/services/scheduler.service.ts` | `ConnectorScheduler` — discovers due connectors and runs them. Used by `POST /api/scheduler/trigger`. |
+| `src/app/api/connectors/[id]/route.ts` | `DELETE` — deletes a connector record by ID. |
 | `src/app/api/connectors/[id]/sync/route.ts` | `POST` — triggers manual sync. Creates runtime, acquires lock, executes, records health, updates runtime metadata. |
 | `src/app/api/providers/connectors/test/route.ts` | `POST` — accepts `connectorId`, looks up connector, calls `GmailConnector.testConnection()` or `RestConnector.testConnection()`. |
 | `src/parsers/example-parser.ts` | `ExampleParser` — generic parser for REST payloads. Extracts `name`, `email`, `phone`, `company` from flat JSON. |
@@ -776,7 +777,7 @@ After sync completes:
 |---|---|---|---|
 | 1 | **No API route to set connector `configuration`** | `src/app/api/connectors/[id]/settings/route.ts` | The PATCH handler only accepts `enabled`, `scheduleType`, `scheduleConfig`, `resetHealth`. It does NOT accept `configuration`. ADMIN must use direct DB access to set baseUrl, endpoint, auth, etc. |
 | 2 | **`leadArrayPath` default `"data"` is wrong for most APIs** | `rest-types.ts:39` | Most APIs return records at the root of an array (e.g., `[{...}]`) or at a nested path (e.g., `{ "data": [...] }`). The default `"data"` expects `response.data` to be an array. For an API returning a bare array `[{...}]`, `leadArrayPath` should be empty string `""`. But there is no UI to set it. |
-| 3 | **No REST example/test/fixture exists** | n/a | The REST connector has never been tested. No sample endpoint, no seed data, no smoke test. Requires a real external API or a local mock. |
+| 3 | **External API testing requires a test fixture or local endpoint** | REST connector configuration | External production APIs require a live URL or a separately hosted local test fixture; the production application does not expose mock data routes. |
 
 ### Recommended
 
@@ -791,7 +792,7 @@ After sync completes:
 
 | # | Gap | Impact |
 |---|---|---|
-| 8 | `ConfigurableGmailAccount` in `types.ts` is legacy | Not related to REST, but the old `types.ts` `Connector` interface and `EnvironmentConnectorRuntime` base class are unused dead code alongside the REST connector. |
+| 8 | Environment-managed Gmail account discovery is separate from REST | `ConfiguredGmailAccount` remains in use by the Gmail environment discovery helper; the obsolete generic environment runtime scaffolding has been removed. |
 | 9 | Route handler pattern duplication | Every `[id]` route handler duplicates the `params` resolution pattern. Not a bug but adds boilerplate. |
 | 10 | `recordsUpdated` always 0 | `SyncHistory.recordCompletion()` hardcodes `recordsUpdated: 0`. The runtime never updates existing leads. |
 
@@ -799,10 +800,8 @@ After sync completes:
 
 ## Summary
 
-The REST connector has a complete, well-structured code path from HTTP fetch to lead creation. The three critical gaps are:
+The REST connector features a complete, well-structured code path from HTTP fetch to lead creation. Key implementation notes:
 
-1. **No way to set `configuration` via the admin API** — the `PATCH /api/connectors/[id]/settings` route does not accept the `configuration` field
-2. **The default `leadArrayPath = "data"` is unlikely to match real APIs** — and there's no UI to change it
-3. **No test endpoint or sample data exists** — the connector has never been run end-to-end
-
-These gaps make it impossible to configure and test a REST connector solely through the UI. A direct database write is required for initial configuration, and there is no way to verify the configuration works without triggering a sync and checking the results.
+1. **Connector Execution Lock & Retries**: Supported via `ExecutionLock` and `RetryPolicy` with exponential backoff on retryable HTTP errors.
+2. **Local Testing**: REST connector execution can be verified with an externally supplied sample JSON endpoint and the authenticated connector test flow.
+3. **Configuration & Testing**: Setting custom `configuration` (baseUrl, endpoint, auth keys) is performed via database configuration updates or seed scripts, and connection testing is executed via `POST /api/providers/connectors/test`.

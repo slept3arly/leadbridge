@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { ActiveFilters } from "@/components/shared/active-filters";
 import { Filter, X } from "lucide-react";
 import { useTableQuery, type TableQueryState } from "@/hooks/use-table-query";
+import { formatDate } from "@/lib/utils";
 import {
   LEAD_STATUSES,
   LEAD_PRIORITIES,
@@ -45,8 +46,14 @@ export function LeadTableControls({
 }) {
   const query = useTableQuery(initial);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHydrated(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!filterOpen) return;
@@ -117,24 +124,22 @@ export function LeadTableControls({
       labels.push({ key: "source", label: `Source: ${opt?.name ?? query.filters.source}` });
     }
     if (query.dateFrom) {
-      const d = new Date(query.dateFrom);
       labels.push({
         key: "dateFrom",
-        label: `From: ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`,
+        label: `From: ${formatDate(query.dateFrom, "-", hydrated ? undefined : "UTC")}`,
       });
     }
     if (query.dateTo) {
-      const d = new Date(query.dateTo);
       labels.push({
         key: "dateTo",
-        label: `To: ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`,
+        label: `To: ${formatDate(query.dateTo, "-", hydrated ? undefined : "UTC")}`,
       });
     }
     if (query.filters.archived === "true") {
       labels.push({ key: "archived", label: "Showing archived" });
     }
     return labels;
-  }, [query.filters, query.dateFrom, query.dateTo, leadSources]);
+  }, [query.filters, query.dateFrom, query.dateTo, leadSources, hydrated]);
 
   const resetAll = () => {
     query.update({

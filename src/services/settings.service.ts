@@ -1,5 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { invalidateSettings, TAG } from "@/lib/cache-tags";
 import { ServiceError } from "@/lib/service-errors";
 
 interface SettingDefinition<T = unknown> {
@@ -23,6 +25,24 @@ const SETTINGS: Record<string, SettingDefinition> = {
     defaultValue: 1000,
   },
 };
+
+const getCachedSetting = unstable_cache(
+  async (key: string) => prisma.setting.findUnique({ where: { key } }),
+  ["setting-value"],
+  { revalidate: 300, tags: [TAG.SETTINGS] },
+);
+
+async function getSettingValue(key: string) {
+  try {
+    return await getCachedSetting(key);
+  } catch (error) {
+    // Service-level smoke tests and CLI jobs do not have Next's request cache context.
+    if (error instanceof Error && error.message.includes("incrementalCache missing")) {
+      return prisma.setting.findUnique({ where: { key } });
+    }
+    throw error;
+  }
+}
 
 export class SettingsService {
   getDefinitions() {
@@ -49,7 +69,7 @@ export class SettingsService {
   async get<T>(key: string): Promise<T | null> {
     const def = SETTINGS[key];
     if (!def) return null;
-    const db = await prisma.setting.findUnique({ where: { key } });
+    const db = await getSettingValue(key);
     return (db?.value as T | undefined) ?? (def.defaultValue as T);
   }
 
@@ -61,6 +81,7 @@ export class SettingsService {
       create: { key, value: value as object, category: definition.category, description: definition.description, updatedById },
       update: { value: value as object, updatedById },
     });
+    if (client === prisma) invalidateSettings();
     return setting.value;
   }
 
@@ -71,13 +92,15 @@ export class SettingsService {
       throw new ServiceError(`Unknown setting key(s): ${unknownKeys.join(", ")}`, 400);
     }
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const results: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(updates)) {
         results[key] = await this.update(key, value, updatedById, tx);
       }
       return results;
     });
+    invalidateSettings();
+    return result;
   }
 
   async getByCategory(category: string): Promise<Record<string, unknown>> {

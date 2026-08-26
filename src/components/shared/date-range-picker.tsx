@@ -13,11 +13,17 @@ function formatDateForInput(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function formatDisplayDate(date: Date): string {
+function formatDateForInputInTimeZone(date: Date, timeZone?: string): string {
+  if (!timeZone) return formatDateForInput(date);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDisplayDate(date: Date, timeZone?: string): string {
   return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
     month: "short",
     year: "numeric",
+    ...(timeZone ? { timeZone } : {}),
   }).format(date);
 }
 
@@ -43,8 +49,14 @@ export function DateRangePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("single");
+  const [hydrated, setHydrated] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHydrated(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const startDateRef = useRef<HTMLInputElement>(null);
   const startTimeRef = useRef<HTMLInputElement>(null);
@@ -56,9 +68,10 @@ export function DateRangePicker({
   const triggerLabel = (() => {
     if (!value?.dateFrom) return "Date Range";
     const showTime = false;
-    const from = showTime ? formatDisplayDateTime(value.dateFrom) : formatDisplayDate(value.dateFrom);
+    const timeZone = hydrated ? undefined : "UTC";
+    const from = showTime ? formatDisplayDateTime(value.dateFrom) : formatDisplayDate(value.dateFrom, timeZone);
     if (value.dateTo) {
-      const to = showTime ? formatDisplayDateTime(value.dateTo) : formatDisplayDate(value.dateTo);
+      const to = showTime ? formatDisplayDateTime(value.dateTo) : formatDisplayDate(value.dateTo, timeZone);
       return `${from} → ${to}`;
     }
     return from;
@@ -170,7 +183,7 @@ export function DateRangePicker({
               <input
                 ref={startDateRef}
                 type="date"
-                defaultValue={value?.dateFrom ? formatDateForInput(value.dateFrom) : ""}
+                defaultValue={value?.dateFrom ? formatDateForInputInTimeZone(value.dateFrom, hydrated ? undefined : "UTC") : ""}
                 className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-sm focus:border-[var(--color-brand)] focus:ring-3 focus:ring-[var(--color-brand)]/15 focus:outline-hidden"
               />
               <details className="mt-2">
@@ -180,7 +193,7 @@ export function DateRangePicker({
                 <input
                   ref={startTimeRef}
                   type="time"
-                  defaultValue={value?.dateFrom ? `${String(value.dateFrom.getHours()).padStart(2, "0")}:${String(value.dateFrom.getMinutes()).padStart(2, "0")}` : ""}
+                defaultValue={value?.dateFrom ? `${String(hydrated ? value.dateFrom.getHours() : value.dateFrom.getUTCHours()).padStart(2, "0")}:${String(hydrated ? value.dateFrom.getMinutes() : value.dateFrom.getUTCMinutes()).padStart(2, "0")}` : ""}
                   className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-sm focus:border-[var(--color-brand)] focus:ring-3 focus:ring-[var(--color-brand)]/15 focus:outline-hidden"
                 />
               </details>
@@ -194,7 +207,7 @@ export function DateRangePicker({
                 <input
                   ref={endDateRef}
                   type="date"
-                  defaultValue={value?.dateTo ? formatDateForInput(value.dateTo) : ""}
+                defaultValue={value?.dateTo ? formatDateForInputInTimeZone(value.dateTo, hydrated ? undefined : "UTC") : ""}
                   className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-sm focus:border-[var(--color-brand)] focus:ring-3 focus:ring-[var(--color-brand)]/15 focus:outline-hidden"
                 />
                 <details className="mt-2">
@@ -204,7 +217,7 @@ export function DateRangePicker({
                   <input
                     ref={endTimeRef}
                     type="time"
-                    defaultValue={value?.dateTo ? `${String(value.dateTo.getHours()).padStart(2, "0")}:${String(value.dateTo.getMinutes()).padStart(2, "0")}` : ""}
+                defaultValue={value?.dateTo ? `${String(hydrated ? value.dateTo.getHours() : value.dateTo.getUTCHours()).padStart(2, "0")}:${String(hydrated ? value.dateTo.getMinutes() : value.dateTo.getUTCMinutes()).padStart(2, "0")}` : ""}
                     className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-sm focus:border-[var(--color-brand)] focus:ring-3 focus:ring-[var(--color-brand)]/15 focus:outline-hidden"
                   />
                 </details>
