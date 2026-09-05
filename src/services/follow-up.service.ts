@@ -77,6 +77,7 @@ export class FollowUpService {
     leadId: string;
   }, actor: Actor) {
     await this.assertLeadAccess(data.leadId, actor);
+
     const followUp = await prisma.followUp.create({
       data: {
         title: data.title,
@@ -113,7 +114,7 @@ export class FollowUpService {
   }, actor: Actor) {
     const followUp = await prisma.followUp.findUnique({
       where: { id },
-      select: { id: true, leadId: true, createdById: true, status: true },
+      select: { id: true, leadId: true, createdById: true, status: true, dueDate: true, dueTime: true },
     });
     if (!followUp) throw new ServiceError("Follow-up not found.", 404);
     await this.assertLeadAccess(followUp.leadId, actor);
@@ -122,12 +123,21 @@ export class FollowUpService {
     const wasCompleted = followUp.status === "COMPLETED";
     const completedAt = newStatus === "COMPLETED" ? new Date() : wasCompleted ? null : undefined;
 
+    let combinedDueDate: Date | null | undefined = undefined;
+    if (data.dueDate !== undefined) {
+      if (data.dueDate === null) {
+        combinedDueDate = null;
+      } else {
+        combinedDueDate = new Date(data.dueDate);
+      }
+    }
+
     const updated = await prisma.followUp.update({
       where: { id },
       data: {
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined ? { description: data.description } : {}),
-        ...(data.dueDate !== undefined && data.dueDate !== null ? { dueDate: new Date(data.dueDate) } : data.dueDate === null ? { dueDate: null } : {}),
+        ...(combinedDueDate !== undefined ? { dueDate: combinedDueDate } : {}),
         ...(data.dueTime !== undefined ? { dueTime: data.dueTime } : {}),
         ...(data.priority !== undefined ? { priority: data.priority as FollowUpPriority } : {}),
         ...(data.status !== undefined ? { status: data.status as FollowUpStatus } : {}),

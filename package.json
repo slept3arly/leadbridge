@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "pnpm exec prisma generate",
     "db:migrate": "pnpm exec prisma migrate dev",
-    "db:push": "pnpm exec prisma db push"
+    "db:push": "pnpm exec prisma db push",
+    "seed:leads": "tsx scripts/seed-leads.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

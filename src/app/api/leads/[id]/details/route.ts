@@ -8,12 +8,19 @@ import { followUpService } from "@/services/follow-up.service";
 export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
   const { id } = await context.params;
 
-  const [lead, notes, activities, followUps] = await Promise.all([
+  const [lead, notes, activities, structuredActivities, followUps] = await Promise.all([
     leadService.getById(id, session.user),
     noteService.list(id, session.user),
-    activityService.list(id),
+    session.user.role === "SALES" ? activityService.listLegacy(id) : activityService.list(id),
+    session.user.role === "SALES" ? activityService.listStructured(id) : Promise.resolve([]),
     followUpService.list(id, session.user),
   ]);
 
-  return NextResponse.json({ lead, notes, activities, followUps });
+  return NextResponse.json({
+    lead,
+    notes,
+    activities,
+    ...(session.user.role === "SALES" ? { structuredActivities } : {}),
+    followUps,
+  });
 });

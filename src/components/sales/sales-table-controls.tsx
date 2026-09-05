@@ -35,6 +35,23 @@ const SORT_OPTIONS = [
   { value: "nextFollowUpAt:desc", label: "Furthest Follow-up" },
 ] as const;
 
+const ACTIVITY_ACTIONS = [
+  { value: "CALL", label: "Call" },
+  { value: "WHATSAPP", label: "WhatsApp" },
+] as const;
+
+const ACTIVITY_RESPONSES = [
+  { value: "PICKED_UP", label: "Picked Up" },
+  { value: "REPLIED", label: "Replied" },
+  { value: "NO_RESPONSE", label: "No Response" },
+  { value: "INVALID_NUMBER", label: "Invalid Number" },
+] as const;
+
+const ACTIVITY_INTERESTS = [
+  { value: "INTERESTED", label: "Interested" },
+  { value: "NOT_INTERESTED", label: "Not Interested" },
+] as const;
+
 type SortValue = (typeof SORT_OPTIONS)[number]["value"];
 
 function dateToInput(value: string | undefined): string {
@@ -157,6 +174,19 @@ export function SalesTableControls({
     if (query.filters.archived === "true") {
       labels.push({ key: "archived", label: "Showing archived" });
     }
+    if (query.filters.activityDate === "today") labels.push({ key: "activityDate", label: "Activity: Today" });
+    if (query.filters.activityAction) {
+      const opt = ACTIVITY_ACTIONS.find((o) => o.value === query.filters.activityAction);
+      labels.push({ key: "activityAction", label: `Action: ${opt?.label ?? query.filters.activityAction}` });
+    }
+    if (query.filters.activityResponse) {
+      const opt = ACTIVITY_RESPONSES.find((o) => o.value === query.filters.activityResponse);
+      labels.push({ key: "activityResponse", label: `Response: ${opt?.label ?? query.filters.activityResponse}` });
+    }
+    if (query.filters.activityInterest) {
+      const opt = ACTIVITY_INTERESTS.find((o) => o.value === query.filters.activityInterest);
+      labels.push({ key: "activityInterest", label: `Interest: ${opt?.label ?? query.filters.activityInterest}` });
+    }
     return labels;
   }, [query.filters, query.dateFrom, query.dateTo, leadSources, hydrated]);
 
@@ -257,6 +287,40 @@ export function SalesTableControls({
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                   </Select>
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-3 border-t border-[var(--color-border)] pt-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Activity</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Activity Date</p>
+                      <Select value={query.filters.activityDate ?? ""} onChange={(e) => setFilter("activityDate", e.target.value)}>
+                        <option value="">Any Activity</option>
+                        <option value="today">Today</option>
+                      </Select>
+                    </div>
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Action</p>
+                      <Select value={query.filters.activityAction ?? ""} onChange={(e) => setFilter("activityAction", e.target.value)}>
+                        <option value="">All Actions</option>
+                        {ACTIVITY_ACTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                      </Select>
+                    </div>
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Response</p>
+                      <Select value={query.filters.activityResponse ?? ""} onChange={(e) => setFilter("activityResponse", e.target.value)}>
+                        <option value="">All Responses</option>
+                        {ACTIVITY_RESPONSES.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                      </Select>
+                    </div>
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Interest</p>
+                      <Select value={query.filters.activityInterest ?? ""} onChange={(e) => setFilter("activityInterest", e.target.value)}>
+                        <option value="">All Interests</option>
+                        {ACTIVITY_INTERESTS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                      </Select>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Priority */}

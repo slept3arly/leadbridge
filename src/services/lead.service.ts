@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { UserRole, SalesPrivilege, LeadStatus, LeadPriority, LeadCategory } from "@/generated/prisma/client";
+import type { UserRole, SalesPrivilege, LeadStatus, LeadPriority, LeadCategory, ActionType, ResponseType, InterestType } from "@/generated/prisma/client";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { containsSearch, dateRange, listResult, pagination, type ListQuery } from "@/lib/query-builder";
@@ -131,6 +131,35 @@ export class LeadService {
         })()
       : {};
 
+    const activityDateFilter = query.filters.activityDate?.includes("today")
+      ? (() => {
+          const today = new Date();
+          const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          const startOfTomorrow = new Date(startOfToday);
+          startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+          return { createdAt: { gte: startOfToday, lt: startOfTomorrow } };
+        })()
+      : {};
+    const activityFilterActive = Boolean(
+      query.filters.activityDate?.length ||
+      query.filters.activityAction?.length ||
+      query.filters.activityResponse?.length ||
+      query.filters.activityInterest?.length,
+    );
+    const activityFilter = activityFilterActive
+      ? {
+          activities: {
+            some: {
+              metadata: { path: ["structuredActivity"], equals: true },
+              ...activityDateFilter,
+              ...(query.filters.activityAction?.length ? { action: { in: query.filters.activityAction as ActionType[] } } : {}),
+              ...(query.filters.activityResponse?.length ? { response: { in: query.filters.activityResponse as ResponseType[] } } : {}),
+              ...(query.filters.activityInterest?.length ? { interest: { in: query.filters.activityInterest as InterestType[] } } : {}),
+            },
+          },
+        }
+      : {};
+
     const where = {
       isDeleted: query.filters.deleted?.includes("true") ?? false,
       ...archivedFilter,
@@ -141,6 +170,7 @@ export class LeadService {
       ...(query.filters.source?.length ? { sourceId: { in: query.filters.source } } : {}),
       ...assignedUserFilter,
       ...followUpFilter,
+      ...activityFilter,
       ...containsSearch(["displayName", "company", "email", "phone", "leadNumber"], query.search),
       ...dateRange("createdAt", query),
     };

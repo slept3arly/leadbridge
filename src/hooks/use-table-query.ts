@@ -14,7 +14,7 @@ export type TableQueryState = {
   dateTo?: string;
 };
 
-const FILTER_KEYS_FROM_URL = ["status", "priority", "category", "followUp", "source", "archived"];
+const FILTER_KEYS_FROM_URL = ["status", "priority", "category", "followUp", "source", "archived", "activityDate", "activityAction", "activityResponse", "activityInterest"];
 
 function toQueryString(state: TableQueryState): string {
   const params = new URLSearchParams();

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { LeadHeader } from "@/components/sales/lead-header";
 import { LeadNoteComposer } from "@/components/sales/lead-note-composer";
 import { LeadNoteCard } from "@/components/sales/lead-note-card";
+import { StructuredActivityCard } from "@/components/sales/structured-activity-card";
 import { LeadInfoSection } from "@/components/sales/lead-info-section";
 import { LeadMetadataCard } from "@/components/sales/lead-metadata-card";
 import { ActivityTimeline } from "@/components/sales/activity-timeline";
@@ -44,13 +45,39 @@ export function LeadDetailsModal({
     setLeadDraft(data?.lead ?? null);
   }, [data?.lead, leadId]);
 
+  // Keep the latest onClose in a ref so effects can call it without
+  // making it a dependency (avoids unstable inline-arrow identity).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  // Scroll-lock: runs once on mount, cleans up on unmount.
+  // Captures no reactive values → stable [] deps.
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
+    };
+  }, []);
+
+  // Escape key: runs once on mount, reads the ref for latest onClose.
+  // Stable [] deps — the ref always holds the current callback.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, []);
+
 
   const handleFieldChange = useCallback((field: string, value: string) => {
     setLeadDraft((prev) => prev ? { ...prev, [field]: value } : prev);
@@ -95,6 +122,13 @@ export function LeadDetailsModal({
   const lead = leadDraft ?? data?.lead ?? null;
   const notes = data?.notes ?? [];
   const activities = data?.activities ?? [];
+  const allFollowUps = data?.followUps ?? [];
+  const followUpMap = new Map(allFollowUps.map((fu) => [fu.id, fu]));
+  const structuredActivitiesWithFollowUp = (data?.structuredActivities ?? []).map((activity) => {
+    const followUpId = activity.metadata?.followUpId;
+    const followUp = typeof followUpId === "string" ? followUpMap.get(followUpId) : undefined;
+    return { ...activity, followUp };
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden">
@@ -144,7 +178,17 @@ export function LeadDetailsModal({
             <div className="flex-1 overflow-y-auto p-5">
               {activeTab === "details" && (
                 <div className="space-y-4">
-                  <LeadNoteComposer leadId={leadId} onCreated={refresh} />
+                  <div className="flex justify-center">
+                    <LeadNoteComposer leadId={leadId} onCreated={refresh} />
+                  </div>
+                  {structuredActivitiesWithFollowUp.map((activity) => (
+                    <StructuredActivityCard
+                      key={activity.id}
+                      activity={activity}
+                      currentUserId={currentUserId}
+                      onChanged={refresh}
+                    />
+                  ))}
                   {notes.length === 0 ? (
                     <p className="text-sm text-[var(--color-muted)] text-center py-8">
                       No notes yet. Add your first note above.

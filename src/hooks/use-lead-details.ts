@@ -43,6 +43,30 @@ export type LeadActivity = {
   actor: { id: string; name: string } | null;
 };
 
+export type StructuredLeadActivity = {
+  id: string;
+  action: "CALL" | "WHATSAPP";
+  response: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED";
+  interest: "INTERESTED" | "NOT_INTERESTED" | null;
+  message: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  actor: { id: string; name: string } | null;
+  followUp?: {
+    id: string;
+    title: string;
+    description: string | null;
+    dueDate: string | null;
+    dueTime: string | null;
+    priority: string;
+    status: string;
+    completedAt: string | null;
+    assignedUser: { id: string; name: string } | null;
+    createdBy: { id: string; name: string };
+    createdAt: string;
+  };
+};
+
 export type LeadFollowUp = {
   id: string;
   title: string;
@@ -51,6 +75,8 @@ export type LeadFollowUp = {
   dueTime: string | null;
   priority: string;
   status: string;
+  completedAt: string | null;
+  noteId: string | null;
   assignedUser: { id: string; name: string } | null;
   createdBy: { id: string; name: string };
   createdAt: string;
@@ -60,6 +86,7 @@ export type LeadDetails = {
   lead: LeadDetail;
   notes: LeadNote[];
   activities: LeadActivity[];
+  structuredActivities?: StructuredLeadActivity[];
   followUps: LeadFollowUp[];
 };
 

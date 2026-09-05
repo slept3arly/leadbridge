@@ -12,7 +12,7 @@ import { TAG } from "@/lib/cache-tags";
 const getDashboardData = cache((userId: string) =>
   unstable_cache(
     async () => dashboardService.sales(userId),
-    [`dashboard-sales-${userId}`],
+    [`dashboard-sales-v2-${userId}`],
     { tags: [TAG.DASHBOARD(userId), TAG.ATTENTION(userId)] },
   )(),
 );

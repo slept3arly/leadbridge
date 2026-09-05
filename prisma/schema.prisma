@@ -59,6 +59,23 @@ enum ActivityType {
   ATTACHMENT_ADDED
 }
 
+enum ActionType {
+  CALL
+  WHATSAPP
+}
+
+enum ResponseType {
+  PICKED_UP
+  NO_RESPONSE
+  INVALID_NUMBER
+  REPLIED
+}
+
+enum InterestType {
+  INTERESTED
+  NOT_INTERESTED
+}
+
 enum LeadCategory {
   MEDICAL_REPRESENTATIVE
   RETAILER
@@ -310,15 +327,18 @@ model Lead {
 }
 
 model LeadActivity {
-  id        String       @id @default(cuid())
-  type      ActivityType
-  message   String
-  metadata  Json?
-  leadId    String
-  lead      Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  actorId   String?
-  actor     User?        @relation("ActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
-  createdAt DateTime     @default(now())
+  id                String          @id @default(cuid())
+  type              ActivityType
+  action              ActionType?
+  response            ResponseType?
+  interest        InterestType?
+  message           String
+  metadata          Json?
+  leadId            String
+  lead              Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  actorId           String?
+  actor             User?           @relation("ActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt         DateTime        @default(now())
 
   @@index([leadId, createdAt])
   @@index([leadId, type, createdAt])

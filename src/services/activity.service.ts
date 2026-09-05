@@ -12,12 +12,64 @@ export class ActivityService {
     metadata?: object,
     client: DbClient = prisma,
   ) {
-    return client.leadActivity.create({ data: { leadId, type, message, actorId, metadata } });
+    return client.leadActivity.create({
+      data: {
+        leadId,
+        type,
+        message,
+        actorId,
+        metadata,
+      },
+    });
   }
 
-  async list(leadId: string, client: DbClient = prisma) {
-    return client.leadActivity.findMany({
+  async recordStructured(
+    leadId: string,
+    type: ActivityType,
+    message: string,
+    actorId?: string,
+    metadata?: object,
+    action?: "CALL" | "WHATSAPP",
+    response?: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED",
+    interest?: "INTERESTED" | "NOT_INTERESTED" | null,
+    client: DbClient = prisma,
+  ) {
+    return client.leadActivity.create({
+      data: {
+        leadId,
+        type,
+        message,
+        actorId,
+        metadata,
+        action: action ?? "CALL",
+        response: response ?? "NO_RESPONSE",
+        interest: interest ?? null,
+      },
+    });
+  }
+
+  async list(leadId: string) {
+    return prisma.leadActivity.findMany({
       where: { leadId },
+      orderBy: { createdAt: "desc" },
+      include: { actor: { select: { id: true, name: true } } },
+    });
+  }
+
+  async listLegacy(leadId: string) {
+    return prisma.leadActivity.findMany({
+      where: {
+        leadId,
+        NOT: { metadata: { path: ["structuredActivity"], equals: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      include: { actor: { select: { id: true, name: true } } },
+    });
+  }
+
+  async listStructured(leadId: string) {
+    return prisma.leadActivity.findMany({
+      where: { leadId, metadata: { path: ["structuredActivity"], equals: true } },
       orderBy: { createdAt: "desc" },
       include: { actor: { select: { id: true, name: true } } },
     });

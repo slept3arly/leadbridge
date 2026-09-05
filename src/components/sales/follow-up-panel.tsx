@@ -57,10 +57,15 @@ export function FollowUpPanel({ leadId, currentUserId }: { leadId: string; curre
     if (!title.trim()) return;
     setSaving(true);
     try {
+      let resolvedDueDate: string | null = null;
+      if (dueDate) {
+        const localStr = dueTime ? `${dueDate}T${dueTime}` : `${dueDate}T00:00`;
+        resolvedDueDate = new Date(localStr).toISOString();
+      }
       await axios.post(`/api/leads/${leadId}/follow-ups`, {
         title,
         description: description || null,
-        dueDate: dueDate || null,
+        dueDate: resolvedDueDate,
         dueTime: dueTime || null,
         priority,
         assignedUserId: assignedUserId || currentUserId,

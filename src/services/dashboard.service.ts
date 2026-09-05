@@ -140,6 +140,13 @@ export class DashboardService {
       todayFollowUpCount,
       newLeadCount,
       needsAttentionItems,
+      leadsWorked,
+      activities,
+      pickedUpReplied,
+      noResponse,
+      invalidNumber,
+      interested,
+      notInterested,
     ] = await Promise.all([
       prisma.lead.groupBy({
         by: ["status"],
@@ -177,6 +184,49 @@ export class DashboardService {
         where: { ...leadWhere, notes: { none: {} }, followUps: { none: {} } },
       }),
       attentionService.getNeedsAttention(userId),
+      // Today's Activity metrics - Sales user
+      prisma.$queryRaw<{ count: number }[]>`SELECT COUNT(DISTINCT "leadId")::int AS count FROM "LeadActivity" WHERE "createdAt" >= ${startOfToday} AND "action" IS NOT NULL`
+        .then(([row]) => row?.count ?? 0),
+      prisma.leadActivity.count({ where: { createdAt: { gte: startOfToday } } }),
+      prisma.leadActivity.count({
+        where: {
+          createdAt: { gte: startOfToday },
+          OR: [
+            { action: "CALL", response: "PICKED_UP" },
+            { action: "WHATSAPP", response: "REPLIED" },
+          ],
+        },
+      }),
+      prisma.leadActivity.count({
+        where: {
+          createdAt: { gte: startOfToday },
+          OR: [
+            { action: "CALL", response: "NO_RESPONSE" },
+            { action: "WHATSAPP", response: "NO_RESPONSE" },
+          ],
+        },
+      }),
+      prisma.leadActivity.count({
+        where: {
+          createdAt: { gte: startOfToday },
+          OR: [
+            { action: "CALL", response: "INVALID_NUMBER" },
+            { action: "WHATSAPP", response: "INVALID_NUMBER" },
+          ],
+        },
+      }),
+      prisma.leadActivity.count({
+        where: {
+          createdAt: { gte: startOfToday },
+          interest: "INTERESTED",
+        },
+      }),
+      prisma.leadActivity.count({
+        where: {
+          createdAt: { gte: startOfToday },
+          interest: "NOT_INTERESTED",
+        },
+      }),
     ]);
 
     const myLeadsTotal = leadStats.reduce((sum, s) => sum + s._count.id, 0);
@@ -212,8 +262,17 @@ export class DashboardService {
         priority: f.lead.priority,
         category: f.lead.category,
       })),
-
+      insights: {
+        leadsWorked: leadsWorked ?? 0,
+        activities: activities ?? 0,
+        pickedUpReplied: pickedUpReplied ?? 0,
+        noResponse: noResponse ?? 0,
+        invalidNumber: invalidNumber ?? 0,
+        interested: interested ?? 0,
+        notInterested: notInterested ?? 0,
+      },
     };
+
   }
 }
 

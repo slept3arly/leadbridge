@@ -40,6 +40,15 @@ interface SalesDashboardData {
   pipeline: PipelineItem[];
   upcomingFollowUps: UpcomingFollowUp[];
   canExport: boolean;
+  insights: {
+    leadsWorked: number;
+    activities: number;
+    pickedUpReplied: number;
+    noResponse: number;
+    invalidNumber: number;
+    interested: number;
+    notInterested: number;
+  };
 }
 
 const PIPELINE_STATUSES = ["NEW", "ON_HOLD", "CONVERTED", "LOST", "SPAM"];
@@ -129,7 +138,7 @@ export function SalesDashboardClient({ data }: { data: SalesDashboardData }) {
             href={`/sales/my-leads?filter.followUp=overdue`}
           />
           <KpiCard
-            title="Today&apos;s Follow-ups"
+            title="Today's Follow-ups"
             count={data.attention.todayFollowUpCount}
             description="Scheduled follow-ups due today."
             href={`/sales/my-leads?filter.followUp=today`}
@@ -156,6 +165,57 @@ export function SalesDashboardClient({ data }: { data: SalesDashboardData }) {
         ) : (
           <CardEmptyState description="No upcoming follow-ups scheduled." />
         )}
+      </section>
+
+      {/* Section 3: Today's Activity */}
+      <section>
+        <h2 className="mb-4 text-base font-semibold text-[var(--color-ink)]">Today&apos;s Activity</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <KpiCard
+            title="Leads Worked"
+            count={data.insights.leadsWorked}
+            description="Unique leads worked today"
+            href="/sales/my-leads?filter.activityDate=today"
+          />
+          <KpiCard
+            title="Activities"
+            count={data.insights.activities}
+            description="Total structured activities today"
+            href="/sales/my-leads?filter.activityDate=today"
+          />
+          <KpiCard
+            title="Picked Up / Replied"
+            count={data.insights.pickedUpReplied}
+            description="Call → Picked Up or WhatsApp → Replied"
+            href="/sales/my-leads?filter.activityDate=today"
+          />
+          <KpiCard
+            title="No Response"
+            count={data.insights.noResponse}
+            description="Call → No Response or WhatsApp → No Response"
+            href="/sales/my-leads?filter.activityDate=today&filter.activityResponse=NO_RESPONSE"
+          />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <KpiCard
+            title="Invalid Number"
+            count={data.insights.invalidNumber}
+            description="Call → Invalid Number or WhatsApp → Invalid Number"
+            href="/sales/my-leads?filter.activityDate=today&filter.activityResponse=INVALID_NUMBER"
+          />
+          <KpiCard
+            title="Interested"
+            count={data.insights.interested}
+            description="Activities where interest was indicated"
+            href="/sales/my-leads?filter.activityDate=today&filter.activityInterest=INTERESTED"
+          />
+          <KpiCard
+            title="Not Interested"
+            count={data.insights.notInterested}
+            description="Activities where customer was not interested"
+            href="/sales/my-leads?filter.activityDate=today&filter.activityInterest=NOT_INTERESTED"
+          />
+        </div>
       </section>
 
     </div>
