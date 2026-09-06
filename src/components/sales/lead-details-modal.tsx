@@ -25,6 +25,7 @@ export function LeadDetailsModal({
   currentUserId,
   isAdmin,
   canArchive = false,
+  canDelete = false,
   onClose,
   onUpdate,
 }: {
@@ -32,13 +33,15 @@ export function LeadDetailsModal({
   currentUserId: string;
   isAdmin: boolean;
   canArchive?: boolean;
+  canDelete?: boolean;
   onClose: () => void;
   onUpdate?: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<TabId>("details");
   const [saving, setSaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
-  const { data, loading: detailsLoading, refresh } = useLeadDetails(leadId);
+  const [deleting, setDeleting] = useState(false);
+  const { data, loading: detailsLoading, refresh, patchData } = useLeadDetails(leadId);
   const [leadDraft, setLeadDraft] = useState<LeadDetail | null>(null);
 
   useEffect(() => {
@@ -94,14 +97,20 @@ export function LeadDetailsModal({
       };
       await axios.patch(`/api/leads/${leadId}`, payload);
       toast.success("Lead updated");
-      await refresh();
+      // Optimistically update lead fields so the info/metadata tabs
+      // reflect the new values immediately, without waiting for refresh.
+      patchData((prev) => prev ? {
+        ...prev,
+        lead: { ...prev.lead, status: leadDraft.status, priority: leadDraft.priority, category: leadDraft.category },
+      } : prev);
+      refresh();
       if (onUpdate) onUpdate();
     } catch {
       toast.error("Failed to update lead");
     } finally {
       setSaving(false);
     }
-  }, [leadDraft, leadId, onUpdate, refresh]);
+  }, [leadDraft, leadId, onUpdate, refresh, patchData]);
 
   const handleToggleArchive = useCallback(async () => {
     if (!leadDraft) return;
@@ -118,6 +127,21 @@ export function LeadDetailsModal({
       setArchiving(false);
     }
   }, [leadDraft, leadId, onUpdate, refresh]);
+
+  const handleDelete = useCallback(async () => {
+    if (!confirm("Delete this lead permanently? This action cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      await axios.delete(`/api/leads/${leadId}`);
+      toast.success("Lead deleted");
+      onClose();
+      if (onUpdate) onUpdate();
+    } catch {
+      toast.error("Failed to delete lead.");
+    } finally {
+      setDeleting(false);
+    }
+  }, [leadId, onClose, onUpdate]);
 
   const lead = leadDraft ?? data?.lead ?? null;
   const notes = data?.notes ?? [];
@@ -154,9 +178,12 @@ export function LeadDetailsModal({
               onChange={handleFieldChange}
               onUpdate={handleUpdate}
               onToggleArchive={handleToggleArchive}
+              onDelete={handleDelete}
               saving={saving}
               archiving={archiving}
+              deleting={deleting}
               canArchive={canArchive}
+              canDelete={canDelete}
             />
 
             <div className="flex border-b border-[var(--color-border)] bg-white">
@@ -179,7 +206,41 @@ export function LeadDetailsModal({
               {activeTab === "details" && (
                 <div className="space-y-4">
                   <div className="flex justify-center">
-                    <LeadNoteComposer leadId={leadId} onCreated={refresh} />
+                    <LeadNoteComposer
+                      leadId={leadId}
+                      onCreated={(activity, formMeta) => {
+                        const structuredActivity = {
+                          id: activity.id as string,
+                          action: (formMeta.action ?? "CALL") as "CALL" | "WHATSAPP",
+                          response: (formMeta.response ?? "NO_RESPONSE") as "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED",
+                          interest: (formMeta.interest ?? null) as "INTERESTED" | "NOT_INTERESTED" | null,
+                          message: (activity.message as string) ?? "",
+                          metadata: (activity.metadata as Record<string, unknown>) ?? null,
+                          createdAt: (activity.createdAt as string) ?? new Date().toISOString(),
+                          actor: { id: currentUserId, name: "You" },
+                          ...(formMeta.scheduleFollowUp && formMeta.followUpDate ? {
+                            followUp: {
+                              id: "pending",
+                              title: `${formMeta.action === "CALL" ? "Call" : "WhatsApp"} follow-up`,
+                              description: null,
+                              dueDate: formMeta.followUpDate,
+                              dueTime: formMeta.followUpTime,
+                              priority: "MEDIUM",
+                              status: "PENDING",
+                              completedAt: null,
+                              assignedUser: { id: currentUserId, name: "You" },
+                              createdBy: { id: currentUserId, name: "You" },
+                              createdAt: new Date().toISOString(),
+                            },
+                          } : {}),
+                        } as import("@/hooks/use-lead-details").StructuredLeadActivity;
+                        patchData((prev) => prev ? {
+                          ...prev,
+                          structuredActivities: [structuredActivity, ...(prev.structuredActivities ?? [])],
+                        } : prev);
+                        refresh();
+                      }}
+                    />
                   </div>
                   {structuredActivitiesWithFollowUp.map((activity) => (
                     <StructuredActivityCard

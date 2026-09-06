@@ -30,7 +30,7 @@ function isResponded(response: Response | "") {
   return response === "PICKED_UP" || response === "REPLIED";
 }
 
-export function LeadNoteComposer({ leadId, onCreated }: { leadId: string; onCreated: () => void }) {
+export function LeadNoteComposer({ leadId, onCreated }: { leadId: string; onCreated: (activity: Record<string, unknown>, formMeta: { action: string; response: string; interest: string | null; scheduleFollowUp: boolean; followUpDate: string | null; followUpTime: string | null }) => void }) {
   const [action, setAction] = useState<Action>("CALL");
   const [response, setResponse] = useState<Response | "">("");
   const [interest, setInterest] = useState<Interest | "">("");
@@ -95,7 +95,7 @@ export function LeadNoteComposer({ leadId, onCreated }: { leadId: string; onCrea
         const localStr = followUpTime ? `${followUpDate}T${followUpTime}` : `${followUpDate}T00:00`;
         resolvedFollowUpDate = new Date(localStr).toISOString();
       }
-      await axios.post(`/api/leads/${leadId}/activities`, {
+      const res = await axios.post<Record<string, unknown>>(`/api/leads/${leadId}/activities`, {
         action,
         response,
         interest: interestVisible ? interest : null,
@@ -106,7 +106,14 @@ export function LeadNoteComposer({ leadId, onCreated }: { leadId: string; onCrea
       });
       toast.success("Activity logged");
       reset();
-      onCreated();
+      onCreated(res.data, {
+        action,
+        response,
+        interest: interestVisible ? interest : null,
+        scheduleFollowUp,
+        followUpDate: resolvedFollowUpDate,
+        followUpTime: followUpTime || null,
+      });
     } catch {
       toast.error("Failed to log activity");
     } finally {

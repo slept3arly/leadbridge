@@ -119,6 +119,24 @@ export function SalesTableControls({
     }
   };
 
+  const handleActivityDateChange = (value: string) => {
+    const next = { ...query.filters };
+    if (value) {
+      next.activityDate = value;
+    } else {
+      delete next.activityDate;
+    }
+    const updatePayload: Partial<TableQueryState> = {
+      filters: next,
+      page: 1,
+    };
+    if (value !== "custom") {
+      updatePayload.dateFrom = undefined;
+      updatePayload.dateTo = undefined;
+    }
+    query.update(updatePayload);
+  };
+
   const handleDateChange = (field: "dateFrom" | "dateTo", value: string) => {
     query.update({
       [field]: value ? new Date(value + "T" + (field === "dateTo" ? "23:59:59" : "00:00:00")).toISOString() : undefined,
@@ -130,17 +148,6 @@ export function SalesTableControls({
     if (!value) return;
     const [sortBy, sortDirection] = value.split(":");
     query.update({ sortBy, sortDirection: sortDirection as "asc" | "desc", page: 1 });
-  };
-
-  const handleArchivedToggle = () => {
-    const current = query.filters.archived === "true";
-    if (current) {
-      const next = { ...query.filters };
-      delete next.archived;
-      query.update({ filters: next, page: 1 });
-    } else {
-      query.update({ filters: { ...query.filters, archived: "true" }, page: 1 });
-    }
   };
 
   const activeFilterLabels = useMemo(() => {
@@ -161,6 +168,20 @@ export function SalesTableControls({
       const opt = leadSources.find((s) => s.id === query.filters.source);
       labels.push({ key: "source", label: `Source: ${opt?.name ?? query.filters.source}` });
     }
+    if (query.filters.archived === "true") {
+      labels.push({ key: "archived", label: "Showing archived" });
+    }
+    if (query.filters.activityDate) {
+      const dateLabelMap: Record<string, string> = {
+        today: "Today",
+        yesterday: "Yesterday",
+        custom: "Custom",
+      };
+      labels.push({
+        key: "activityDate",
+        label: `Activity: ${dateLabelMap[query.filters.activityDate] ?? query.filters.activityDate}`,
+      });
+    }
     if (query.dateFrom) {
       labels.push({
         key: "dateFrom",
@@ -173,10 +194,6 @@ export function SalesTableControls({
         label: `To: ${formatDate(query.dateTo, "-", hydrated ? undefined : "UTC")}`,
       });
     }
-    if (query.filters.archived === "true") {
-      labels.push({ key: "archived", label: "Showing archived" });
-    }
-    if (query.filters.activityDate === "today") labels.push({ key: "activityDate", label: "Activity: Today" });
     if (query.filters.activityAction) {
       const opt = ACTIVITY_ACTIONS.find((o) => o.value === query.filters.activityAction);
       labels.push({ key: "activityAction", label: `Action: ${opt?.label ?? query.filters.activityAction}` });
@@ -194,14 +211,22 @@ export function SalesTableControls({
 
   const resetAll = () => {
     query.update({
-      filters: {}, dateFrom: undefined, dateTo: undefined,
-      sortBy: undefined, sortDirection: "desc", page: 1,
+      filters: {},
+      dateFrom: undefined,
+      dateTo: undefined,
+      sortBy: undefined,
+      sortDirection: "desc",
+      page: 1,
     });
   };
 
   const removeFilter = (key: string) => {
     if (key === "dateFrom" || key === "dateTo") {
       query.update({ [key]: undefined, page: 1 });
+    } else if (key === "activityDate") {
+      const next = { ...query.filters };
+      delete next.activityDate;
+      query.update({ filters: next, dateFrom: undefined, dateTo: undefined, page: 1 });
     } else if (key === "archived") {
       const next = { ...query.filters };
       delete next.archived;
@@ -212,7 +237,7 @@ export function SalesTableControls({
   };
 
   const currentSortValue: SortValue = query.sortBy
-    ? `${query.sortBy}:${query.sortDirection}` as SortValue
+    ? (`${query.sortBy}:${query.sortDirection}` as SortValue)
     : "createdAt:desc";
 
   const activeFilterCount = activeFilterLabels.length;
@@ -227,9 +252,7 @@ export function SalesTableControls({
             onChange={(value) => query.update({ search: value })}
           />
         </div>
-        {actions && (
-          <div className="shrink-0">{actions}</div>
-        )}
+        {actions && <div className="shrink-0">{actions}</div>}
         <div className="relative shrink-0">
           <button
             ref={triggerRef}
@@ -262,9 +285,9 @@ export function SalesTableControls({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-5">
-                {/* Sort — full width */}
-                <div className="sm:col-span-2 lg:col-span-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-4">
+                {/* SORT */}
+                <div>
                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Sort
                   </p>
@@ -273,12 +296,14 @@ export function SalesTableControls({
                     onChange={(e) => handleSortChange(e.target.value)}
                   >
                     {SORT_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
                     ))}
                   </Select>
                 </div>
 
-                {/* Status */}
+                {/* STATUS */}
                 <div>
                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Status
@@ -289,78 +314,14 @@ export function SalesTableControls({
                   >
                     <option value="">All Statuses</option>
                     {LEAD_STATUSES.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
                     ))}
                   </Select>
                 </div>
 
-                <div className="sm:col-span-2 lg:col-span-3 border-t border-[var(--color-border)] pt-4">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Activity</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div>
-                      <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Activity Date</p>
-                      <Select value={query.filters.activityDate ?? ""} onChange={(e) => setFilter("activityDate", e.target.value)}>
-                        <option value="">Any Activity</option>
-                        <option value="today">Today</option>
-                      </Select>
-                    </div>
-                    <div>
-                      <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Action</p>
-                      <Select value={query.filters.activityAction ?? ""} onChange={(e) => setFilter("activityAction", e.target.value)}>
-                        <option value="">All Actions</option>
-                        {ACTIVITY_ACTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                      </Select>
-                    </div>
-                    <div>
-                      <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Response</p>
-                      <Select value={query.filters.activityResponse ?? ""} onChange={(e) => setFilter("activityResponse", e.target.value)}>
-                        <option value="">All Responses</option>
-                        {ACTIVITY_RESPONSES.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                      </Select>
-                    </div>
-                    <div>
-                      <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Interest</p>
-                      <Select value={query.filters.activityInterest ?? ""} onChange={(e) => setFilter("activityInterest", e.target.value)}>
-                        <option value="">All Interests</option>
-                        {ACTIVITY_INTERESTS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Priority */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
-                    Priority
-                  </p>
-                  <Select
-                    value={query.filters.priority ?? ""}
-                    onChange={(e) => setFilter("priority", e.target.value)}
-                  >
-                    <option value="">All Priorities</option>
-                    {LEAD_PRIORITIES.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </Select>
-                </div>
-
-                {/* Category */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
-                    Category
-                  </p>
-                  <Select
-                    value={query.filters.category ?? ""}
-                    onChange={(e) => setFilter("category", e.target.value)}
-                  >
-                    <option value="">All Categories</option>
-                    {LEAD_CATEGORIES.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </Select>
-                </div>
-
-                {/* Lead Source */}
+                {/* LEAD SOURCE */}
                 <div>
                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Lead Source
@@ -372,67 +333,164 @@ export function SalesTableControls({
                   >
                     <option value="">All Sources</option>
                     {leadSources.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
                     ))}
                   </Select>
                 </div>
 
-                {/* Date Range From */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
-                    From
-                  </p>
-                  <input
-                    type="date"
-                    value={dateToInput(query.dateFrom)}
-                    onChange={(e) => handleDateChange("dateFrom", e.target.value)}
-                    className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 h-10 text-sm focus:border-[var(--color-brand)] focus:ring-3 focus:ring-[var(--color-brand)]/15 focus:outline-hidden"
-                  />
-                </div>
-
-                {/* Date Range To */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
-                    To
-                  </p>
-                  <input
-                    type="date"
-                    value={dateToInput(query.dateTo)}
-                    onChange={(e) => handleDateChange("dateTo", e.target.value)}
-                    className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 h-10 text-sm focus:border-[var(--color-brand)] focus:ring-3 focus:ring-[var(--color-brand)]/15 focus:outline-hidden"
-                  />
-                </div>
-
-                {/* Archived */}
+                {/* ARCHIVED */}
                 <div>
                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Archived
                   </p>
-                  <label className="flex items-center gap-2 cursor-pointer h-10">
-                    <input
-                      type="checkbox"
-                      checked={query.filters.archived === "true"}
-                      onChange={handleArchivedToggle}
-                      className="rounded border-[var(--color-border)] text-[var(--color-brand)] focus:ring-[var(--color-brand)]/20"
-                    />
-                    <span className="text-sm text-[var(--color-ink)]">Include archived</span>
-                  </label>
-                </div>
-
-                {/* Page Size */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
-                    Page Size
-                  </p>
                   <Select
-                    value={String(query.pageSize)}
-                    onChange={(e) => query.update({ pageSize: Number(e.target.value), page: 1 })}
+                    value={query.filters.archived === "true" ? "true" : ""}
+                    onChange={(e) => setFilter("archived", e.target.value)}
                   >
-                    <option value="25">25 / page</option>
-                    <option value="50">50 / page</option>
-                    <option value="100">100 / page</option>
+                    <option value="">Hide Archived</option>
+                    <option value="true">Show Archived</option>
                   </Select>
                 </div>
+
+                {/* Empty cell to maintain grid alignment on lg screens */}
+                <div className="hidden lg:block sm:col-span-2 lg:col-span-2" />
+
+                {/* ACTIVITY DATE */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                    Activity Date
+                  </p>
+                  <Select
+                    value={query.filters.activityDate ?? ""}
+                    onChange={(e) => handleActivityDateChange(e.target.value)}
+                  >
+                    <option value="">Any Activity</option>
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="custom">Custom</option>
+                  </Select>
+                </div>
+
+                {/* ACTION */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                    Action
+                  </p>
+                  <Select
+                    value={query.filters.activityAction ?? ""}
+                    onChange={(e) => setFilter("activityAction", e.target.value)}
+                  >
+                    <option value="">All Actions</option>
+                    {ACTIVITY_ACTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                {/* RESPONSE */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                    Response
+                  </p>
+                  <Select
+                    value={query.filters.activityResponse ?? ""}
+                    onChange={(e) => setFilter("activityResponse", e.target.value)}
+                  >
+                    <option value="">All Responses</option>
+                    {ACTIVITY_RESPONSES.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                {/* PRIORITY */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                    Priority
+                  </p>
+                  <Select
+                    value={query.filters.priority ?? ""}
+                    onChange={(e) => setFilter("priority", e.target.value)}
+                  >
+                    <option value="">All Priorities</option>
+                    {LEAD_PRIORITIES.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                {/* CATEGORY */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                    Category
+                  </p>
+                  <Select
+                    value={query.filters.category ?? ""}
+                    onChange={(e) => setFilter("category", e.target.value)}
+                  >
+                    <option value="">All Categories</option>
+                    {LEAD_CATEGORIES.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                {/* INTEREST */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                    Interest
+                  </p>
+                  <Select
+                    value={query.filters.activityInterest ?? ""}
+                    onChange={(e) => setFilter("activityInterest", e.target.value)}
+                  >
+                    <option value="">All Interests</option>
+                    {ACTIVITY_INTERESTS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                {/* FROM / TO (Only when activityDate === "custom") */}
+                {query.filters.activityDate === "custom" && (
+                  <>
+                    <div>
+                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                        From
+                      </p>
+                      <input
+                        type="date"
+                        value={dateToInput(query.dateFrom)}
+                        onChange={(e) => handleDateChange("dateFrom", e.target.value)}
+                        className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 h-10 text-sm focus:border-[var(--color-brand)] focus:ring-3 focus:ring-[var(--color-brand)]/15 focus:outline-hidden"
+                      />
+                    </div>
+
+                    <div>
+                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                        To
+                      </p>
+                      <input
+                        type="date"
+                        value={dateToInput(query.dateTo)}
+                        onChange={(e) => handleDateChange("dateTo", e.target.value)}
+                        className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 h-10 text-sm focus:border-[var(--color-brand)] focus:ring-3 focus:ring-[var(--color-brand)]/15 focus:outline-hidden"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}

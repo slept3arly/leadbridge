@@ -99,6 +99,14 @@ export function useLeadDetails(leadId: string) {
     setData(res.data);
   }, [leadId]);
 
+  const patchData = useCallback((patch: Partial<LeadDetails> | ((prev: LeadDetails | null) => LeadDetails | null)) => {
+    if (typeof patch === "function") {
+      setData(patch);
+    } else {
+      setData((prev) => (prev ? { ...prev, ...patch } : prev));
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -125,5 +133,5 @@ export function useLeadDetails(leadId: string) {
     };
   }, [leadId]);
 
-  return { data, loading, refresh, setData };
+  return { data, loading, refresh, setData, patchData };
 }

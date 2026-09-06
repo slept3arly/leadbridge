@@ -174,11 +174,14 @@ export function SalesMyLeadsPageContent({
         currentUserId={user.id}
         isAdmin={user.role === "ADMIN"}
         canArchive={canArchive}
+        canDelete={canDelete}
       />
       {canCreate && (
         <LeadEditModal
           open={createOpen}
           onClose={() => setCreateOpen(false)}
+          leadSources={leadSources}
+          submitLabel="Save"
         />
       )}
     </>

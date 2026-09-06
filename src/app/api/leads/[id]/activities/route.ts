@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization } from "@/lib/api";
 import { activityService } from "@/services/activity.service";
-import { noteService } from "@/services/note.service";
 import { followUpService } from "@/services/follow-up.service";
+import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 const structuredActivitySchema = z.object({
@@ -17,7 +17,6 @@ const structuredActivitySchema = z.object({
 
 export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
   const { id } = await context.params;
-  await noteService.list(id, session.user);
   return NextResponse.json(session.user.role === "SALES" ? await activityService.listLegacy(id) : await activityService.list(id));
 });
 
@@ -40,7 +39,14 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(["
     return NextResponse.json({ error: "Invalid structured activity combination." }, { status: 400 });
   }
 
-  await noteService.list(id, session.user);
+  // Verify lead access directly instead of calling noteService.list
+  // (which fetches all notes just for an access check).
+  const lead = await prisma.lead.findFirst({
+    where: { id, isDeleted: false, assignedUserId: session.user.id },
+    select: { id: true },
+  });
+  if (!lead) return NextResponse.json({ error: "Lead not found or access denied." }, { status: 404 });
+
   const responseLabel = data.response.replaceAll("_", " ");
   const interestLabel = data.interest ? ` (${data.interest.replaceAll("_", " ")})` : "";
 

@@ -9,11 +9,13 @@ export function LeadDetailDialog({
   currentUserId,
   isAdmin,
   canArchive,
+  canDelete = false,
 }: {
   leadId: string | null;
   currentUserId: string;
   isAdmin: boolean;
   canArchive: boolean;
+  canDelete?: boolean;
 }) {
   const [open, setOpen] = useState(!!initialLeadId);
   const [leadId, setLeadId] = useState<string | null>(initialLeadId);
@@ -33,7 +35,9 @@ export function LeadDetailDialog({
       currentUserId={currentUserId}
       isAdmin={isAdmin}
       canArchive={canArchive}
+      canDelete={canDelete}
       onClose={handleClose}
+      onUpdate={() => router.refresh()}
     />
   );
 }

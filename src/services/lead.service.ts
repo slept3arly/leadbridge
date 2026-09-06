@@ -131,21 +131,42 @@ export class LeadService {
         })()
       : {};
 
-    const activityDateFilter = query.filters.activityDate?.includes("today")
-      ? (() => {
-          const today = new Date();
-          const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-          const startOfTomorrow = new Date(startOfToday);
-          startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-          return { createdAt: { gte: startOfToday, lt: startOfTomorrow } };
-        })()
-      : {};
+    const activityDateVal = query.filters.activityDate?.[0];
+
+    const activityDateFilter = (() => {
+      if (activityDateVal === "today") {
+        const today = new Date();
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const startOfTomorrow = new Date(startOfToday);
+        startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+        return { createdAt: { gte: startOfToday, lt: startOfTomorrow } };
+      }
+      if (activityDateVal === "yesterday") {
+        const today = new Date();
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const startOfYesterday = new Date(startOfToday);
+        startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+        return { createdAt: { gte: startOfYesterday, lt: startOfToday } };
+      }
+      if (activityDateVal === "custom" || (!activityDateVal && (query.dateFrom || query.dateTo))) {
+        if (!query.dateFrom && !query.dateTo) return {};
+        return {
+          createdAt: {
+            ...(query.dateFrom ? { gte: query.dateFrom } : {}),
+            ...(query.dateTo ? { lte: query.dateTo } : {}),
+          },
+        };
+      }
+      return {};
+    })();
+
     const activityFilterActive = Boolean(
-      query.filters.activityDate?.length ||
+      activityDateVal ||
       query.filters.activityAction?.length ||
       query.filters.activityResponse?.length ||
       query.filters.activityInterest?.length,
     );
+
     const activityFilter = activityFilterActive
       ? {
           activities: {
@@ -160,6 +181,10 @@ export class LeadService {
         }
       : {};
 
+    const leadDateFilter = !activityDateVal && (query.dateFrom || query.dateTo)
+      ? dateRange("createdAt", query)
+      : {};
+
     const where = {
       isDeleted: query.filters.deleted?.includes("true") ?? false,
       ...archivedFilter,
@@ -172,7 +197,7 @@ export class LeadService {
       ...followUpFilter,
       ...activityFilter,
       ...containsSearch(["displayName", "company", "email", "phone", "leadNumber"], query.search),
-      ...dateRange("createdAt", query),
+      ...leadDateFilter,
     };
     const orderBy = ["createdAt", "updatedAt", "displayName", "status", "priority", "category", "nextFollowUpAt"].includes(query.sortBy ?? "")
       ? { [query.sortBy!]: query.sortDirection }

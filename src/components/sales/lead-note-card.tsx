@@ -43,6 +43,7 @@ export function LeadNoteCard({ note, currentUserId, isAdmin, onChanged }: NoteCa
   const [whatCustomerSaid, setWhatCustomerSaid] = useState(note.whatCustomerSaid ?? "");
   const [saving, setSaving] = useState(false);
   const [followUpSaving, setFollowUpSaving] = useState(false);
+  const [localFollowUp, setLocalFollowUp] = useState<FollowUpInfo | null | undefined>(undefined);
 
   const created = new Date(note.createdAt);
   const now = new Date();
@@ -52,7 +53,7 @@ export function LeadNoteCard({ note, currentUserId, isAdmin, onChanged }: NoteCa
     created.getDate() === now.getDate();
 
   const canEdit = isAdmin || (note.authorId === currentUserId && isSameDay);
-  const followUp = note.followUps?.[0];
+  const followUp = localFollowUp !== undefined ? localFollowUp : note.followUps?.[0] ?? null;
   const hasSidebar = Boolean(canEdit || followUp);
 
   async function saveEdit() {
@@ -87,6 +88,11 @@ export function LeadNoteCard({ note, currentUserId, isAdmin, onChanged }: NoteCa
     try {
       await axios.patch(`/api/follow-ups/${followUp.id}`, { status: newStatus });
       toast.success(newStatus === "COMPLETED" ? "Follow-up marked as complete" : "Follow-up marked as pending");
+      setLocalFollowUp({
+        ...followUp,
+        status: newStatus,
+        completedAt: newStatus === "COMPLETED" ? new Date().toISOString() : null,
+      });
       onChanged();
     } catch {
       toast.error("Failed to update follow-up status");

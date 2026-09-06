@@ -2,7 +2,7 @@
 
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { X, Archive, RotateCcw } from "lucide-react";
+import { X, Archive, RotateCcw, Trash2 } from "lucide-react";
 import { LEAD_STATUSES, LEAD_PRIORITIES, LEAD_CATEGORIES } from "@/lib/lead-constants";
 
 type LeadHeaderProps = {
@@ -18,9 +18,12 @@ type LeadHeaderProps = {
   onChange: (field: string, value: string) => void;
   onUpdate: () => void;
   onToggleArchive: () => void;
+  onDelete?: () => void;
   saving: boolean;
   archiving: boolean;
+  deleting?: boolean;
   canArchive?: boolean;
+  canDelete?: boolean;
 };
 
 export function LeadHeader({
@@ -29,9 +32,12 @@ export function LeadHeader({
   onChange,
   onUpdate,
   onToggleArchive,
+  onDelete,
   saving,
   archiving,
+  deleting = false,
   canArchive = false,
+  canDelete = false,
 }: LeadHeaderProps) {
   return (
     <div className="shrink-0 border-b border-[var(--color-border)] bg-white">
@@ -83,11 +89,16 @@ export function LeadHeader({
 
         <div className="flex items-center gap-2 shrink-0">
           <Button size="sm" variant="secondary" isLoading={saving} onClick={onUpdate} className="h-10">
-            Update
+            Save
           </Button>
           {canArchive && (
             <Button size="sm" variant="ghost" isLoading={archiving} onClick={onToggleArchive} className="h-10" title={lead.isArchived ? "Restore lead" : "Archive lead"}>
               {lead.isArchived ? <RotateCcw size={14} /> : <Archive size={14} />}
+            </Button>
+          )}
+          {canDelete && onDelete && (
+            <Button size="sm" variant="ghost" isLoading={deleting} onClick={onDelete} className="h-10 text-red-600 hover:text-red-700 hover:bg-red-50" title="Delete lead">
+              <Trash2 size={14} />
             </Button>
           )}
         </div>

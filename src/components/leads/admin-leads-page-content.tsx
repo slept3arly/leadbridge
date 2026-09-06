@@ -6,13 +6,13 @@ import axios from "axios";
 import { DataTable } from "@/components/shared/data-table";
 import { LeadTableControls } from "@/components/leads/lead-table-controls";
 import { LeadEditModal } from "@/components/leads/lead-edit-modal";
+import { LeadSourceManagerModal } from "@/components/leads/lead-source-manager-modal";
 import { Button } from "@/components/ui/button";
 import { IconActionButton } from "@/components/ui/icon-action-button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
-import { Archive, Trash2 } from "lucide-react";
-import { Plus } from "lucide-react";
+import { Archive, Trash2, Plus } from "lucide-react";
 import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
 import { toast } from "@/lib/toast";
 import type { TableQueryState } from "@/hooks/use-table-query";
@@ -51,6 +51,7 @@ export function AdminLeadsPageContent({
 }) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
+  const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<SerializedLead | null>(null);
   const [editMode, setEditMode] = useState<"create" | "edit">("create");
 
@@ -110,10 +111,16 @@ export function AdminLeadsPageContent({
         leadSources={leadSources}
         assignableUsers={assignableUsers}
         actions={
-          <Button variant="secondary" onClick={openCreate} className="h-10">
-            <Plus size={16} />
-            Create Lead
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={openCreate} className="h-10">
+              <Plus size={16} />
+              Create Lead
+            </Button>
+            <Button variant="secondary" onClick={() => setSourceModalOpen(true)} className="h-10">
+              <Plus size={16} />
+              Lead Source
+            </Button>
+          </div>
         }
       />
       {leads.length ? (
@@ -138,54 +145,61 @@ export function AdminLeadsPageContent({
             {
               key: "status",
               header: "Status",
-              render: (lead: SerializedLead) => <Badge label={getStatusLabel(lead.status)} toneKey={lead.status} />,
+              render: (lead: SerializedLead) => (
+                <Badge label={getStatusLabel(lead.status)} toneKey={lead.status} />
+              ),
             },
             {
               key: "priority",
               header: "Priority",
-              render: (lead: SerializedLead) => <Badge label={getPriorityLabel(lead.priority)} toneKey={lead.priority} />,
+              render: (lead: SerializedLead) => (
+                <Badge label={getPriorityLabel(lead.priority)} toneKey={lead.priority} />
+              ),
             },
             {
               key: "category",
               header: "Category",
               render: (lead: SerializedLead) =>
-                lead.category ? <Badge label={getCategoryLabel(lead.category)} toneKey={lead.category} /> : <span className="text-xs text-[var(--color-muted)]">-</span>,
-            },
-            {
-              key: "owner",
-              header: "Assigned To",
-              render: (lead: SerializedLead) => lead.assignedUser?.name ?? "Unassigned",
+                lead.category ? (
+                  <Badge label={getCategoryLabel(lead.category)} toneKey={lead.category} />
+                ) : (
+                  <span className="text-xs text-[var(--color-muted)]">-</span>
+                ),
             },
             {
               key: "source",
               header: "Source",
-              render: (lead: SerializedLead) => lead.source?.name ?? "-",
+              render: (lead: SerializedLead) =>
+                lead.source ? (
+                  <span className="text-sm font-medium text-[var(--color-ink)]">{lead.source.name}</span>
+                ) : (
+                  <span className="text-xs text-[var(--color-muted)]">-</span>
+                ),
             },
             {
-              key: "createdAt",
-              header: "Created",
-              render: (lead: SerializedLead) => <DateTimeCell value={lead.createdAt} />,
+              key: "assignedUser",
+              header: "Assigned To",
+              render: (lead: SerializedLead) =>
+                lead.assignedUser ? (
+                  <span className="text-sm text-[var(--color-ink)]">{lead.assignedUser.name}</span>
+                ) : (
+                  <span className="text-xs text-[var(--color-muted)]">Unassigned</span>
+                ),
             },
             {
               key: "updatedAt",
-              header: "Last Updated",
+              header: "Updated At",
               render: (lead: SerializedLead) => <DateTimeCell value={lead.updatedAt} />,
             },
             {
               key: "actions",
               header: "Actions",
-              className: "whitespace-nowrap",
               render: (lead: SerializedLead) => (
-                <div className="flex flex-col gap-1 min-w-[130px]">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => openEdit(lead)}
-                  >
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => openEdit(lead)}>
                     Edit
                   </Button>
-                  <div className="grid grid-cols-2 gap-1">
+                  <div className="w-8">
                     <IconActionButton
                       icon={Archive}
                       label="Archive lead"
@@ -193,6 +207,8 @@ export function AdminLeadsPageContent({
                       isLoading={archivingId === lead.id}
                       className="w-full"
                     />
+                  </div>
+                  <div className="w-8">
                     <IconActionButton
                       icon={Trash2}
                       label="Delete lead"
@@ -216,22 +232,34 @@ export function AdminLeadsPageContent({
       <LeadEditModal
         open={editOpen}
         onClose={closeEdit}
+        leadSources={leadSources}
         assignableUsers={assignableUsers}
-        lead={editMode === "edit" && selectedLead ? {
-          id: selectedLead.id,
-          name: selectedLead.name,
-          company: selectedLead.company,
-          email: selectedLead.email,
-          phone: selectedLead.phone,
-          city: selectedLead.city,
-          state: selectedLead.state,
-          product: selectedLead.product,
-          requirement: selectedLead.requirement,
-          status: selectedLead.status,
-          priority: selectedLead.priority,
-          category: selectedLead.category,
-          assignedUserId: selectedLead.assignedUser?.id ?? null,
-        } : null}
+        lead={
+          editMode === "edit" && selectedLead
+            ? {
+                id: selectedLead.id,
+                name: selectedLead.name,
+                company: selectedLead.company,
+                email: selectedLead.email,
+                phone: selectedLead.phone,
+                city: selectedLead.city,
+                state: selectedLead.state,
+                product: selectedLead.product,
+                requirement: selectedLead.requirement,
+                status: selectedLead.status,
+                priority: selectedLead.priority,
+                category: selectedLead.category,
+                sourceId: selectedLead.source?.id ?? null,
+                assignedUserId: selectedLead.assignedUser?.id ?? null,
+              }
+            : null
+        }
+      />
+
+      <LeadSourceManagerModal
+        open={sourceModalOpen}
+        onClose={() => setSourceModalOpen(false)}
+        sources={leadSources}
       />
     </>
   );

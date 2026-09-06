@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ export type LeadFormData = {
   status: string;
   priority: string;
   category: string | null;
+  sourceId?: string | null;
+  source?: { id: string; name: string } | null;
   assignedUserId: string | null;
 };
 
@@ -30,12 +32,16 @@ export function LeadEditModal({
   open,
   onClose,
   lead,
+  leadSources,
   assignableUsers,
+  submitLabel,
 }: {
   open: boolean;
   onClose: () => void;
   lead?: LeadFormData | null;
+  leadSources?: Array<{ id: string; name: string }>;
   assignableUsers?: Array<{ id: string; name: string }>;
+  submitLabel?: string;
 }) {
   const router = useRouter();
   const isEdit = !!lead;
@@ -53,6 +59,7 @@ export function LeadEditModal({
   const [status, setStatus] = useState("NEW");
   const [priority, setPriority] = useState("MEDIUM");
   const [category, setCategory] = useState("");
+  const [sourceId, setSourceId] = useState("");
   const [assignedUserId, setAssignedUserId] = useState("");
 
   useEffect(() => {
@@ -69,6 +76,7 @@ export function LeadEditModal({
       setStatus(lead.status);
       setPriority(lead.priority);
       setCategory(lead.category ?? "");
+      setSourceId(lead.sourceId ?? lead.source?.id ?? "");
       setAssignedUserId(lead.assignedUserId ?? "");
     } else {
       setName("");
@@ -82,19 +90,46 @@ export function LeadEditModal({
       setStatus("NEW");
       setPriority("MEDIUM");
       setCategory("");
+      setSourceId("");
       setAssignedUserId("");
     }
     setError(null);
   }, [open, lead]);
 
+  // Keep the latest onClose in a ref so effects can call it without
+  // making it a dependency (avoids unstable inline-arrow identity).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  // Scroll-lock: runs when modal opens/closes, cleans up on unmount/close.
+  // Captures no reactive values beyond `open` → stable [open] deps.
   useEffect(() => {
     if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
     };
+  }, [open]);
+
+  // Escape key: reads the ref for latest onClose.
+  // Stable [open] deps — the ref always holds the current callback.
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onCloseRef.current();
+    }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,6 +149,7 @@ export function LeadEditModal({
         status,
         priority,
         category: category || null,
+        sourceId: sourceId || null,
       };
 
       if (assignableUsers) {
@@ -199,8 +235,16 @@ export function LeadEditModal({
                     ))}
                   </Select>
                 </FormField>
+                <FormField label="Lead Source" htmlFor="lead-source">
+                  <Select id="lead-source" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+                    <option value="">None</option>
+                    {leadSources?.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </Select>
+                </FormField>
                 {assignableUsers && (
-                  <FormField label="Assigned To" htmlFor="lead-assigned">
+                  <FormField label="Assigned To" htmlFor="lead-assigned" className="col-span-2">
                     <Select id="lead-assigned" value={assignedUserId} onChange={(e) => setAssignedUserId(e.target.value)}>
                       <option value="">Unassigned</option>
                       {assignableUsers.map((u) => (
@@ -247,7 +291,7 @@ export function LeadEditModal({
                 Cancel
               </Button>
               <Button type="submit" isLoading={pending}>
-                {pending ? "Saving..." : isEdit ? "Save Changes" : "Create Lead"}
+                {pending ? "Saving..." : isEdit ? "Save Changes" : submitLabel ?? "Save"}
               </Button>
             </div>
           </form>
