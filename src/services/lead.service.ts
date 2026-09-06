@@ -204,7 +204,15 @@ export class LeadService {
   }
 
   async create(data: LeadInput, actor: Actor): Promise<CreateLeadResult> {
+    if (!can(actor, Permission.CREATE_LEAD)) {
+      throw new ServiceError("You do not have permission to create leads.", 403);
+    }
+    if (actor.role === "SALES" && data.assignedUserId && data.assignedUserId !== actor.id) {
+      throw new ServiceError("Only admins can assign leads.", 403);
+    }
     await this.assertAssignableUser(data.assignedUserId, actor);
+
+    const assignedUserId = actor.role === "SALES" ? (data.assignedUserId ?? actor.id) : data.assignedUserId;
 
     if (data.connectorId && data.sourceReferenceId) {
       const existing = await prisma.lead.findFirst({
@@ -232,6 +240,7 @@ export class LeadService {
             priority: (priority ?? "MEDIUM") as LeadPriority,
             category: (category ?? null) as LeadCategory | null,
             createdById: actor.id,
+            assignedUserId: assignedUserId ?? null,
             ...(customFields === null ? { customFields: Prisma.JsonNull } : customFields === undefined ? {} : { customFields: customFields as Prisma.InputJsonValue }),
             ...(rawPayload === null ? { rawPayload: Prisma.JsonNull } : rawPayload === undefined ? {} : { rawPayload: rawPayload as Prisma.InputJsonValue }),
           },

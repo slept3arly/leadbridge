@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
-import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
+import { withApiAuthorization, withPermissionAuthorization, apiError, handleApiError } from "@/lib/api";
 import { leadSchema } from "@/lib/validation";
 import { parseListQuery } from "@/lib/query-builder";
 import { leadService } from "@/services/lead.service";
 import { invalidateAfterMutation } from "@/lib/cache-tags";
+import { Permission } from "@/lib/permissions";
 
 export const GET = withApiAuthorization(undefined, async (request, _context, session) => {
   const query = parseListQuery(new URL(request.url).searchParams);
   return NextResponse.json(await leadService.listPage(query, session.user));
 });
 
-export const POST = withApiAuthorization(undefined, async (request, _context, session) => {
+export const POST = withPermissionAuthorization(Permission.CREATE_LEAD, async (request, _context, session) => {
   let body: unknown;
   try { body = await request.json(); } catch { return apiError("Invalid JSON body.", 400); }
   const parsed = leadSchema.safeParse(body);

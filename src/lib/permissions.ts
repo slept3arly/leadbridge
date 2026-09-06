@@ -1,4 +1,5 @@
 export enum Permission {
+  CREATE_LEAD = "CREATE_LEAD",
   DELETE_LEAD = "DELETE_LEAD",
   ARCHIVE_LEAD = "ARCHIVE_LEAD",
   EXPORT_LEADS = "EXPORT_LEADS",
@@ -17,6 +18,7 @@ export type PermissionUser = {
 const SALES_PRIVILEGE_PERMISSIONS: Record<string, Permission[]> = {
   [SalesPrivilege.JUNIOR]: [],
   [SalesPrivilege.SENIOR]: [
+    Permission.CREATE_LEAD,
     Permission.DELETE_LEAD,
     Permission.ARCHIVE_LEAD,
     Permission.EXPORT_LEADS,

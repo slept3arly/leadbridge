@@ -63,10 +63,12 @@ export function SalesTableControls({
   initial,
   pagination,
   leadSources,
+  actions,
 }: {
   initial: Partial<TableQueryState>;
   pagination?: { page: number; totalPages: number };
   leadSources: Array<{ id: string; name: string }>;
+  actions?: React.ReactNode;
 }) {
   const query = useTableQuery(initial);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -225,6 +227,9 @@ export function SalesTableControls({
             onChange={(value) => query.update({ search: value })}
           />
         </div>
+        {actions && (
+          <div className="shrink-0">{actions}</div>
+        )}
         <div className="relative shrink-0">
           <button
             ref={triggerRef}
