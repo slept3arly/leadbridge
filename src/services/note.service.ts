@@ -1,7 +1,7 @@
 import type { UserRole } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { activityService } from "@/services/activity.service";
-import { auditService } from "@/services/audit.service";
+import { activityEventService } from "@/services/activity-event.service";
+import { followUpService } from "@/services/follow-up.service";
 import { ServiceError } from "@/lib/service-errors";
 
 type Actor = { id: string; role: UserRole };
@@ -61,21 +61,32 @@ export class NoteService {
         },
       });
 
-      await activityService.record(leadId, "NOTE_ADDED", "Note added", actor.id, { noteId: note.id }, tx);
-      await auditService.log("note.created", "Note", note.id, actor.id, { leadId }, undefined, tx);
+      const eventEntries: import("@/services/activity-event.service").ActivityEntryInput[] = [
+        {
+          type: "NOTE_ADDED",
+          message: "Note added",
+          metadata: { noteId: note.id },
+        },
+      ];
 
       if (data.scheduleFollowUp && data.followUpDate) {
-        const due = new Date(data.followUpDate);
+        let dueDate: Date;
         if (data.followUpTime) {
+          const datePart = new Date(data.followUpDate);
           const [h, m] = data.followUpTime.split(":").map(Number);
-          due.setHours(h, m, 0, 0);
+          dueDate = new Date(Date.UTC(
+            datePart.getUTCFullYear(), datePart.getUTCMonth(), datePart.getUTCDate(),
+            h, m, 0, 0,
+          ));
+        } else {
+          dueDate = new Date(data.followUpDate);
         }
 
         const followUp = await tx.followUp.create({
           data: {
             title: `Follow-up: ${(data.whatIDid ?? "Note").slice(0, 80)}`,
             description: data.whatCustomerSaid?.slice(0, 500) ?? null,
-            dueDate: due,
+            dueDate,
             dueTime: data.followUpTime ?? null,
             priority: "MEDIUM" as const,
             status: "PENDING",
@@ -86,19 +97,22 @@ export class NoteService {
           },
         });
 
-        const currentLead = await tx.lead.findUnique({
-          where: { id: leadId },
-          select: { nextFollowUpAt: true },
+        eventEntries.push({
+          type: "FOLLOW_UP_SCHEDULED",
+          followUpId: followUp.id,
+          message: "Follow-up scheduled",
+          metadata: { dueDate: dueDate.toISOString(), dueTime: data.followUpTime ?? null },
         });
-        if (!currentLead?.nextFollowUpAt || due < currentLead.nextFollowUpAt) {
-          await tx.lead.update({
-            where: { id: leadId },
-            data: { nextFollowUpAt: due },
-          });
-        }
 
-        await activityService.record(leadId, "FOLLOW_UP", "Follow-up scheduled", actor.id, { followUpId: followUp.id, dueDate: data.followUpDate }, tx);
+        await followUpService.recalculateLeadFollowUpFields(leadId, tx);
       }
+
+      await activityEventService.createEvent({
+        leadId,
+        type: "NOTE",
+        actorId: actor.id,
+        entries: eventEntries,
+      }, tx);
 
       return note;
     });
@@ -141,10 +155,18 @@ export class NoteService {
           },
         },
       });
-      await activityService.record(note.leadId, "NOTE_EDITED", "Note edited", actor.id, {
-        noteId: id, oldContent: note.content, newContent,
+      await activityEventService.createEvent({
+        leadId: note.leadId,
+        type: "NOTE",
+        actorId: actor.id,
+        entries: [
+          {
+            type: "NOTE_EDITED",
+            message: "Note edited",
+            metadata: { noteId: id, oldContent: note.content, newContent },
+          },
+        ],
       }, tx);
-      await auditService.log("note.updated", "Note", id, actor.id, { leadId: note.leadId }, undefined, tx);
       return updated;
     });
   }
@@ -173,7 +195,6 @@ export class NoteService {
 
     await prisma.$transaction(async (tx) => {
       await tx.note.delete({ where: { id } });
-      await auditService.log("note.deleted", "Note", id, actor.id, { leadId: note.leadId }, undefined, tx);
     });
   }
 }

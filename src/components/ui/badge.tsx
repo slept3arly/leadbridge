@@ -52,5 +52,5 @@ export function Badge({
     : variant === "square"
       ? "rounded-md px-2 py-0.5"
       : "rounded-full px-3 py-1";
-  return <span className={cn("inline-flex text-xs font-semibold", shape, tone, className)}>{label}</span>;
+  return <span className={cn("inline-flex items-center justify-center text-xs font-semibold", shape, tone, className)}>{label}</span>;
 }

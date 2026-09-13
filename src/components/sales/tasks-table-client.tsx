@@ -28,14 +28,23 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
   const hydrated = useHydrated();
   const [rows, setRows] = useState(initialRows);
 
-  async function updateStatus(id: string, status: string) {
+  async function completeTask(id: string) {
     try {
-      await axios.patch(`/api/follow-ups/${id}`, { status });
-      setRows((prev) => prev.filter((r) => r.id !== id));
-      toast.success(status === "COMPLETED" ? "Task completed" : "Task missed");
+      await axios.post(`/api/follow-ups/${id}/complete`, {});
+      toast.success("Task completed");
       router.refresh();
     } catch {
-      toast.error("Failed to update task");
+      toast.error("Failed to complete task");
+    }
+  }
+
+  async function cancelTask(id: string) {
+    try {
+      await axios.delete(`/api/follow-ups/${id}`);
+      toast.success("Task cancelled");
+      router.refresh();
+    } catch {
+      toast.error("Failed to cancel task");
     }
   }
 
@@ -102,7 +111,7 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => updateStatus(fu.id, "COMPLETED")}
+                onClick={() => completeTask(fu.id)}
                 title="Mark completed"
               >
                 <Check size={14} className="text-green-600" />
@@ -110,7 +119,7 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => updateStatus(fu.id, "CANCELLED")}
+                onClick={() => cancelTask(fu.id)}
                 title="Mark missed"
               >
                 <X size={14} className="text-red-500" />

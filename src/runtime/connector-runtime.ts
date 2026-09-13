@@ -13,7 +13,7 @@ import {
 } from "./runtime-result";
 import type { NormalizedLead } from "@/types/lead";
 import { LeadService, type LeadInput } from "@/services/lead.service";
-import { activityService } from "@/services/activity.service";
+import { activityEventService } from "@/services/activity-event.service";
 import { prisma } from "@/lib/prisma";
 
 
@@ -238,18 +238,21 @@ export class ConnectorRuntime {
 
         const created = createResult.lead;
 
-        await activityService.record(
-          created.id,
-          "IMPORTED",
-          `Lead imported via ${context.connectorType} connector`,
-          actor.id,
-          {
-            executionId: context.executionId,
-            connectorId: context.connectorId,
-            source: context.connectorType,
-            routingRuleId: match?.ruleId,
-          },
-        );
+        await activityEventService.createEvent({
+          leadId: created.id,
+          type: "SYSTEM",
+          actorId: actor.id,
+          entries: [{
+            type: "CREATED",
+            message: `Lead imported via ${context.connectorType} connector`,
+            metadata: {
+              executionId: context.executionId,
+              connectorId: context.connectorId,
+              source: context.connectorType,
+              routingRuleId: match?.ruleId,
+            },
+          }],
+        });
 
         createdLeads.push(created);
       } catch (error) {

@@ -3,11 +3,13 @@ import { ResyncButton } from "@/components/shared/resync-button";
 
 export function Navbar({
   title,
+  subtitle,
   actions,
   showResync,
   followUpDropdown,
 }: {
   title: string;
+  subtitle?: string;
   actions?: ReactNode;
   showResync?: boolean;
   followUpDropdown?: ReactNode;
@@ -17,6 +19,9 @@ export function Navbar({
       <div className="flex-1">
         <p className="text-xs uppercase tracking-[0.3em] text-[var(--color-muted)]">LeadBridge</p>
         <h1 className="mt-1 text-2xl font-semibold">{title}</h1>
+        {subtitle && (
+          <p className="mt-0.5 text-sm text-[var(--color-muted)]">{subtitle}</p>
+        )}
       </div>
       <div className="flex items-center gap-2">
         {showResync && <ResyncButton />}

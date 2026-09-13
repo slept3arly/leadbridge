@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { auditService } from "@/services/audit.service";
 import { invalidateAdminDashboard } from "@/lib/cache-tags";
 
 export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>("ADMIN", async (_request, context, session) => {
@@ -23,7 +22,6 @@ export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>(
       data: { active: false },
     });
 
-    await auditService.log("provider.deleted", "LeadSource", id, session.user.id, { name: existing.name });
     invalidateAdminDashboard();
 
     return NextResponse.json({ success: true, message: `Lead source "${existing.name}" deactivated.` });

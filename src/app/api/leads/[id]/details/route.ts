@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization } from "@/lib/api";
-import { activityService } from "@/services/activity.service";
+import { activityEventService } from "@/services/activity-event.service";
 import { leadService } from "@/services/lead.service";
 import { prisma } from "@/lib/prisma";
 
@@ -11,7 +11,7 @@ export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(und
   // Notes and follow-ups are queried directly (skipping redundant access
   // checks in noteService.list / followUpService.list) to avoid extra lead
   // table lookups that would otherwise add latency to every modal open.
-  const [lead, notes, activities, structuredActivities, followUps] = await Promise.all([
+  const [lead, notes, followUps, activityEvents] = await Promise.all([
     leadService.getById(id, session.user),
     prisma.note.findMany({
       where: { leadId: id },
@@ -24,8 +24,6 @@ export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(und
         },
       },
     }),
-    session.user.role === "SALES" ? activityService.listLegacy(id) : activityService.list(id),
-    session.user.role === "SALES" ? activityService.listStructured(id) : Promise.resolve([]),
     prisma.followUp.findMany({
       where: { leadId: id },
       orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
@@ -34,13 +32,13 @@ export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(und
         createdBy: { select: { id: true, name: true } },
       },
     }),
+    activityEventService.listByLead(id, { limit: 100 }),
   ]);
 
   return NextResponse.json({
     lead,
     notes,
-    activities,
-    ...(session.user.role === "SALES" ? { structuredActivities } : {}),
     followUps,
+    activityEvents,
   });
 });

@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { containsSearch, listResult, pagination, type ListQuery } from "@/lib/query-builder";
 import { ServiceError } from "@/lib/service-errors";
-import { auditService } from "@/services/audit.service";
 import { invalidateAdminDashboard } from "@/lib/cache-tags";
 import type { z } from "zod";
 import { providerSchema, routingRuleSchema } from "@/lib/validation";
@@ -79,14 +78,12 @@ export class ProviderService {
 
   async create(data: ProviderInput, actorId: string) {
     const provider = await prisma.leadSource.create({ data: { ...data, sourceType: data.sourceType, description: data.description ?? null } });
-    await auditService.log("provider.created", "LeadSource", provider.id, actorId, { name: provider.name });
     invalidateAdminDashboard();
     return provider;
   }
 
   async update(id: string, data: Partial<ProviderInput>, actorId: string) {
     const provider = await prisma.leadSource.update({ where: { id }, data: { ...data, description: data.description ?? undefined } });
-    await auditService.log("provider.updated", "LeadSource", id, actorId, data);
     invalidateAdminDashboard();
     return provider;
   }
@@ -95,7 +92,6 @@ export class ProviderService {
     const provider = await prisma.leadSource.findUnique({ where: { id }, select: { id: true, name: true } });
     if (!provider) throw new ServiceError("Provider not found.", 404);
     await prisma.leadSource.update({ where: { id }, data: { active: false, connectors: { set: [] } } });
-    await auditService.log("provider.deleted", "LeadSource", id, actorId, { name: provider.name });
     invalidateAdminDashboard();
     return provider;
   }
@@ -105,7 +101,6 @@ export class ProviderService {
       data: { ...data, priority: data.priority ?? 100, fallback: data.fallback ?? false, active: data.active ?? true },
       include: routingRuleInclude,
     });
-    await auditService.log("routing_rule.created", "RoutingRule", rule.id, actorId, { providerId: rule.providerId, parserId: rule.parserId });
     invalidateAdminDashboard();
     return rule;
   }
@@ -129,10 +124,6 @@ export class ProviderService {
       include: routingRuleInclude,
     });
 
-    await auditService.log("routing_rule.updated", "RoutingRule", id, actorId, {
-      before: existing,
-      after: cleaned,
-    });
     invalidateAdminDashboard();
     return rule;
   }
@@ -147,7 +138,6 @@ export class ProviderService {
     }
 
     await prisma.routingRule.delete({ where: { id } });
-    await auditService.log("routing_rule.deleted", "RoutingRule", id, actorId, rule);
     invalidateAdminDashboard();
     return rule;
   }

@@ -28,11 +28,6 @@ const VALIDATORS: Record<string, (value: string) => string | null> = {
     if (!Number.isInteger(n) || n < 5 || n > 200) return "Must be an integer between 5 and 200";
     return null;
   },
-  audit_log_retention_limit: (v) => {
-    const n = Number(v);
-    if (!Number.isInteger(n) || n < 100 || n > 100000) return "Must be an integer between 100 and 100,000";
-    return null;
-  },
 };
 
 export function AdminSettings() {

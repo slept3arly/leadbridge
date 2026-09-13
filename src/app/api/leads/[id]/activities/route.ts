@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization } from "@/lib/api";
-import { activityService } from "@/services/activity.service";
+import { activityEventService } from "@/services/activity-event.service";
 import { followUpService } from "@/services/follow-up.service";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
@@ -10,14 +10,26 @@ const structuredActivitySchema = z.object({
   response: z.enum(["PICKED_UP", "NO_RESPONSE", "INVALID_NUMBER", "REPLIED"]),
   interest: z.enum(["INTERESTED", "NOT_INTERESTED"]).nullable(),
   notes: z.string().trim().max(10000).nullable(),
-  scheduleFollowUp: z.boolean(),
-  followUpDate: z.string().nullable(),
-  followUpTime: z.string().max(10).nullable(),
+  scheduleFollowUp: z.boolean().optional().default(false),
+  followUpDate: z.string().nullable().optional(),
+  followUpTime: z.string().max(10).nullable().optional(),
 });
 
 export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
   const { id } = await context.params;
-  return NextResponse.json(session.user.role === "SALES" ? await activityService.listLegacy(id) : await activityService.list(id));
+
+  const lead = await prisma.lead.findFirst({
+    where: {
+      id,
+      isDeleted: false,
+      ...(session.user.role === "SALES" ? { assignedUserId: session.user.id } : {}),
+    },
+    select: { id: true },
+  });
+  if (!lead) return NextResponse.json({ error: "Lead not found or access denied." }, { status: 404 });
+
+  const events = await activityEventService.listByLead(id, { limit: 100 });
+  return NextResponse.json(events);
 });
 
 export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(["SALES"], async (request, context, session) => {
@@ -39,8 +51,6 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(["
     return NextResponse.json({ error: "Invalid structured activity combination." }, { status: 400 });
   }
 
-  // Verify lead access directly instead of calling noteService.list
-  // (which fetches all notes just for an access check).
   const lead = await prisma.lead.findFirst({
     where: { id, isDeleted: false, assignedUserId: session.user.id },
     select: { id: true },
@@ -50,33 +60,48 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(["
   const responseLabel = data.response.replaceAll("_", " ");
   const interestLabel = data.interest ? ` (${data.interest.replaceAll("_", " ")})` : "";
 
-  let followUpId: string | null = null;
-  if (data.scheduleFollowUp && data.followUpDate) {
-    const fu = await followUpService.create({
+  const result = await prisma.$transaction(async (tx) => {
+    const eventEntries: import("@/services/activity-event.service").ActivityEntryInput[] = [
+      {
+        type: data.action === "CALL" ? "CALL" : "WHATSAPP",
+        action: data.action,
+        response: data.response,
+        interest: data.interest ?? null,
+        message: data.notes || `${data.action} - ${responseLabel}${interestLabel}`,
+        metadata: data.notes ? { notes: data.notes } : undefined,
+      },
+    ];
+
+    let followUpId: string | null = null;
+    if (data.scheduleFollowUp && data.followUpDate) {
+      const fu = await followUpService.create({
+        leadId: id,
+        title: `${data.action === "CALL" ? "Call" : "WhatsApp"} follow-up`,
+        description: data.notes,
+        dueDate: data.followUpDate,
+        dueTime: data.followUpTime,
+        assignedUserId: session.user.id,
+      }, session.user, tx, false);
+
+      followUpId = fu.id;
+
+      eventEntries.push({
+        type: "FOLLOW_UP_SCHEDULED",
+        followUpId: fu.id,
+        message: "Follow-up scheduled",
+        metadata: { dueDate: data.followUpDate, dueTime: data.followUpTime ?? null },
+      });
+    }
+
+    const event = await activityEventService.createEvent({
       leadId: id,
-      title: `${data.action === "CALL" ? "Call" : "WhatsApp"} follow-up`,
-      description: data.notes,
-      dueDate: data.followUpDate,
-      dueTime: data.followUpTime,
-      assignedUserId: session.user.id,
-    }, session.user);
-    followUpId = fu.id;
-  }
+      type: "INTERACTION",
+      actorId: session.user.id,
+      entries: eventEntries,
+    }, tx);
 
-  const activity = await activityService.recordStructured(
-    id,
-    "UPDATED",
-    data.notes || `${data.action} - ${responseLabel}${interestLabel}`,
-    session.user.id,
-    {
-      structuredActivity: true,
-      ...(data.notes ? { notes: data.notes } : {}),
-      ...(followUpId ? { followUpId } : {}),
-    },
-    data.action,
-    data.response,
-    data.interest,
-  );
+    return { event, followUpId };
+  });
 
-  return NextResponse.json(activity, { status: 201 });
+  return NextResponse.json(result.event, { status: 201 });
 });

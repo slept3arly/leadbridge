@@ -56,6 +56,15 @@ export function formatTimeAgo(value: Date | string, timeZone?: string, now: Date
   return formatDate(value, "-", timeZone);
 }
 
+export function startOfTodayUTC(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+export function endOfTodayUTC(): Date {
+  return new Date(startOfTodayUTC().getTime() + 24 * 60 * 60 * 1000 - 1);
+}
+
 export function daysSince(date: Date): number {
   return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
 }

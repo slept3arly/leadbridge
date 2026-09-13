@@ -34,39 +34,6 @@ export type LeadNote = {
   followUps?: LeadNoteFollowUp[];
 };
 
-export type LeadActivity = {
-  id: string;
-  type: string;
-  message: string;
-  metadata: Record<string, unknown> | null;
-  createdAt: string;
-  actor: { id: string; name: string } | null;
-};
-
-export type StructuredLeadActivity = {
-  id: string;
-  action: "CALL" | "WHATSAPP";
-  response: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED";
-  interest: "INTERESTED" | "NOT_INTERESTED" | null;
-  message: string;
-  metadata: Record<string, unknown> | null;
-  createdAt: string;
-  actor: { id: string; name: string } | null;
-  followUp?: {
-    id: string;
-    title: string;
-    description: string | null;
-    dueDate: string | null;
-    dueTime: string | null;
-    priority: string;
-    status: string;
-    completedAt: string | null;
-    assignedUser: { id: string; name: string } | null;
-    createdBy: { id: string; name: string };
-    createdAt: string;
-  };
-};
-
 export type LeadFollowUp = {
   id: string;
   title: string;
@@ -82,12 +49,41 @@ export type LeadFollowUp = {
   createdAt: string;
 };
 
+export type ActivityEventEntry = {
+  id: string;
+  type: string;
+  action: "CALL" | "WHATSAPP" | null;
+  response: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED" | null;
+  interest: "INTERESTED" | "NOT_INTERESTED" | null;
+  message: string | null;
+  metadata: Record<string, unknown> | null;
+  followUpId: string | null;
+  followUp: {
+    id: string;
+    title: string;
+    dueDate: string | null;
+    dueTime: string | null;
+    status: string;
+    completedAt: string | null;
+  } | null;
+  createdAt: string;
+};
+
+export type ActivityEventItem = {
+  id: string;
+  type: string;
+  metadata: Record<string, unknown> | null;
+  occurredAt: string;
+  createdAt: string;
+  actor: { id: string; name: string } | null;
+  entries: ActivityEventEntry[];
+};
+
 export type LeadDetails = {
   lead: LeadDetail;
   notes: LeadNote[];
-  activities: LeadActivity[];
-  structuredActivities?: StructuredLeadActivity[];
   followUps: LeadFollowUp[];
+  activityEvents: ActivityEventItem[];
 };
 
 export function useLeadDetails(leadId: string) {
@@ -133,5 +129,19 @@ export function useLeadDetails(leadId: string) {
     };
   }, [leadId]);
 
-  return { data, loading, refresh, setData, patchData };
+  const completeFollowUp = useCallback(async (followUpId: string, data: {
+    note?: string | null;
+    nextFollowUp?: { dueDate: string; dueTime?: string | null } | null;
+    activity?: {
+      action: "CALL" | "WHATSAPP";
+      response: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED";
+      interest?: "INTERESTED" | "NOT_INTERESTED" | null;
+      notes?: string | null;
+    } | null;
+  }) => {
+    const res = await axios.post(`/api/follow-ups/${followUpId}/complete`, data);
+    return res.data as { completedFollowUp: LeadFollowUp; nextFollowUp: LeadFollowUp | null };
+  }, []);
+
+  return { data, loading, refresh, setData, patchData, completeFollowUp };
 }

@@ -7,7 +7,6 @@ import {
   Settings,
   BarChart3,
   Cable,
-  ScrollText,
   ClipboardList,
   CircleUser,
 } from "lucide-react";
@@ -67,7 +66,6 @@ export const adminNavigation: NavGroup[] = [
       { href: "/admin/connectors", label: "Connectors", icon: <Cable {...iconProps} /> },
       { href: "/admin/users", label: "User Administration", icon: <UserCog {...iconProps} /> },
       { href: "/admin/providers", label: "Providers", icon: <Building2 {...iconProps} /> },
-      { href: "/admin/audit-logs", label: "Audit Logs", icon: <ScrollText {...iconProps} /> },
       { href: "/admin/settings", label: "Settings", icon: <Settings {...iconProps} /> },
     ],
   },

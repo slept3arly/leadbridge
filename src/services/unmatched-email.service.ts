@@ -1,7 +1,6 @@
 import type { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { unmatchedActionSchema } from "@/lib/validation";
-import { auditService } from "@/services/audit.service";
 import { ServiceError } from "@/lib/service-errors";
 
 type Action = z.infer<typeof unmatchedActionSchema>;
@@ -28,7 +27,6 @@ export class UnmatchedEmailService {
       const request = await prisma.parserRequest.create({ data: { vendorName: action.vendorName ?? "Unknown vendor", senderEmail: email.senderEmail, sampleSubject: email.subject, samplePreview: email.rawPreview, requestedById: actorId, developerNotes: action.developerNotes } });
       await prisma.unmatchedEmail.update({ where: { id }, data: { parserRequestId: request.id } });
     }
-    await auditService.log(`unmatched_email.${action.action.toLowerCase()}`, "UnmatchedEmail", id, actorId, { providerId: action.providerId });
     return updated;
   }
 }

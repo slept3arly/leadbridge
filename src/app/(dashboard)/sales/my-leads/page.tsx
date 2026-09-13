@@ -49,10 +49,13 @@ export default async function SalesMyLeadsPage({
     dateTo: query.dateTo?.toISOString(),
   };
 
+  const userName = user.name?.trim() || user.email?.split("@")[0] || undefined;
+
   return (
     <>
       <Navbar
         title="My Leads"
+        subtitle={userName}
         showResync
         actions={
           <>

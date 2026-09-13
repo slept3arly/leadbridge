@@ -31,6 +31,7 @@ export type LeadFormData = {
 export function LeadEditModal({
   open,
   onClose,
+  onSaved,
   lead,
   leadSources,
   assignableUsers,
@@ -38,6 +39,7 @@ export function LeadEditModal({
 }: {
   open: boolean;
   onClose: () => void;
+  onSaved?: () => void;
   lead?: LeadFormData | null;
   leadSources?: Array<{ id: string; name: string }>;
   assignableUsers?: Array<{ id: string; name: string }>;
@@ -164,6 +166,7 @@ export function LeadEditModal({
 
       onClose();
       router.refresh();
+      if (onSaved) onSaved();
     } catch {
       setError(isEdit ? "Failed to update lead." : "Unable to create the lead right now.");
     } finally {

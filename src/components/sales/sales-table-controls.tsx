@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Pagination } from "@/components/ui/pagination";
 import { SearchToolbar } from "@/components/shared/search-toolbar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { FilterChip } from "@/components/ui/filter-chip";
+import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { ActiveFilters } from "@/components/shared/active-filters";
-import { Filter, X } from "lucide-react";
+import { Filter, X, RotateCcw } from "lucide-react";
 import { useTableQuery, type TableQueryState } from "@/hooks/use-table-query";
 import { formatDate } from "@/lib/utils";
 import {
@@ -66,7 +66,7 @@ export function SalesTableControls({
   actions,
 }: {
   initial: Partial<TableQueryState>;
-  pagination?: { page: number; totalPages: number };
+  pagination?: { page: number; pageSize?: number; total?: number; totalPages: number };
   leadSources: Array<{ id: string; name: string }>;
   actions?: React.ReactNode;
 }) {
@@ -340,23 +340,6 @@ export function SalesTableControls({
                   </Select>
                 </div>
 
-                {/* ARCHIVED */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
-                    Archived
-                  </p>
-                  <Select
-                    value={query.filters.archived === "true" ? "true" : ""}
-                    onChange={(e) => setFilter("archived", e.target.value)}
-                  >
-                    <option value="">Hide Archived</option>
-                    <option value="true">Show Archived</option>
-                  </Select>
-                </div>
-
-                {/* Empty cell to maintain grid alignment on lg screens */}
-                <div className="hidden lg:block sm:col-span-2 lg:col-span-2" />
-
                 {/* ACTIVITY DATE */}
                 <div>
                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
@@ -463,6 +446,20 @@ export function SalesTableControls({
                   </Select>
                 </div>
 
+                {/* ARCHIVED */}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                    Archived
+                  </p>
+                  <Select
+                    value={query.filters.archived === "true" ? "true" : ""}
+                    onChange={(e) => setFilter("archived", e.target.value)}
+                  >
+                    <option value="">Hide Archived</option>
+                    <option value="true">Show Archived</option>
+                  </Select>
+                </div>
+
                 {/* FROM / TO (Only when activityDate === "custom") */}
                 {query.filters.activityDate === "custom" && (
                   <>
@@ -497,30 +494,70 @@ export function SalesTableControls({
         </div>
       </div>
 
-      {/* Follow-up Segmented Control */}
-      <div className="flex justify-center sm:justify-start">
-        <SegmentedControl
-          options={FOLLOW_UP_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-          value={followUp}
-          onChange={handleFollowUpChange}
-        />
+      {/* Quick-filter row: SegmentedControl + Active Filters + Pagination */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <SegmentedControl
+            options={FOLLOW_UP_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+            value={followUp}
+            onChange={handleFollowUpChange}
+          />
+          {activeFilterLabels.length > 0 && (
+            <>
+              <div className="h-5 w-px bg-[var(--color-border)] shrink-0" />
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                {activeFilterLabels.map((filter) => (
+                  <FilterChip
+                    key={filter.key}
+                    label={filter.label}
+                    onRemove={() => removeFilter(filter.key)}
+                  />
+                ))}
+                <Button variant="ghost" size="sm" onClick={resetAll} className="gap-1.5 text-xs h-8 shrink-0">
+                  <RotateCcw size={12} />
+                  Reset
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+        {pagination && pagination.total && pagination.pageSize && (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[var(--color-muted)] whitespace-nowrap">
+              {`Showing ${(pagination.page - 1) * pagination.pageSize + 1}\u2013${Math.min(pagination.page * pagination.pageSize, pagination.total)} of ${pagination.total}`}
+            </span>
+            {pagination.totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={pagination.page <= 1}
+                  onClick={() => query.update({ page: pagination.page - 1 })}
+                  aria-label="Previous page"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </Button>
+                <span className="text-sm text-[var(--color-muted)] tabular-nums">
+                  {pagination.page} / {pagination.totalPages}
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() => query.update({ page: pagination.page + 1 })}
+                  aria-label="Next page"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-
-      {/* Active Filters */}
-      <ActiveFilters
-        filters={activeFilterLabels}
-        onRemove={removeFilter}
-        onReset={resetAll}
-      />
-
-      {/* Pagination */}
-      {pagination && (
-        <Pagination
-          page={pagination.page}
-          totalPages={pagination.totalPages}
-          onChange={(page) => query.update({ page })}
-        />
-      )}
     </div>
   );
 }

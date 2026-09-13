@@ -1,11 +1,11 @@
 import { prisma } from "@/lib/prisma";
+import { startOfTodayUTC, endOfTodayUTC } from "@/lib/utils";
 import { reportService } from "./report.service";
 import { attentionService } from "./attention.service";
 
 export class DashboardService {
   async admin() {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = startOfTodayUTC();
     const thirtyDaysAgo = new Date(today);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -42,7 +42,15 @@ export class DashboardService {
       reportService.statusBreakdown(),
       reportService.leadSources({ from: thirtyDaysAgo, to: now }),
       prisma.connector.findMany({ select: { id: true, name: true, type: true, healthStatus: true, status: true, isRunning: true, enabled: true } }),
-      prisma.leadActivity.findMany({ orderBy: { createdAt: "desc" }, take: 10, include: { actor: { select: { id: true, name: true } }, lead: { select: { id: true, displayName: true, leadNumber: true } } } }),
+      prisma.activityEvent.findMany({
+        orderBy: { occurredAt: "desc" },
+        take: 10,
+        include: {
+          actor: { select: { id: true, name: true } },
+          lead: { select: { id: true, displayName: true, leadNumber: true } },
+          entries: { select: { type: true, message: true }, orderBy: { createdAt: "asc" } },
+        },
+      }),
       prisma.connectorSyncRun.findMany({ orderBy: { startedAt: "desc" }, take: 5, include: { connector: { select: { id: true, name: true } } } }),
       prisma.parserRequest.count({ where: { status: "OPEN" } }),
       prisma.unmatchedEmail.count({ where: { status: "UNMATCHED" } }),
@@ -94,12 +102,12 @@ export class DashboardService {
       recentActivity: recentActivity.map((a) => ({
         id: a.id,
         type: a.type,
-        message: a.message,
+        message: a.entries[0]?.message ?? a.type,
         actorName: a.actor?.name ?? "System",
         leadId: a.leadId,
         leadName: a.lead?.displayName ?? "Deleted",
         leadNumber: a.lead?.leadNumber ?? "",
-        createdAt: a.createdAt.toISOString(),
+        createdAt: a.occurredAt.toISOString(),
       })),
       recentSyncs: recentSyncs.map((s) => ({
         id: s.id,
@@ -129,8 +137,8 @@ export class DashboardService {
 
   async sales(userId: string) {
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
+    const startOfToday = startOfTodayUTC();
+    const endOfToday = endOfTodayUTC();
     const leadWhere = { assignedUserId: userId, isDeleted: false };
 
     const [
@@ -185,45 +193,59 @@ export class DashboardService {
       }),
       attentionService.getNeedsAttention(userId),
       // Today's Activity metrics - Sales user
-      prisma.$queryRaw<{ count: number }[]>`SELECT COUNT(DISTINCT "leadId")::int AS count FROM "LeadActivity" WHERE "createdAt" >= ${startOfToday} AND "action" IS NOT NULL`
-        .then(([row]) => row?.count ?? 0),
-      prisma.leadActivity.count({ where: { createdAt: { gte: startOfToday } } }),
-      prisma.leadActivity.count({
+      // Count distinct leads that had interaction entries (CALL/WHATSAPP) today
+      prisma.activityEntry.findMany({
         where: {
-          createdAt: { gte: startOfToday },
+          type: { in: ["CALL", "WHATSAPP"] },
+          event: { occurredAt: { gte: startOfToday } },
+        },
+        select: { event: { select: { leadId: true } } },
+      }).then((entries) => {
+        const uniqueLeadIds = new Set(entries.map((e) => e.event.leadId));
+        return uniqueLeadIds.size;
+      }),
+      prisma.activityEntry.count({
+        where: {
+          event: { occurredAt: { gte: startOfToday } },
+          type: { in: ["CALL", "WHATSAPP"] },
+        },
+      }),
+      prisma.activityEntry.count({
+        where: {
+          event: { occurredAt: { gte: startOfToday } },
           OR: [
-            { action: "CALL", response: "PICKED_UP" },
-            { action: "WHATSAPP", response: "REPLIED" },
+            { type: "CALL", action: "CALL", response: "PICKED_UP" },
+            { type: "WHATSAPP", action: "WHATSAPP", response: "REPLIED" },
           ],
         },
       }),
-      prisma.leadActivity.count({
+      prisma.activityEntry.count({
         where: {
-          createdAt: { gte: startOfToday },
+          event: { occurredAt: { gte: startOfToday } },
           OR: [
-            { action: "CALL", response: "NO_RESPONSE" },
-            { action: "WHATSAPP", response: "NO_RESPONSE" },
+            { type: "CALL", action: "CALL", response: "NO_RESPONSE" },
+            { type: "WHATSAPP", action: "WHATSAPP", response: "NO_RESPONSE" },
           ],
         },
       }),
-      prisma.leadActivity.count({
+      prisma.activityEntry.count({
         where: {
-          createdAt: { gte: startOfToday },
+          event: { occurredAt: { gte: startOfToday } },
           OR: [
-            { action: "CALL", response: "INVALID_NUMBER" },
-            { action: "WHATSAPP", response: "INVALID_NUMBER" },
+            { type: "CALL", action: "CALL", response: "INVALID_NUMBER" },
+            { type: "WHATSAPP", action: "WHATSAPP", response: "INVALID_NUMBER" },
           ],
         },
       }),
-      prisma.leadActivity.count({
+      prisma.activityEntry.count({
         where: {
-          createdAt: { gte: startOfToday },
+          event: { occurredAt: { gte: startOfToday } },
           interest: "INTERESTED",
         },
       }),
-      prisma.leadActivity.count({
+      prisma.activityEntry.count({
         where: {
-          createdAt: { gte: startOfToday },
+          event: { occurredAt: { gte: startOfToday } },
           interest: "NOT_INTERESTED",
         },
       }),

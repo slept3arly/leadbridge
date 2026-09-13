@@ -33,9 +33,8 @@ async function main() {
   const leadName = `Phase 2 Lead ${suffix}`;
   const page = await leadService.listPage(parseListQuery(new URLSearchParams(`search=${encodeURIComponent(leadName)}&pageSize=1`)), adminActor);
   if (page.pagination.total !== 1 || page.data[0]?.id !== lead.id) throw new Error("Lead search/pagination failed");
-  const activitiesBeforeDelete = await prisma.leadActivity.count({ where: { leadId: lead.id } });
-  const auditsBeforeDelete = await prisma.auditLog.count({ where: { entityId: lead.id } });
-  if (activitiesBeforeDelete < 4 || auditsBeforeDelete < 3) throw new Error("Activity/audit generation failed");
+  const activitiesBeforeDelete = await prisma.activityEvent.count({ where: { leadId: lead.id } });
+  if (activitiesBeforeDelete < 2) throw new Error("Activity event generation failed");
 
   await leadService.remove(lead.id, adminActor);
   if ((await leadService.listPage(parseListQuery(new URLSearchParams(`search=${encodeURIComponent(leadName)}`)), adminActor)).pagination.total !== 0) throw new Error("Hard delete filtering failed");
@@ -51,7 +50,7 @@ async function main() {
   await prisma.parser.delete({ where: { id: parser.id } });
   await prisma.leadSource.delete({ where: { id: source.id } });
   await prisma.user.deleteMany({ where: { id: { in: [admin.id, sales.id] } } });
-  console.log("Phase 2 smoke test passed: lead lifecycle, assignment, notes, history, audit, search, pagination, restore, and connector sync history.");
+  console.log("Phase 2 smoke test passed: lead lifecycle, assignment, notes, history, search, pagination, and connector sync history.");
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

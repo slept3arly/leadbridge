@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { auditService } from "@/services/audit.service";
 import { invalidateAdminDashboard } from "@/lib/cache-tags";
 import { z } from "zod";
 
@@ -55,7 +54,6 @@ export const POST = withApiAuthorization("ADMIN", async (request, _context, sess
         data: { active: true },
         select: { id: true, name: true, slug: true, active: true },
       });
-      await auditService.log("provider.updated", "LeadSource", reactivated.id, session.user.id, { name: reactivated.name, reactivated: true });
       invalidateAdminDashboard();
       return NextResponse.json(reactivated, { status: 200 });
     }
@@ -78,7 +76,6 @@ export const POST = withApiAuthorization("ADMIN", async (request, _context, sess
       select: { id: true, name: true, slug: true, active: true },
     });
 
-    await auditService.log("provider.created", "LeadSource", source.id, session.user.id, { name: source.name });
     invalidateAdminDashboard();
 
     return NextResponse.json(source, { status: 201 });

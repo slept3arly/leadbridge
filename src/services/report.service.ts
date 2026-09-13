@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { startOfTodayUTC } from "@/lib/utils";
 
 export interface DateRange {
   from: Date;
@@ -116,17 +117,23 @@ export class ReportService {
   }
 
   async activity() {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const startOfDay = startOfTodayUTC();
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+    // Count interaction entries (CALL/WHATSAPP) from ActivityEntry
     const [today, thisWeek, thisMonth] = await Promise.all([
-      prisma.leadActivity.count({ where: { createdAt: { gte: startOfDay } } }),
-      prisma.leadActivity.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
-      prisma.leadActivity.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+      prisma.activityEntry.count({
+        where: { type: { in: ["CALL", "WHATSAPP"] }, event: { occurredAt: { gte: startOfDay } } },
+      }),
+      prisma.activityEntry.count({
+        where: { type: { in: ["CALL", "WHATSAPP"] }, event: { occurredAt: { gte: sevenDaysAgo } } },
+      }),
+      prisma.activityEntry.count({
+        where: { type: { in: ["CALL", "WHATSAPP"] }, event: { occurredAt: { gte: thirtyDaysAgo } } },
+      }),
     ]);
 
     return {

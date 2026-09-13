@@ -45,20 +45,6 @@ enum FollowUpPriority {
   URGENT
 }
 
-enum ActivityType {
-  CREATED
-  UPDATED
-  ASSIGNED
-  NOTE_ADDED
-  NOTE_EDITED
-  IMPORTED
-  STATUS_CHANGED
-  FOLLOW_UP
-  DELETED
-  RESTORED
-  ATTACHMENT_ADDED
-}
-
 enum ActionType {
   CALL
   WHATSAPP
@@ -133,6 +119,32 @@ enum ParserRequestStatus {
   DECLINED
 }
 
+enum ActivityEventType {
+  INTERACTION
+  FOLLOW_UP
+  NOTE
+  SYSTEM
+}
+
+enum ActivityEntryType {
+  CREATED
+  UPDATED
+  ASSIGNED
+  NOTE_ADDED
+  NOTE_EDITED
+  IMPORTED
+  STATUS_CHANGED
+  FOLLOW_UP_SCHEDULED
+  FOLLOW_UP_RESCHEDULED
+  FOLLOW_UP_COMPLETED
+  FOLLOW_UP_CANCELLED
+  DELETED
+  RESTORED
+  ATTACHMENT_ADDED
+  CALL
+  WHATSAPP
+}
+
 model User {
   id                     String           @id @default(cuid())
   name                   String
@@ -163,12 +175,11 @@ model User {
   createdLeads           Lead[]           @relation("LeadCreatedBy")
   updatedLeads           Lead[]           @relation("LeadUpdatedBy")
   deletedLeads           Lead[]           @relation("LeadDeletedBy")
-  activities             LeadActivity[]   @relation("ActivityActor")
+  activityEvents         ActivityEvent[]  @relation("ActivityEventActor")
   notes                  Note[]
   followUps              FollowUp[]       @relation("FollowUpAssignee")
   createdFollowUps       FollowUp[]       @relation("FollowUpCreator")
   uploadedAttachments    Attachment[]
-  auditLogs              AuditLog[]
   updatedSettings        Setting[]
   handledUnmatchedEmails UnmatchedEmail[] @relation("UnmatchedEmailHandler")
   parserRequests         ParserRequest[]  @relation("ParserRequestRequester")
@@ -306,7 +317,7 @@ model Lead {
   isArchived        Boolean        @default(false)
   isDeleted         Boolean        @default(false)
   deletedAt         DateTime?
-  activities        LeadActivity[]
+  activityEvents    ActivityEvent[]
   notes             Note[]
   followUps         FollowUp[]
   attachments       Attachment[]
@@ -326,22 +337,39 @@ model Lead {
   @@index([phone])
 }
 
-model LeadActivity {
-  id                String          @id @default(cuid())
-  type              ActivityType
-  action              ActionType?
-  response            ResponseType?
-  interest        InterestType?
-  message           String
-  metadata          Json?
-  leadId            String
-  lead              Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  actorId           String?
-  actor             User?           @relation("ActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
-  createdAt         DateTime        @default(now())
+model ActivityEvent {
+  id         String            @id @default(cuid())
+  type       ActivityEventType
+  leadId     String
+  lead       Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  actorId    String?
+  actor      User?             @relation("ActivityEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  metadata   Json?
+  occurredAt DateTime          @default(now())
+  createdAt  DateTime          @default(now())
+  entries    ActivityEntry[]
 
-  @@index([leadId, createdAt])
-  @@index([leadId, type, createdAt])
+  @@index([leadId, occurredAt])
+  @@index([leadId, type, occurredAt])
+}
+
+model ActivityEntry {
+  id         String            @id @default(cuid())
+  eventId    String
+  event      ActivityEvent     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  type       ActivityEntryType
+  action     ActionType?
+  response   ResponseType?
+  interest   InterestType?
+  message    String?
+  metadata   Json?
+  followUpId String?
+  followUp   FollowUp?         @relation(fields: [followUpId], references: [id], onDelete: SetNull)
+  createdAt  DateTime          @default(now())
+
+  @@index([eventId])
+  @@index([followUpId])
+  @@index([type, createdAt])
 }
 
 model Note {
@@ -382,6 +410,7 @@ model FollowUp {
   completedAt DateTime?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+  activityEntries ActivityEntry[]
 
   @@index([leadId, dueDate, status])
   @@index([assignedUserId, status, dueDate])
@@ -560,27 +589,6 @@ model FieldMapping {
 
   @@unique([connectorId, sourceField])
   @@index([connectorId, targetField])
-}
-
-model AuditLog {
-  id         String   @id @default(cuid())
-  action     String
-  entityType String
-  entityId   String?
-  metadata   Json?
-  oldData    Json?
-  newData    Json?
-  ipAddress  String?
-  userAgent  String?
-  requestId  String?
-  actorId    String?
-  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  createdAt  DateTime @default(now())
-
-  @@index([entityType, entityId])
-  @@index([createdAt])
-  @@index([requestId])
-  @@index([actorId, createdAt])
 }
 
 model Setting {

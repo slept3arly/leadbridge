@@ -18,12 +18,6 @@ const SETTINGS: Record<string, SettingDefinition> = {
     description: "Default number of items per page in tables",
     defaultValue: 25,
   },
-  audit_log_retention_limit: {
-    key: "audit_log_retention_limit",
-    category: "System",
-    description: "Maximum number of audit log entries to retain. Oldest entries are automatically pruned when this limit is exceeded.",
-    defaultValue: 1000,
-  },
 };
 
 const getCachedSetting = unstable_cache(

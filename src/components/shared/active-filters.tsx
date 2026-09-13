@@ -29,7 +29,7 @@ export function ActiveFilters({
           onRemove={() => onRemove(filter.key)}
         />
       ))}
-      <Button variant="ghost" size="sm" onClick={onReset} className="gap-1.5 text-xs">
+      <Button variant="ghost" size="sm" onClick={onReset} className="gap-1.5 text-xs h-8">
         <RotateCcw size={12} />
         Reset
       </Button>

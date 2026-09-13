@@ -5,7 +5,7 @@ import { SkeletonTable } from "@/components/ui/loading";
 export type Column<T> = {
   key: string;
   header: string;
-  render: (row: T) => ReactNode;
+  render: (row: T, index: number) => ReactNode;
   className?: string;
   headerClassName?: string;
 };
@@ -19,6 +19,7 @@ export function DataTable<T>({
   emptyAction,
   className,
   rowKey,
+  onRowClick,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -28,6 +29,7 @@ export function DataTable<T>({
   emptyAction?: ReactNode;
   className?: string;
   rowKey?: (row: T, index: number) => string | number;
+  onRowClick?: (row: T) => void;
 }) {
   if (isLoading) {
     return <SkeletonTable rows={5} cols={columns.length} />;
@@ -81,14 +83,15 @@ export function DataTable<T>({
             {rows.map((row, index) => (
               <tr
                 key={rowKey ? rowKey(row, index) : index}
-                className="transition-colors duration-150 hover:bg-slate-50/50"
+                className={`transition-colors duration-150 ${onRowClick ? "cursor-pointer hover:bg-slate-50/80" : "hover:bg-slate-50/50"}`}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
               >
                 {columns.map((column) => (
                   <td
                     key={column.key}
                     className={cn("px-5 py-4 align-top", column.className)}
                   >
-                    {column.render(row)}
+                    {column.render(row, index)}
                   </td>
                 ))}
               </tr>

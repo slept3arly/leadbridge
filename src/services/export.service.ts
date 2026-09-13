@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { STATUS_VALUES } from "@/lib/lead-constants";
 import { reportService } from "@/services/report.service";
-import { auditService } from "@/services/audit.service";
 import type { UserRole } from "@/generated/prisma/client";
 
 type ExportActor = { id: string; role: UserRole };
@@ -217,62 +216,6 @@ export class ExportService {
     rows.push(toCsvRow(["Today", activity.today, "", "", ""]));
     rows.push(toCsvRow(["This Week", activity.thisWeek, "", "", ""]));
     rows.push(toCsvRow(["This Month", activity.thisMonth, "", "", ""]));
-
-    return rows.join("");
-  }
-
-  async exportAuditLogs(params?: {
-    page?: number;
-    pageSize?: number;
-    search?: string;
-    action?: string;
-    entityType?: string;
-    actorId?: string;
-    dateFrom?: string;
-    dateTo?: string;
-  }): Promise<string> {
-    const readableAction = (action: string, entityType: string): string => {
-      const entity: Record<string, string> = {
-        Lead: "lead", Note: "note", LeadSource: "provider", Connector: "connector",
-        User: "user", RoutingRule: "routing rule", UnmatchedEmail: "unmatched email",
-        ParserRequest: "parser request", Contact: "contact",
-      };
-      const noun = entity[entityType] ?? entityType.toLowerCase().replace(/_/g, " ");
-      if (action.endsWith(".created")) return `created ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
-      if (action.endsWith(".updated")) return `updated ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
-      if (action.endsWith(".deleted")) return `deleted ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
-      if (action.endsWith(".restored")) return `restored ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
-      if (action.endsWith(".assigned")) return `assigned ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
-      if (action === "connector.sync_completed") return `completed a sync for ${noun}`;
-      const verbMatch = action.match(/\.(\w+)$/);
-      const verb = verbMatch ? verbMatch[1].replace(/_/g, " ") : action;
-      return `${verb} ${noun}`;
-    };
-
-    const describeMetadata = (meta: unknown): string => {
-      if (!meta || typeof meta !== "object") return "";
-      return Object.entries(meta as Record<string, unknown>)
-        .filter(([, v]) => v != null)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("; ");
-    };
-
-    const rows: string[] = [toCsvRow(["Timestamp", "Activity", "Entity", "Description", "Performed By"])];
-
-    const result = await auditService.listPage({
-      ...params,
-      page: 1,
-      pageSize: 1000,
-    });
-
-    for (const entry of result.data) {
-      const timestamp = new Date(entry.createdAt).toISOString();
-      const activity = readableAction(entry.action, entry.entityType);
-      const entity = entry.entityType;
-      const description = describeMetadata(entry.metadata);
-      const actor = entry.actor?.name ?? "System";
-      rows.push(toCsvRow([timestamp, activity, entity, description, actor]));
-    }
 
     return rows.join("");
   }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { startOfTodayUTC, endOfTodayUTC } from "@/lib/utils";
 
 export type PendingFollowUpItem = {
   followUpId: string;
@@ -101,10 +102,8 @@ export class AttentionService {
   }
 
   async getTodayFollowUps(userId: string): Promise<TodayFollowUpItem[]> {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
+    const todayStart = startOfTodayUTC();
+    const todayEnd = endOfTodayUTC();
 
     const followUps = await prisma.followUp.findMany({
       where: {
@@ -210,10 +209,11 @@ export class AttentionService {
         GROUP BY f."leadId"
       ),
       activity_dates AS (
-        SELECT a."leadId", MAX(a."createdAt") AS "lastActivityRecordDate"
-        FROM "LeadActivity" a
-        INNER JOIN assigned_leads al ON al."id" = a."leadId"
-        GROUP BY a."leadId"
+        SELECT ae."leadId", MAX(ae."occurredAt") AS "lastActivityRecordDate"
+        FROM "ActivityEvent" ae
+        INNER JOIN assigned_leads al ON al."id" = ae."leadId"
+        WHERE ae."type" IN ('INTERACTION', 'NOTE')
+        GROUP BY ae."leadId"
       )
       SELECT
         al."id",

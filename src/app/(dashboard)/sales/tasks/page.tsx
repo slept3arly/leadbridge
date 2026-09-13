@@ -41,10 +41,11 @@ export default async function SalesTasksPage({
   const initialSection = TAB_MAP[(resolvedSearchParams.tab as string) ?? ""] ?? undefined;
 
   const { pendingFollowUps, todayFollowUps, newLeads, needsAttention } = await getAttentionData(user.id);
+  const userName = user.name?.trim() || user.email?.split("@")[0] || undefined;
 
   return (
     <>
-      <Navbar title="Attention Center" showResync actions={<SignOutButton />} />
+      <Navbar title="Attention Center" subtitle={userName} showResync actions={<SignOutButton />} />
       <AttentionCenter
         pendingFollowUps={pendingFollowUps}
         todayFollowUps={todayFollowUps}

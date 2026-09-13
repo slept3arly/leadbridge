@@ -1,12 +1,12 @@
 import type { z } from "zod";
-import type { UserRole, SalesPrivilege, LeadStatus, LeadPriority, LeadCategory, ActionType, ResponseType, InterestType } from "@/generated/prisma/client";
+import type { UserRole, SalesPrivilege, LeadStatus, LeadPriority, LeadCategory } from "@/generated/prisma/client";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { startOfTodayUTC, endOfTodayUTC } from "@/lib/utils";
 import { containsSearch, dateRange, listResult, pagination, type ListQuery } from "@/lib/query-builder";
 import { ServiceError } from "@/lib/service-errors";
 import { leadSchema } from "@/lib/validation";
-import { activityService } from "@/services/activity.service";
-import { auditService } from "@/services/audit.service";
+import { activityEventService } from "@/services/activity-event.service";
 import { duplicateService } from "@/services/duplicate.service";
 import { can, Permission } from "@/lib/permissions";
 
@@ -121,8 +121,8 @@ export class LeadService {
     const followUpFilter = query.filters.followUp?.length
       ? (() => {
           const now = new Date();
-          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
+          const startOfToday = startOfTodayUTC();
+          const endOfToday = endOfTodayUTC();
           const filterVal = query.filters.followUp[0];
           if (filterVal === "overdue") return { nextFollowUpAt: { not: null, lt: now } };
           if (filterVal === "today") return { nextFollowUpAt: { not: null, gte: startOfToday, lte: endOfToday } };
@@ -133,33 +133,6 @@ export class LeadService {
 
     const activityDateVal = query.filters.activityDate?.[0];
 
-    const activityDateFilter = (() => {
-      if (activityDateVal === "today") {
-        const today = new Date();
-        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const startOfTomorrow = new Date(startOfToday);
-        startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-        return { createdAt: { gte: startOfToday, lt: startOfTomorrow } };
-      }
-      if (activityDateVal === "yesterday") {
-        const today = new Date();
-        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const startOfYesterday = new Date(startOfToday);
-        startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-        return { createdAt: { gte: startOfYesterday, lt: startOfToday } };
-      }
-      if (activityDateVal === "custom" || (!activityDateVal && (query.dateFrom || query.dateTo))) {
-        if (!query.dateFrom && !query.dateTo) return {};
-        return {
-          createdAt: {
-            ...(query.dateFrom ? { gte: query.dateFrom } : {}),
-            ...(query.dateTo ? { lte: query.dateTo } : {}),
-          },
-        };
-      }
-      return {};
-    })();
-
     const activityFilterActive = Boolean(
       activityDateVal ||
       query.filters.activityAction?.length ||
@@ -167,15 +140,40 @@ export class LeadService {
       query.filters.activityInterest?.length,
     );
 
+    const activityDateWhere = (() => {
+      if (activityDateVal === "today") {
+        const startOfToday = startOfTodayUTC();
+        const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
+        return { gte: startOfToday, lt: startOfTomorrow };
+      }
+      if (activityDateVal === "yesterday") {
+        const startOfToday = startOfTodayUTC();
+        const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
+        return { gte: startOfYesterday, lt: startOfToday };
+      }
+      if (activityDateVal === "custom" || (!activityDateVal && (query.dateFrom || query.dateTo))) {
+        if (!query.dateFrom && !query.dateTo) return undefined;
+        return {
+          ...(query.dateFrom ? { gte: query.dateFrom } : {}),
+          ...(query.dateTo ? { lte: query.dateTo } : {}),
+        };
+      }
+      return undefined;
+    })();
+
     const activityFilter = activityFilterActive
       ? {
-          activities: {
+          activityEvents: {
             some: {
-              metadata: { path: ["structuredActivity"], equals: true },
-              ...activityDateFilter,
-              ...(query.filters.activityAction?.length ? { action: { in: query.filters.activityAction as ActionType[] } } : {}),
-              ...(query.filters.activityResponse?.length ? { response: { in: query.filters.activityResponse as ResponseType[] } } : {}),
-              ...(query.filters.activityInterest?.length ? { interest: { in: query.filters.activityInterest as InterestType[] } } : {}),
+              ...(activityDateWhere ? { occurredAt: activityDateWhere } : {}),
+              entries: {
+                some: {
+                  type: { in: ["CALL", "WHATSAPP"] as ("CALL" | "WHATSAPP")[] },
+                  ...(query.filters.activityAction?.length ? { action: { in: query.filters.activityAction as ("CALL" | "WHATSAPP")[] } } : {}),
+                  ...(query.filters.activityResponse?.length ? { response: { in: query.filters.activityResponse as ("PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED")[] } } : {}),
+                  ...(query.filters.activityInterest?.length ? { interest: { in: query.filters.activityInterest as ("INTERESTED" | "NOT_INTERESTED")[] } } : {}),
+                },
+              },
             },
           },
         }
@@ -206,7 +204,55 @@ export class LeadService {
       prisma.lead.findMany({ where, select: leadListSelect, orderBy, ...pagination(query) }),
       prisma.lead.count({ where }),
     ]);
-    return listResult(data.map(toApiLead), total, query);
+
+    const leadIds = data.map((l) => l.id);
+
+    type LastActivityEntry = { type: string; action: string | null; response: string | null };
+    type LastActivityResult = { occurredAt: Date; entries: LastActivityEntry[] } | null;
+    const lastActivityMap = new Map<string, LastActivityResult>();
+
+    if (leadIds.length > 0) {
+      const latestEvents = await prisma.$queryRaw<{ leadId: string; eventId: string; occurredAt: Date }[]>`
+        SELECT DISTINCT ON (e."leadId") e."leadId", e."id" AS "eventId", e."occurredAt"
+        FROM "ActivityEvent" e
+        INNER JOIN "ActivityEntry" en ON en."eventId" = e."id"
+        WHERE e."leadId" IN (${Prisma.join(leadIds)})
+          AND en."type" IN ('CALL', 'WHATSAPP', 'FOLLOW_UP_SCHEDULED', 'FOLLOW_UP_RESCHEDULED', 'FOLLOW_UP_COMPLETED', 'FOLLOW_UP_CANCELLED')
+        ORDER BY e."leadId", e."occurredAt" DESC
+      `;
+
+      if (latestEvents.length > 0) {
+        const eventIds = latestEvents.map((e) => e.eventId);
+
+        const eventEntries = await prisma.$queryRaw<{ eventId: string; entryType: string; action: string | null; response: string | null }[]>`
+          SELECT en."eventId", en."type" AS "entryType", en."action", en."response"
+          FROM "ActivityEntry" en
+          WHERE en."eventId" IN (${Prisma.join(eventIds)})
+            AND en."type" IN ('CALL', 'WHATSAPP', 'FOLLOW_UP_SCHEDULED', 'FOLLOW_UP_RESCHEDULED', 'FOLLOW_UP_COMPLETED', 'FOLLOW_UP_CANCELLED')
+        `;
+
+        const entriesByEvent = new Map<string, LastActivityEntry[]>();
+        for (const entry of eventEntries) {
+          const list = entriesByEvent.get(entry.eventId) ?? [];
+          list.push({ type: entry.entryType, action: entry.action, response: entry.response });
+          entriesByEvent.set(entry.eventId, list);
+        }
+
+        for (const event of latestEvents) {
+          lastActivityMap.set(event.leadId, {
+            occurredAt: event.occurredAt,
+            entries: entriesByEvent.get(event.eventId) ?? [],
+          });
+        }
+      }
+    }
+
+    const enriched = data.map((lead) => ({
+      ...toApiLead(lead),
+      lastActivity: lastActivityMap.get(lead.id) ?? null,
+    }));
+
+    return listResult(enriched, total, query);
   }
 
   async stats(userId?: string) {
@@ -271,8 +317,18 @@ export class LeadService {
           },
           select: leadListSelect,
         });
-        await activityService.record(lead.id, "CREATED", "Lead created", actor.id, duplicates.length ? { duplicateCandidates: duplicates } : undefined, tx);
-        await auditService.log("lead.created", "Lead", lead.id, actor.id, { duplicateCandidates: duplicates.length }, undefined, tx);
+        await activityEventService.createEvent({
+          leadId: lead.id,
+          type: "SYSTEM",
+          actorId: actor.id,
+          entries: [
+            {
+              type: "CREATED",
+              message: "Lead created",
+              metadata: duplicates.length ? { duplicateCandidates: duplicates } : undefined,
+            },
+          ],
+        }, tx);
         return { status: "created", lead: toApiLead(lead) };
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -306,11 +362,48 @@ export class LeadService {
         select: leadListSelect,
       });
       const statusChanged = status && status !== existing.status;
-      await activityService.record(id, statusChanged ? "STATUS_CHANGED" : "UPDATED", statusChanged ? `Status changed to ${status}` : "Lead updated", actor.id, statusChanged ? { from: existing.status, to: status } : undefined, tx);
-      if (data.nextFollowUpAt !== undefined) {
-        await activityService.record(id, "FOLLOW_UP", data.nextFollowUpAt ? "Follow-up scheduled" : "Follow-up cleared", actor.id, { nextFollowUpAt: data.nextFollowUpAt }, tx);
+
+      if (statusChanged) {
+        await activityEventService.createEvent({
+          leadId: id,
+          type: "SYSTEM",
+          actorId: actor.id,
+          entries: [
+            {
+              type: "STATUS_CHANGED",
+              message: `Status changed to ${status}`,
+              metadata: { from: existing.status, to: status },
+            },
+          ],
+        }, tx);
+      } else {
+        await activityEventService.createEvent({
+          leadId: id,
+          type: "SYSTEM",
+          actorId: actor.id,
+          entries: [
+            {
+              type: "UPDATED",
+              message: "Lead updated",
+            },
+          ],
+        }, tx);
       }
-      await auditService.log("lead.updated", "Lead", id, actor.id, undefined, { oldData: existing, newData: data }, tx);
+
+      if (data.nextFollowUpAt !== undefined) {
+        await activityEventService.createEvent({
+          leadId: id,
+          type: "SYSTEM",
+          actorId: actor.id,
+          entries: [
+            {
+              type: "UPDATED",
+              message: data.nextFollowUpAt ? "Follow-up scheduled" : "Follow-up cleared",
+              metadata: { nextFollowUpAt: data.nextFollowUpAt?.toISOString() ?? null },
+            },
+          ],
+        }, tx);
+      }
       return toApiLead(lead);
     });
   }
@@ -320,8 +413,18 @@ export class LeadService {
     await this.assertAssignableUser(assignedUserId, actor);
     return prisma.$transaction(async (tx) => {
       const lead = await tx.lead.update({ where: { id }, data: { assignedUserId, updatedById: actor.id }, select: leadListSelect });
-      await activityService.record(id, "ASSIGNED", assignedUserId ? "Lead assigned" : "Lead unassigned", actor.id, { assignedUserId }, tx);
-      await auditService.log("lead.assigned", "Lead", id, actor.id, { assignedUserId }, undefined, tx);
+      await activityEventService.createEvent({
+        leadId: id,
+        type: "SYSTEM",
+        actorId: actor.id,
+        entries: [
+          {
+            type: "ASSIGNED",
+            message: assignedUserId ? "Lead assigned" : "Lead unassigned",
+            metadata: { assignedUserId },
+          },
+        ],
+      }, tx);
       return toApiLead(lead);
     });
   }
@@ -331,7 +434,6 @@ export class LeadService {
     await this.assertAccess(id, actor);
     await prisma.$transaction(async (tx) => {
       await tx.lead.delete({ where: { id } });
-      await auditService.log("lead.deleted", "Lead", id, actor.id, undefined, undefined, tx);
     });
   }
 
