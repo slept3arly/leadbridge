@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { ButtonSpinner } from "@/components/ui/loading";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "danger" | "ghost" | "outline";
+  variant?: "primary" | "secondary" | "danger" | "ghost" | "outline" | "black";
   size?: "sm" | "md" | "lg";
   isLoading?: boolean;
 };
@@ -19,12 +19,14 @@ const variants = {
     "bg-transparent text-[var(--color-ink)] hover:bg-slate-100 hover:text-[var(--color-ink)] focus-visible:ring-slate-500",
   outline:
     "border-2 border-[var(--color-brand)] bg-transparent text-[var(--color-brand)] hover:bg-[var(--color-brand)] hover:text-white focus-visible:ring-[var(--color-brand)]",
+  black:
+    "bg-black text-white hover:bg-neutral-800 focus-visible:ring-black",
 };
 
 const sizes = {
-  sm: "px-3 py-1.5 text-xs gap-1.5",
-  md: "px-4 py-2.5 text-sm gap-2",
-  lg: "px-6 py-3 text-base gap-2",
+  sm: "px-3 py-1 text-xs gap-1.5",
+  md: "px-4 py-1.5 text-sm gap-2",
+  lg: "px-4 py-2.5 text-sm gap-2",
 };
 
 export function Button({
@@ -45,7 +47,7 @@ export function Button({
       disabled={isDisabled}
       aria-busy={isLoading}
       className={cn(
-        "inline-flex items-center justify-center rounded-xl font-semibold transition duration-150 ease-in-out",
+        "inline-flex items-center justify-center rounded-md font-semibold transition duration-150 ease-in-out",
         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2",
         "disabled:cursor-not-allowed disabled:opacity-60",
         variants[variant],

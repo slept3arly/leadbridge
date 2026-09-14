@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/lib/toast";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "sonner";
 import { useLeadDetails, type LeadDetail, type LeadFollowUp, type ActivityEventItem } from "@/hooks/use-lead-details";
 import { CheckCircle2, RotateCcw, Trash2, Plus, Pencil } from "lucide-react";
 import { LogActivityModal } from "@/components/sales/log-activity-modal";
@@ -211,8 +212,8 @@ function ScheduleFollowUpModal({
           )}
         </div>
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)]">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit || saving}>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="black" onClick={handleSubmit} disabled={!canSubmit || saving}>
             {saving ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Saving...</span> : "Schedule"}
           </Button>
         </div>
@@ -379,8 +380,8 @@ function CompleteFollowUpModal({
           )}
         </div>
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)]">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={saving}>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="black" onClick={handleSubmit} disabled={saving}>
             {saving ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Saving...</span> : "Complete"}
           </Button>
         </div>
@@ -463,8 +464,8 @@ function RescheduleModal({
           )}
         </div>
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)]">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!date || saving}>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="black" onClick={handleSave} disabled={!date || saving}>
             {saving ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Saving...</span> : "Save"}
           </Button>
         </div>
@@ -569,8 +570,8 @@ function EditActivityModal({
           )}
         </div>
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)]">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!canSubmit || saving}>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="black" onClick={handleSave} disabled={!canSubmit || saving}>
             {saving ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Saving...</span> : "Save"}
           </Button>
         </div>
@@ -653,7 +654,6 @@ function FollowUpsColumn({
                     size="sm"
                     variant="secondary"
                     onClick={() => onComplete(fu.id, fu.title)}
-                    className="h-7 text-xs gap-1"
                   >
                     <CheckCircle2 size={12} />
                     Complete
@@ -685,7 +685,7 @@ function FollowUpsColumn({
     <div className="flex flex-col h-full">
       <div className="shrink-0 px-5 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
           <h3 className="text-xs font-bold text-[var(--color-muted)] uppercase tracking-wider">Follow-ups</h3>
-          <Button size="sm" variant="secondary" onClick={onScheduleNew} className="h-7 text-xs gap-1">
+          <Button size="sm" variant="secondary" onClick={onScheduleNew}>
             <Plus size={12} />
             Follow-up
           </Button>
@@ -729,8 +729,6 @@ export function LeadDetailsModal({
 }) {
   const [activeTab, setActiveTab] = useState<LeftTab>("activity");
   const [saving, setSaving] = useState(false);
-  const [archiving, setArchiving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const { data, loading: detailsLoading, refresh, patchData, completeFollowUp } = useLeadDetails(leadId);
   const [leadDraft, setLeadDraft] = useState<LeadDetail | null>(null);
 
@@ -740,6 +738,18 @@ export function LeadDetailsModal({
   const [editActivity, setEditActivity] = useState<ActivityEventItem | null>(null);
   const [rescheduleFollowUp, setRescheduleFollowUp] = useState<{ id: string; dueDate: string | null; dueTime: string | null } | null>(null);
   const [editLeadOpen, setEditLeadOpen] = useState(false);
+
+  const [deleteFollowUpTarget, setDeleteFollowUpTarget] = useState<string | null>(null);
+  const [deletingFollowUp, setDeletingFollowUp] = useState(false);
+  const [deleteFollowUpError, setDeleteFollowUpError] = useState<string | null>(null);
+
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [archivingConfirm, setArchivingConfirm] = useState(false);
+  const [archiveConfirmError, setArchiveConfirmError] = useState<string | null>(null);
+
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletingConfirm, setDeletingConfirm] = useState(false);
+  const [deleteConfirmError, setDeleteConfirmError] = useState<string | null>(null);
 
   useEffect(() => {
     setLeadDraft(data?.lead ?? null);
@@ -798,34 +808,47 @@ export function LeadDetailsModal({
     }
   }, [leadDraft, leadId, onUpdate, refresh, patchData]);
 
-  const handleToggleArchive = useCallback(async () => {
+  const handleToggleArchive = useCallback(() => {
+    setArchiveConfirmError(null);
+    setArchiveConfirmOpen(true);
+  }, []);
+
+  const confirmArchive = useCallback(async () => {
     if (!leadDraft) return;
-    setArchiving(true);
+    setArchivingConfirm(true);
+    setArchiveConfirmError(null);
     try {
       const isCurrentlyArchived = leadDraft.isArchived as boolean;
       await axios.patch(`/api/leads/${leadId}`, { isArchived: !isCurrentlyArchived });
       await refresh();
       toast.success(isCurrentlyArchived ? "Lead unarchived" : "Lead archived");
+      setArchiveConfirmOpen(false);
       if (onUpdate) onUpdate();
     } catch {
-      toast.error("Failed to update archive status");
+      setArchiveConfirmError("Failed to update archive status. Please try again.");
     } finally {
-      setArchiving(false);
+      setArchivingConfirm(false);
     }
   }, [leadDraft, leadId, onUpdate, refresh]);
 
-  const handleDelete = useCallback(async () => {
-    if (!confirm("Delete this lead permanently? This action cannot be undone.")) return;
-    setDeleting(true);
+  const handleDelete = useCallback(() => {
+    setDeleteConfirmError(null);
+    setDeleteConfirmOpen(true);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    setDeletingConfirm(true);
+    setDeleteConfirmError(null);
     try {
       await axios.delete(`/api/leads/${leadId}`);
       toast.success("Lead deleted");
+      setDeleteConfirmOpen(false);
       onClose();
       if (onUpdate) onUpdate();
     } catch {
-      toast.error("Failed to delete lead.");
+      setDeleteConfirmError("Failed to delete lead. Please try again.");
     } finally {
-      setDeleting(false);
+      setDeletingConfirm(false);
     }
   }, [leadId, onClose, onUpdate]);
 
@@ -839,12 +862,26 @@ export function LeadDetailsModal({
     refresh();
   }, [refresh]);
 
-  const handleDeleteFollowUp = useCallback(async (id: string) => {
-    if (!confirm("Delete this follow-up?")) return;
-    await axios.delete(`/api/follow-ups/${id}`);
-    toast.success("Follow-up deleted");
-    refresh();
-  }, [refresh]);
+  const handleDeleteFollowUp = useCallback((id: string) => {
+    setDeleteFollowUpError(null);
+    setDeleteFollowUpTarget(id);
+  }, []);
+
+  const confirmDeleteFollowUp = useCallback(async () => {
+    if (!deleteFollowUpTarget) return;
+    setDeletingFollowUp(true);
+    setDeleteFollowUpError(null);
+    try {
+      await axios.delete(`/api/follow-ups/${deleteFollowUpTarget}`);
+      toast.success("Follow-up deleted");
+      setDeleteFollowUpTarget(null);
+      refresh();
+    } catch {
+      setDeleteFollowUpError("Failed to delete follow-up. Please try again.");
+    } finally {
+      setDeletingFollowUp(false);
+    }
+  }, [deleteFollowUpTarget, refresh]);
 
   const lead = leadDraft ?? data?.lead ?? null;
   const activityEvents = data?.activityEvents ?? [];
@@ -876,8 +913,8 @@ export function LeadDetailsModal({
               onToggleArchive={handleToggleArchive}
               onDelete={handleDelete}
               saving={saving}
-              archiving={archiving}
-              deleting={deleting}
+              archiving={archivingConfirm}
+              deleting={deletingConfirm}
               canArchive={canArchive}
               canDelete={canDelete}
             />
@@ -914,7 +951,7 @@ export function LeadDetailsModal({
                 {activeTab === "activity" && (
                   <div className="shrink-0 px-5 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
                     <h3 className="text-xs font-bold text-[var(--color-muted)] uppercase tracking-wider">History</h3>
-                    <Button size="sm" variant="secondary" onClick={() => setLogActivityOpen(true)} className="h-7 text-xs gap-1">
+                    <Button size="sm" variant="secondary" onClick={() => setLogActivityOpen(true)}>
                       <Plus size={12} />
                       Log Activity
                     </Button>
@@ -923,7 +960,7 @@ export function LeadDetailsModal({
                 {activeTab === "details" && (
                   <div className="shrink-0 px-5 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
                     <h3 className="text-xs font-bold text-[var(--color-muted)] uppercase tracking-wider">Lead Details</h3>
-                    <Button size="sm" variant="secondary" onClick={() => setEditLeadOpen(true)} className="h-7 text-xs gap-1">
+                    <Button size="sm" variant="secondary" onClick={() => setEditLeadOpen(true)}>
                       <Pencil size={12} />
                       Edit
                     </Button>
@@ -1034,6 +1071,45 @@ export function LeadDetailsModal({
           submitLabel="Save"
         />
       )}
+
+      <ConfirmDialog
+        open={deleteFollowUpTarget !== null}
+        title="Delete follow-up?"
+        description="This will permanently delete this follow-up. This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+        isLoading={deletingFollowUp}
+        error={deleteFollowUpError}
+        onConfirm={confirmDeleteFollowUp}
+        onCancel={() => { setDeleteFollowUpTarget(null); setDeleteFollowUpError(null); }}
+      />
+
+      <ConfirmDialog
+        open={archiveConfirmOpen}
+        title={leadDraft?.isArchived ? "Restore lead?" : "Archive lead?"}
+        description={leadDraft?.isArchived ? "This will restore the lead from Archived." : "This will move the lead to Archived. You can restore it later."}
+        confirmLabel={leadDraft?.isArchived ? "Restore" : "Archive"}
+        cancelLabel="Cancel"
+        variant="destructive"
+        isLoading={archivingConfirm}
+        error={archiveConfirmError}
+        onConfirm={confirmArchive}
+        onCancel={() => { setArchiveConfirmOpen(false); setArchiveConfirmError(null); }}
+      />
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete lead?"
+        description="This will permanently delete this lead. This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+        isLoading={deletingConfirm}
+        error={deleteConfirmError}
+        onConfirm={confirmDelete}
+        onCancel={() => { setDeleteConfirmOpen(false); setDeleteConfirmError(null); }}
+      />
     </div>
   );
 }

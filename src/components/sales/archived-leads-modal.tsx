@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
@@ -66,8 +67,9 @@ export function ArchivedLeadsModal({
       try {
         await axios.patch(`/api/leads/${leadId}`, { isArchived: false });
         setLeads((prev) => prev.filter((l) => l.id !== leadId));
+        toast.success("Lead restored");
       } catch {
-        // silently fail
+        toast.error("Failed to restore lead");
       } finally {
         setRestoringId(null);
       }

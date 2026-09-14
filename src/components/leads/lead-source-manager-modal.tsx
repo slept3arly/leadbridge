@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
 import { X, Trash2 } from "lucide-react";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 
 export type SourceItem = {
   id: string;

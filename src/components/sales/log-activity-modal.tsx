@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 import { useModalState } from "@/components/sales/lead-details-modal";
 
 const ACTION_OPTIONS = [
@@ -166,8 +166,8 @@ export function LogActivityModal({
           )}
         </div>
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)]">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit || saving}>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="black" onClick={handleSubmit} disabled={!canSubmit || saving}>
             {saving ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Saving...</span> : "Log Activity"}
           </Button>
         </div>

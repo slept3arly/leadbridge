@@ -86,20 +86,20 @@ export function LeadHeader({
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          <Button size="sm" isLoading={saving} onClick={onUpdate} className="h-10 px-4">
+          <Button size="md" variant="black" isLoading={saving} onClick={onUpdate}>
             Save
           </Button>
           {canArchive && (
-            <Button size="sm" variant="secondary" isLoading={archiving} onClick={onToggleArchive} className="h-10 px-4">
+            <Button size="md" variant="secondary" isLoading={archiving} onClick={onToggleArchive}>
               {lead.isArchived ? "Restore" : "Archive"}
             </Button>
           )}
           {canDelete && onDelete && (
-            <Button size="sm" variant="ghost" isLoading={deleting} onClick={onDelete} className="h-10 px-4 text-red-600 hover:text-red-700 hover:bg-red-50">
+            <Button size="md" variant="ghost" isLoading={deleting} onClick={onDelete} className="text-red-600 hover:text-red-700 hover:bg-red-50">
               Delete
             </Button>
           )}
-          <Button size="sm" variant="ghost" onClick={onClose} className="h-10 px-4">
+          <Button size="md" variant="ghost" onClick={onClose}>
             Close
           </Button>
         </div>

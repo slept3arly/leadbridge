@@ -19,7 +19,7 @@ export function SearchToolbar({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="w-full pl-10 h-10"
+        className="w-full pl-10 py-1.5"
       />
     </div>
   );

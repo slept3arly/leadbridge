@@ -6,6 +6,8 @@ import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { LeadActionPanel } from "@/components/sales/lead-action-panel";
 import { LeadDetailsModal } from "@/components/sales/lead-details-modal";
+import { toast } from "sonner";
+import axios from "axios";
 
 type Lead = { id: string; name: string; status: string; priority: string; assignedUser?: { name: string } | null };
 type User = { id: string; name: string };
@@ -44,9 +46,8 @@ export function LeadActions({
         onArchive={async () => {
           setArchiving(true);
           try {
-            const axios = (await import("axios")).default;
             await axios.patch(`/api/leads/${lead.id}`, { isArchived: true });
-            (await import("@/lib/toast")).toast.success("Lead archived");
+            toast.success("Lead archived");
             router.refresh();
           } catch {
             setError("Failed to archive lead.");
@@ -57,9 +58,8 @@ export function LeadActions({
           if (!confirm("Delete this lead permanently?")) return;
           setDeleting(true);
           try {
-            const axios = (await import("axios")).default;
             await axios.delete(`/api/leads/${lead.id}`);
-            (await import("@/lib/toast")).toast.success("Lead deleted");
+            toast.success("Lead deleted");
             router.refresh();
           } catch {
             setError("Failed to delete lead.");
@@ -80,9 +80,8 @@ export function LeadActions({
           <Button size="sm" isLoading={saving} onClick={async () => {
             setSaving(true);
             try {
-              const axios = (await import("axios")).default;
               await axios.post(`/api/leads/${lead.id}/assign`, { assignedUserId: assignedUserId || null });
-              (await import("@/lib/toast")).toast.success("Lead assigned");
+              toast.success("Lead assigned");
               router.refresh();
             } catch {
               setError("Failed to assign lead.");

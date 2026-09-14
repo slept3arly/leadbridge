@@ -8,6 +8,7 @@ import { ResyncButton } from "@/components/shared/resync-button";
 import { ExportButton } from "@/components/shared/export-button";
 import { SignOutButton } from "@/components/shared/sign-out-button";
 import { SkeletonCard, SkeletonTable } from "@/components/ui/loading";
+import { getErrorMessage } from "@/lib/get-error-message";
 import { Users, Target, TrendingUp, BarChart3, Activity, Award, Flame, Star } from "lucide-react";
 
 interface SummaryData {
@@ -150,7 +151,7 @@ export function AdminReports() {
       setTrends(Array.isArray(trendsRes.data) ? trendsRes.data : (trendsRes.data as { trends: TrendEntry[] })?.trends ?? []);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
-      setError(err instanceof Error ? err.message : "Failed to load reports");
+      setError(getErrorMessage(err, "Failed to load reports"));
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }

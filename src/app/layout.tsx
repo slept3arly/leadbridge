@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { ToastContainer } from "@/components/ui/toast";
+import "sonner/dist/styles.css";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "LeadBridge",
@@ -14,7 +15,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-[var(--color-surface)] antialiased">
         {children}
-        <ToastContainer />
+        <Toaster position="top-center" closeButton />
       </body>
     </html>
   );

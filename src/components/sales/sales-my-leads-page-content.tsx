@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog";
@@ -8,12 +8,14 @@ import { LeadDetailsModal } from "@/components/sales/lead-details-modal";
 import { LogActivityModal } from "@/components/sales/log-activity-modal";
 import { SalesTableControls } from "@/components/sales/sales-table-controls";
 import { LeadEditModal } from "@/components/leads/lead-edit-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { IconActionButton } from "@/components/ui/icon-action-button";
 import { Plus, Archive, Trash2, ExternalLink } from "lucide-react";
 import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
 import { formatTimeAgo, formatDate } from "@/lib/utils";
+import { toast } from "sonner";
 import type { TableQueryState } from "@/hooks/use-table-query";
 
 export type SalesLeadRow = {
@@ -190,7 +192,50 @@ export function SalesMyLeadsPageContent({
   const [createOpen, setCreateOpen] = useState(false);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
   const [logActivityLeadId, setLogActivityLeadId] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  const [archiveTarget, setArchiveTarget] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleArchiveConfirm() {
+    if (!archiveTarget) return;
+    setArchiving(true);
+    setArchiveError(null);
+    try {
+      const axios = (await import("axios")).default;
+      await axios.patch(`/api/leads/${archiveTarget}`, { isArchived: true });
+      toast.success("Lead archived");
+      setArchiveTarget(null);
+      router.refresh();
+    } catch {
+      setArchiveError("Failed to archive lead. Please try again.");
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  async function handleDeleteConfirm() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const axios = (await import("axios")).default;
+      await axios.delete(`/api/leads/${deleteTarget}`);
+      toast.success("Lead deleted");
+      setDeleteTarget(null);
+      router.refresh();
+    } catch {
+      setDeleteError("Failed to delete lead. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const startRow = pagination ? (pagination.page - 1) * pagination.pageSize + 1 : 1;
   const endRow = pagination ? Math.min(pagination.page * pagination.pageSize, pagination.total) : leads.length;
@@ -280,15 +325,10 @@ export function SalesMyLeadsPageContent({
               <IconActionButton
                 icon={Archive}
                 label="Archive lead"
-                onClick={async () => {
-                  try {
-                    const axios = (await import("axios")).default;
-                    await axios.patch(`/api/leads/${lead.id}`, { isArchived: true });
-                    (await import("@/lib/toast")).toast.success("Lead archived");
-                    router.refresh();
-                  } catch {
-                    // silent
-                  }
+                isLoading={archiving && archiveTarget === lead.id}
+                onClick={() => {
+                  setArchiveError(null);
+                  setArchiveTarget(lead.id);
                 }}
               />
             ) : null}
@@ -296,16 +336,10 @@ export function SalesMyLeadsPageContent({
               <IconActionButton
                 icon={Trash2}
                 label="Delete lead"
-                onClick={async () => {
-                  if (!confirm("Delete this lead permanently?")) return;
-                  try {
-                    const axios = (await import("axios")).default;
-                    await axios.delete(`/api/leads/${lead.id}`);
-                    (await import("@/lib/toast")).toast.success("Lead deleted");
-                    router.refresh();
-                  } catch {
-                    // silent
-                  }
+                isLoading={deleting && deleteTarget === lead.id}
+                onClick={() => {
+                  setDeleteError(null);
+                  setDeleteTarget(lead.id);
                 }}
               />
             ) : null}
@@ -326,19 +360,21 @@ export function SalesMyLeadsPageContent({
         initial={initial}
         pagination={pagination}
         leadSources={leadSources}
+        startTransition={startTransition}
         actions={
           canCreate ? (
-            <Button variant="secondary" onClick={() => setCreateOpen(true)} className="h-10">
+            <Button variant="secondary" onClick={() => setCreateOpen(true)}>
               <Plus size={16} />
               Create Lead
             </Button>
           ) : null
         }
       />
-      {leads.length ? (
+      {leads.length > 0 || isPending ? (
         <DataTable
           rows={leads}
           columns={columns}
+          isLoading={isPending}
           onRowClick={(row) => setDetailLeadId(row.id)}
         />
       ) : (
@@ -396,6 +432,30 @@ export function SalesMyLeadsPageContent({
           }}
         />
       )}
+      <ConfirmDialog
+        open={archiveTarget !== null}
+        title="Archive lead?"
+        description="This will move the lead to Archived. You can restore it later."
+        confirmLabel="Archive"
+        cancelLabel="Cancel"
+        variant="destructive"
+        isLoading={archiving}
+        error={archiveError}
+        onConfirm={handleArchiveConfirm}
+        onCancel={() => { setArchiveTarget(null); setArchiveError(null); }}
+      />
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete lead?"
+        description="This will permanently delete this lead. This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+        isLoading={deleting}
+        error={deleteError}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => { setDeleteTarget(null); setDeleteError(null); }}
+      />
     </>
   );
 }

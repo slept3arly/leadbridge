@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, type TransitionStartFunction } from "react";
 import { SearchToolbar } from "@/components/shared/search-toolbar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -64,13 +64,15 @@ export function SalesTableControls({
   pagination,
   leadSources,
   actions,
+  startTransition,
 }: {
   initial: Partial<TableQueryState>;
   pagination?: { page: number; pageSize?: number; total?: number; totalPages: number };
   leadSources: Array<{ id: string; name: string }>;
   actions?: React.ReactNode;
+  startTransition?: TransitionStartFunction;
 }) {
-  const query = useTableQuery(initial);
+  const query = useTableQuery(initial, 300, startTransition);
   const [filterOpen, setFilterOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -258,7 +260,7 @@ export function SalesTableControls({
             ref={triggerRef}
             type="button"
             onClick={() => setFilterOpen(!filterOpen)}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 h-10"
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-4 py-1.5 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
           >
             <Filter size={16} />
             Filters
@@ -513,7 +515,7 @@ export function SalesTableControls({
                     onRemove={() => removeFilter(filter.key)}
                   />
                 ))}
-                <Button variant="ghost" size="sm" onClick={resetAll} className="gap-1.5 text-xs h-8 shrink-0">
+                <Button variant="ghost" size="sm" onClick={resetAll} className="shrink-0">
                   <RotateCcw size={12} />
                   Reset
                 </Button>

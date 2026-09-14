@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
 import { LoadingSpinner, SkeletonCard } from "@/components/ui/loading";
+import { getErrorMessage } from "@/lib/get-error-message";
 import { Save, RotateCcw } from "lucide-react";
 
 type SettingDef = {
@@ -55,7 +56,7 @@ export function AdminSettings() {
         setValues({ ...initial });
         setInitialValues(initial);
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(getErrorMessage(err, "Failed to load settings")))
       .finally(() => setLoading(false));
   }, []);
 
@@ -126,7 +127,7 @@ export function AdminSettings() {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || "Failed to save settings");
+        throw new Error(getErrorMessage(body.error, "Failed to save settings"));
       }
 
       setSuccess("Settings saved successfully.");

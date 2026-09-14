@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 
 type Provider = {
   id: string;

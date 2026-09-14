@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { Archive, Trash2, Plus } from "lucide-react";
 import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 import type { TableQueryState } from "@/hooks/use-table-query";
 
 export type SerializedLead = {

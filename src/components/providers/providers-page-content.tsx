@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { SearchToolbar } from "@/components/shared/search-toolbar";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -179,7 +180,7 @@ export function ProvidersPageContent({
       await fetch(`/api/providers/${id}`, { method: "DELETE" });
       router.refresh();
     } catch {
-      console.error("Failed to delete provider");
+      toast.error("Failed to delete provider");
     } finally {
       setDeletingId(null);
     }

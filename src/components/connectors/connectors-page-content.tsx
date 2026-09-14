@@ -16,7 +16,7 @@ import { KpiCard } from "@/components/shared/kpi-card";
 import { ConnectorEditModal } from "@/components/connectors/connector-edit-modal";
 import { SyncHistoryModal } from "@/components/connectors/sync-history-modal";
 import { Play, RefreshCw, Plus, Trash2, Bug, WifiOff, History } from "lucide-react";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 import type { SerializedConnector, KpiMetrics } from "@/app/(dashboard)/admin/connectors/page";
 
 const HEALTH_LABELS: Record<string, string> = {

@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import axios from "axios";
+import { toast } from "sonner";
 import { AttentionCard } from "@/components/sales/attention-card";
 import { KpiCard } from "@/components/shared/kpi-card";
 import { cn } from "@/lib/utils";
@@ -48,24 +50,22 @@ export function AttentionCenter({
 
   const handleArchive = useCallback(async (leadId: string) => {
     try {
-      const axios = (await import("axios")).default;
       await axios.patch(`/api/leads/${leadId}`, { isArchived: true });
-      (await import("@/lib/toast")).toast.success("Lead archived");
+      toast.success("Lead archived");
       router.refresh();
     } catch {
-      (await import("@/lib/toast")).toast.error("Failed to archive lead.");
+      toast.error("Failed to archive lead.");
     }
   }, [router]);
 
   const handleDelete = useCallback(async (leadId: string) => {
     if (!confirm("Delete this lead permanently?")) return;
     try {
-      const axios = (await import("axios")).default;
       await axios.delete(`/api/leads/${leadId}`);
-      (await import("@/lib/toast")).toast.success("Lead deleted");
+      toast.success("Lead deleted");
       router.refresh();
     } catch {
-      (await import("@/lib/toast")).toast.error("Failed to delete lead.");
+      toast.error("Failed to delete lead.");
     }
   }, [router]);
 

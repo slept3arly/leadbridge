@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type TransitionStartFunction } from "react";
 import { useRouter } from "next/navigation";
 
 export type TableQueryState = {
@@ -48,7 +48,11 @@ function readUrlParam(key: string): string | undefined {
   return params.get(key) || undefined;
 }
 
-export function useTableQuery(initial: Partial<TableQueryState> = {}, debounceMs = 300) {
+export function useTableQuery(
+  initial: Partial<TableQueryState> = {},
+  debounceMs = 300,
+  startTransition?: TransitionStartFunction,
+) {
   const router = useRouter();
   const [state, setState] = useState<TableQueryState>(() => {
     const urlFilters = readFiltersFromUrl();
@@ -79,10 +83,15 @@ export function useTableQuery(initial: Partial<TableQueryState> = {}, debounceMs
     }
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      router.replace(`${window.location.pathname}?${queryString}`, { scroll: false });
+      const navigate = () => router.replace(`${window.location.pathname}?${queryString}`, { scroll: false });
+      if (startTransition) {
+        startTransition(navigate);
+      } else {
+        navigate();
+      }
     }, state.search === "" ? 0 : debounceMs);
     return () => clearTimeout(timer.current);
-  }, [debounceMs, router, queryString, state.search]);
+  }, [debounceMs, router, queryString, state.search, startTransition]);
 
   return { ...state, update, queryString };
 }

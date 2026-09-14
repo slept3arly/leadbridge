@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { Badge } from "@/components/ui/badge";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 import type { SafeConnectorConfiguration, SerializedConnector } from "@/app/(dashboard)/admin/connectors/page";
 
 type TabId = "general" | "configuration" | "scheduling" | "runtime";

@@ -174,6 +174,8 @@ export function LeadEditModal({
     }
   };
 
+  const formRef = useRef<HTMLFormElement>(null);
+
   if (!open) return null;
 
   return (
@@ -184,7 +186,7 @@ export function LeadEditModal({
         className="relative z-10 mt-6 mb-6 w-[90%] max-w-4xl flex flex-col bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] overflow-hidden"
         style={{ height: "88vh", maxHeight: "88vh" }}
       >
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-4">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-4 shrink-0">
           <h2 className="text-lg font-semibold text-[var(--color-ink)]">
             {isEdit ? "Edit Lead" : "Create Lead"}
           </h2>
@@ -197,8 +199,8 @@ export function LeadEditModal({
           </button>
         </div>
 
-        <div className="overflow-y-auto p-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="overflow-y-auto p-6 flex-1">
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Basic Information</h3>
               <div className="grid grid-cols-2 gap-4">
@@ -289,15 +291,17 @@ export function LeadEditModal({
               <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>
             ) : null}
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
-                Cancel
-              </Button>
-              <Button type="submit" isLoading={pending}>
-                {pending ? "Saving..." : isEdit ? "Save Changes" : submitLabel ?? "Save"}
-              </Button>
-            </div>
+            <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true" />
           </form>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)] shrink-0">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="button" variant="black" isLoading={pending} onClick={() => formRef.current?.requestSubmit()}>
+            {pending ? "Saving..." : isEdit ? "Save Changes" : submitLabel ?? "Save"}
+          </Button>
         </div>
       </div>
     </div>
