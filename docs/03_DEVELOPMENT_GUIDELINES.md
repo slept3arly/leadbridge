@@ -1,5 +1,7 @@
 # LeadBridge Developer Guidelines & Extension Reference
 
+> **ARCHIVED** -- This document is superseded by `docs/development.md` and `docs/integrations.md`. Do not use as a source of truth.
+
 ## Purpose
 
 This document provides developer instructions for contributing to LeadBridge. It details project conventions, component catalog, connector development, parser authoring, routing rule configuration, export engine integration, runtime validation, testing workflows, and known system limitations.

@@ -1,5 +1,7 @@
 # LeadBridge Architecture & System Design
 
+> **ARCHIVED** -- This document is superseded by `docs/architecture.md`, `docs/database.md`, `docs/api.md`, and `docs/integrations.md`. It contains stale references to removed features (`AuditLog`, `AuditService`, `LeadActivity`). Do not use as a source of truth.
+
 ## Purpose
 
 This document describes the architectural layout, system flow diagrams, data model, component boundaries, runtime pipelines, and UI design principles for LeadBridge.

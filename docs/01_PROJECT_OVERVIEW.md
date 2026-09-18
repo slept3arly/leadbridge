@@ -1,5 +1,7 @@
 # LeadBridge Project Overview
 
+> **ARCHIVED** -- This document is superseded by `docs/architecture.md`, `docs/database.md`, and `docs/api.md`. It contains stale references to removed features (`AuditLog`, `LeadActivity`). Do not use as a source of truth.
+
 ## Purpose
 
 LeadBridge is an internal, role-based CRM for single-organization lead capture, provider routing, connector execution, parser-driven imports, sales tracking, and operational analytics.

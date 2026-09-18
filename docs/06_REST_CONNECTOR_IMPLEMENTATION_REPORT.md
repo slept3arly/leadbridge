@@ -1,6 +1,8 @@
 # REST Connector Implementation Report
 
-> Generated July 2026. Do NOT modify code based on this report — it is a reverse-engineering reference for configuration and testing.
+> **ARCHIVED** -- This document is superseded by `docs/integrations.md`. It contains stale references to removed features (`AuditService`) and incorrect claims about REST connector configuration (configuration IS supported via API and UI). Do not use as a source of truth.
+
+> Generated July 2026. Do NOT modify code based on this report -- it is a reverse-engineering reference for configuration and testing.
 
 ---
 

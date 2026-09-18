@@ -1,5 +1,7 @@
 # LeadBridge Architecture Audit
 
+> **ARCHIVED** -- This document is superseded by `docs/architecture.md`, `docs/database.md`, and `docs/backend.md`. It contains stale references to removed features (`AuditLog`, `LeadActivity`). Do not use as a source of truth.
+
 > Audit report reflecting live codebase implementation.
 
 ---

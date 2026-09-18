@@ -1,5 +1,7 @@
 # LeadBridge Administration & Operations Guide
 
+> **ARCHIVED** -- This document is superseded by `docs/backend.md` and `docs/development.md`. Do not use as a source of truth.
+
 ## Purpose
 
 This document serves as the operational manual for LeadBridge administrators. It details all current administrative UI workflows, management tools, review queues, system monitoring, deployment instructions, and disaster recovery procedures.
