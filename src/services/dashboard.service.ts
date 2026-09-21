@@ -139,25 +139,45 @@ export class DashboardService {
     const now = new Date();
     const startOfToday = startOfTodayUTC();
     const endOfToday = endOfTodayUTC();
+    const endOfWeek = new Date(startOfToday);
+    endOfWeek.setDate(endOfWeek.getDate() + (7 - endOfWeek.getUTCDay()));
+    endOfWeek.setUTCHours(23, 59, 59, 999);
     const leadWhere = { assignedUserId: userId, isDeleted: false };
+
+    const activityTodayWhere = { event: { lead: { assignedUserId: userId }, occurredAt: { gte: startOfToday } } };
+
+    const countDistinctLeads = async (where: Record<string, unknown>): Promise<number> => {
+      const entries = await prisma.activityEntry.findMany({
+        where,
+        select: { event: { select: { leadId: true } } },
+      });
+      return new Set(entries.map((e) => e.event.leadId)).size;
+    };
 
     const [
       leadStats,
+      priorityStats,
       upcomingFollowUps,
       overdueFollowUpCount,
       todayFollowUpCount,
+      weekFollowUpCount,
       newLeadCount,
       needsAttentionItems,
-      leadsWorked,
-      activities,
-      pickedUpReplied,
+      workedLeads,
+      calls,
+      whatsapp,
+      responded,
       noResponse,
-      invalidNumber,
       interested,
       notInterested,
     ] = await Promise.all([
       prisma.lead.groupBy({
         by: ["status"],
+        where: leadWhere,
+        _count: { id: true },
+      }),
+      prisma.lead.groupBy({
+        by: ["priority"],
         where: leadWhere,
         _count: { id: true },
       }),
@@ -174,17 +194,26 @@ export class DashboardService {
           lead: { select: { id: true, displayName: true, company: true, leadNumber: true, priority: true, category: true } },
         },
       }),
-      prisma.followUp.count({
+      prisma.lead.count({
         where: {
-          status: "PENDING",
-          dueDate: { not: null, lt: now },
-          OR: [{ assignedUserId: userId }, { createdById: userId }],
+          isDeleted: false,
+          isArchived: false,
+          assignedUserId: userId,
+          nextFollowUpAt: { not: null, lt: now },
+        },
+      }),
+      prisma.lead.count({
+        where: {
+          isDeleted: false,
+          isArchived: false,
+          assignedUserId: userId,
+          nextFollowUpAt: { not: null, gte: startOfToday, lte: endOfToday },
         },
       }),
       prisma.followUp.count({
         where: {
           status: "PENDING",
-          dueDate: { not: null, gte: startOfToday, lte: endOfToday },
+          dueDate: { not: null, gte: startOfToday, lte: endOfWeek },
           OR: [{ assignedUserId: userId }, { createdById: userId }],
         },
       }),
@@ -192,62 +221,41 @@ export class DashboardService {
         where: { ...leadWhere, notes: { none: {} }, followUps: { none: {} } },
       }),
       attentionService.getNeedsAttention(userId),
-      // Today's Activity metrics - Sales user
-      // Count distinct leads that had interaction entries (CALL/WHATSAPP) today
-      prisma.activityEntry.findMany({
-        where: {
-          type: { in: ["CALL", "WHATSAPP"] },
-          event: { occurredAt: { gte: startOfToday } },
-        },
-        select: { event: { select: { leadId: true } } },
-      }).then((entries) => {
-        const uniqueLeadIds = new Set(entries.map((e) => e.event.leadId));
-        return uniqueLeadIds.size;
+      countDistinctLeads({
+        type: { in: ["CALL", "WHATSAPP"] },
+        ...activityTodayWhere,
       }),
-      prisma.activityEntry.count({
-        where: {
-          event: { occurredAt: { gte: startOfToday } },
-          type: { in: ["CALL", "WHATSAPP"] },
-        },
+      countDistinctLeads({
+        type: "CALL",
+        action: "CALL",
+        ...activityTodayWhere,
       }),
-      prisma.activityEntry.count({
-        where: {
-          event: { occurredAt: { gte: startOfToday } },
-          OR: [
-            { type: "CALL", action: "CALL", response: "PICKED_UP" },
-            { type: "WHATSAPP", action: "WHATSAPP", response: "REPLIED" },
-          ],
-        },
+      countDistinctLeads({
+        type: "WHATSAPP",
+        action: "WHATSAPP",
+        ...activityTodayWhere,
       }),
-      prisma.activityEntry.count({
-        where: {
-          event: { occurredAt: { gte: startOfToday } },
-          OR: [
-            { type: "CALL", action: "CALL", response: "NO_RESPONSE" },
-            { type: "WHATSAPP", action: "WHATSAPP", response: "NO_RESPONSE" },
-          ],
-        },
+      countDistinctLeads({
+        OR: [
+          { type: "CALL", action: "CALL", response: "PICKED_UP" },
+          { type: "WHATSAPP", action: "WHATSAPP", response: "REPLIED" },
+        ],
+        ...activityTodayWhere,
       }),
-      prisma.activityEntry.count({
-        where: {
-          event: { occurredAt: { gte: startOfToday } },
-          OR: [
-            { type: "CALL", action: "CALL", response: "INVALID_NUMBER" },
-            { type: "WHATSAPP", action: "WHATSAPP", response: "INVALID_NUMBER" },
-          ],
-        },
+      countDistinctLeads({
+        OR: [
+          { type: "CALL", action: "CALL", response: "NO_RESPONSE" },
+          { type: "WHATSAPP", action: "WHATSAPP", response: "NO_RESPONSE" },
+        ],
+        ...activityTodayWhere,
       }),
-      prisma.activityEntry.count({
-        where: {
-          event: { occurredAt: { gte: startOfToday } },
-          interest: "INTERESTED",
-        },
+      countDistinctLeads({
+        interest: "INTERESTED",
+        ...activityTodayWhere,
       }),
-      prisma.activityEntry.count({
-        where: {
-          event: { occurredAt: { gte: startOfToday } },
-          interest: "NOT_INTERESTED",
-        },
+      countDistinctLeads({
+        interest: "NOT_INTERESTED",
+        ...activityTodayWhere,
       }),
     ]);
 
@@ -268,10 +276,12 @@ export class DashboardService {
       attention: {
         todayFollowUpCount,
         overdueFollowUpCount,
+        weekFollowUpCount,
         newLeadCount,
         needsAttentionCount: needsAttentionItems.length,
       },
       pipeline: leadStats.map((s) => ({ status: s.status, count: s._count.id })),
+      priorities: priorityStats.map((s) => ({ priority: s.priority, count: s._count.id })),
       upcomingFollowUps: upcomingFollowUps.map((f) => ({
         id: f.id,
         title: f.title,
@@ -285,13 +295,13 @@ export class DashboardService {
         category: f.lead.category,
       })),
       insights: {
-        leadsWorked: leadsWorked ?? 0,
-        activities: activities ?? 0,
-        pickedUpReplied: pickedUpReplied ?? 0,
-        noResponse: noResponse ?? 0,
-        invalidNumber: invalidNumber ?? 0,
-        interested: interested ?? 0,
-        notInterested: notInterested ?? 0,
+        workedLeads,
+        calls,
+        whatsapp,
+        responded,
+        noResponse,
+        interested,
+        notInterested,
       },
     };
 

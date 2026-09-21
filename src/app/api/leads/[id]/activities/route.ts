@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withApiAuthorization } from "@/lib/api";
 import { activityEventService } from "@/services/activity-event.service";
 import { followUpService } from "@/services/follow-up.service";
+import { invalidateAfterMutation } from "@/lib/cache-tags";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
@@ -102,6 +103,8 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(["
 
     return { event, followUpId };
   });
+
+  invalidateAfterMutation(session.user.id);
 
   return NextResponse.json(result.event, { status: 201 });
 });

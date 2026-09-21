@@ -127,6 +127,7 @@ export class LeadService {
           if (filterVal === "overdue") return { nextFollowUpAt: { not: null, lt: now } };
           if (filterVal === "today") return { nextFollowUpAt: { not: null, gte: startOfToday, lte: endOfToday } };
           if (filterVal === "upcoming") return { nextFollowUpAt: { not: null, gte: now } };
+          if (filterVal === "new") return { notes: { none: {} }, followUps: { none: {} } };
           return {};
         })()
       : {};

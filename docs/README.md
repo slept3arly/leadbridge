@@ -11,6 +11,8 @@
 | [database.md](./database.md) | Prisma schema, models, relationships, indexes, enums |
 | [backend.md](./backend.md) | Service layer, business logic, data access patterns |
 | [frontend.md](./frontend.md) | Pages, components, UI design system, navigation |
+| [UI_DESIGN_SYSTEM.md](./UI_DESIGN_SYSTEM.md) | Canonical UI reference, design tokens, component inventory, implementation contract |
+| [IMPLEMENTATION_AUDIT.md](./IMPLEMENTATION_AUDIT.md) | File-by-file audit of Sales + Admin dashboards with implementation plan |
 | [api.md](./api.md) | API route reference with methods and authorization |
 | [authentication.md](./authentication.md) | Better Auth setup, roles, permissions, middleware |
 | [integrations.md](./integrations.md) | Connectors, parsers, runtime engine, routing |

@@ -15,9 +15,13 @@ export function KpiCard({
   return (
     <Link href={href} className="block">
       <Card className="cursor-pointer transition hover:shadow-md p-4 h-full">
-        <p className="text-sm font-semibold text-[var(--color-ink)]">{title}</p>
-        <p className="mt-2 text-3xl font-bold text-[var(--color-ink)]">{count}</p>
-        <p className="mt-1 text-xs text-[var(--color-muted)]">{description}</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--color-ink)] leading-tight">{title}</p>
+            <p className="mt-0.5 text-xs text-[var(--color-muted)] leading-tight">{description}</p>
+          </div>
+          <p className="text-3xl font-bold text-[var(--color-ink)] tabular-nums whitespace-nowrap">{count}</p>
+        </div>
       </Card>
     </Link>
   );
