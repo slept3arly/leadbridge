@@ -47,12 +47,10 @@ export interface RestDocument {
   method: RestMethod;
   statusCode: number;
   headers: Record<string, string>;
-  responseBody: string;
   receivedAt: string;
   providerMetadata: Record<string, unknown>;
   requestMetadata: {
     attempt: number;
     durationMs: number;
   };
-  rawPayload: Record<string, unknown>;
 }

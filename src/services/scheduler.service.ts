@@ -5,6 +5,7 @@ import { createConnector } from "@/connectors/registry";
 import { executionLock } from "./execution-lock.service";
 import { connectorHealthService } from "./connector-health.service";
 import { randomUUID } from "crypto";
+import { withExecutionFence, type ExecutionFence } from "./execution-fence";
 
 type ScheduleType = "MANUAL" | "EVERY_5_MIN" | "EVERY_15_MIN" | "EVERY_30_MIN" | "HOURLY" | "DAILY" | "CUSTOM";
 
@@ -126,8 +127,8 @@ export class ConnectorScheduler {
   }): Promise<SchedulerResult> {
     const executionId = randomUUID();
 
-    const acquired = await executionLock.acquire(connector.id, executionId);
-    if (!acquired) {
+    const generation = await executionLock.acquire(connector.id, executionId);
+    if (generation === null) {
       return {
         connectorId: connector.id,
         connectorName: connector.name,
@@ -135,6 +136,8 @@ export class ConnectorScheduler {
         reason: "Connector is already running",
       };
     }
+    const heartbeat = executionLock.startHeartbeat(connector.id, executionId, generation);
+    const fence: ExecutionFence = { connectorId: connector.id, executionId, generation };
 
     const config = connector.configuration ?? {};
     const runtimeMeta = connector.runtimeMetadata ?? {};
@@ -145,6 +148,8 @@ export class ConnectorScheduler {
       const runtime = new ConnectorRuntime({
         connectorRegistry,
         parserRegistry: parserRegistryAdapter,
+        assertExecutionOwnership: heartbeat.assertOwned,
+        executionFence: fence,
       });
 
       const result = await runtime.execute(
@@ -155,16 +160,18 @@ export class ConnectorScheduler {
           configuration: config,
         },
       );
+      await heartbeat.assertOwned();
 
       await connectorHealthService.recordCompletion(
         connector.id,
         result.status,
         result.durationMs,
         result.errors[0]?.message,
+        fence,
       );
 
       const nextRun = computeNextRun(connector.scheduleType);
-      await prisma.connector.update({
+      await withExecutionFence(fence, (tx) => tx.connector.update({
         where: { id: connector.id },
         data: {
           nextScheduledRun: nextRun,
@@ -173,7 +180,7 @@ export class ConnectorScheduler {
             ? { lastError: null, status: "ACTIVE" as const }
             : { lastError: result.errors[0]?.message ?? "Unknown error", status: "ERROR" as const }),
         },
-      });
+      }));
 
       return {
         connectorId: connector.id,
@@ -189,17 +196,21 @@ export class ConnectorScheduler {
         },
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown scheduler error";
+      if (!(await executionLock.owns(connector.id, executionId, generation))) {
+        return { connectorId: connector.id, connectorName: connector.name, status: "error", reason: "Execution lease lost; newer run owns connector." };
+      }
+      const errorMessage = error instanceof Error ? error.name : "UnknownSchedulerError";
 
       await connectorHealthService.recordCompletion(
         connector.id,
         "failed",
         0,
         errorMessage,
+        fence,
       );
 
       const nextRun = computeNextRun(connector.scheduleType);
-      await prisma.connector.update({
+      await withExecutionFence(fence, (tx) => tx.connector.update({
         where: { id: connector.id },
         data: {
           nextScheduledRun: nextRun,
@@ -207,7 +218,7 @@ export class ConnectorScheduler {
           lastError: errorMessage,
           status: "ERROR" as const,
         },
-      });
+      }));
 
       return {
         connectorId: connector.id,
@@ -216,7 +227,8 @@ export class ConnectorScheduler {
         reason: errorMessage,
       };
     } finally {
-      await executionLock.release(connector.id, executionId);
+      heartbeat.stop();
+      await executionLock.release(connector.id, executionId, generation);
     }
   }
 

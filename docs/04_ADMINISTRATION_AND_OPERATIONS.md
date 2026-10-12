@@ -48,7 +48,7 @@ Location: `src/components/leads/admin-leads-page-content.tsx`.
 - **Creating Leads**: Admins can manually create leads via the "Create Lead" modal.
 - **Editing Leads**: Clicking a lead row opens `LeadEditModal`, enabling updates to contact info, company details, financial budget/expected value, currency, status, priority, and custom fields.
 - **Assigning Leads**: Admins assign leads to sales representatives using `POST /api/leads/[id]/assign`.
-- **Soft Deletion**: Admins can soft-delete leads (`DELETE /api/leads/[id]`). Soft-deleted records remain retained in the database for audit and retention workflows.
+- **Permanent Deletion**: Admins can permanently delete leads (`DELETE /api/leads/[id]`) with the `DELETE_LEAD` permission. PostgreSQL cascades delete the lead's activity events (and entries), notes, follow-ups, and attachment records. This action is irreversible in the application; recovery depends on a verified database backup/restore process.
 
 ---
 

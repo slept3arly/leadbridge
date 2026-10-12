@@ -3,20 +3,10 @@ import { Prisma } from "@/generated/prisma/client";
 import { STATUS_VALUES } from "@/lib/lead-constants";
 import { reportService } from "@/services/report.service";
 import type { UserRole } from "@/generated/prisma/client";
+import { toCsvRow } from "@/lib/csv";
+export { escapeCsv, toCsvRow } from "@/lib/csv";
 
 type ExportActor = { id: string; role: UserRole };
-
-function escapeCsv(value: unknown): string {
-  const str = value == null ? "" : String(value);
-  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
-function toCsvRow(values: unknown[]): string {
-  return values.map(escapeCsv).join(",") + "\n";
-}
 
 async function exportInChunks<T>(
   fetchChunk: (skip: number, take: number) => Promise<T[]>,

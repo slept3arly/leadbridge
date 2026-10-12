@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { DataTable } from "@/components/shared/data-table";
 import { UserTableControls } from "@/components/users/user-table-controls";
 import { UserEditModal } from "@/components/users/user-edit-modal";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { DateTimeDisplay } from "@/components/shared/date-time-display";
@@ -33,9 +32,9 @@ export function UsersPageContent({
 }: {
   users: SerializedUser[];
   initial: Partial<TableQueryState>;
-  pagination: { page: number; totalPages: number };
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
 }) {
-  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<SerializedUser | null>(null);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
@@ -65,23 +64,27 @@ export function UsersPageContent({
         initial={initial}
         pagination={pagination}
         actions={
-          <button
-            type="button"
-            onClick={openCreate}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 h-10"
-          >
+          <Button variant="secondary" onClick={openCreate} className="h-10">
             <Plus size={16} />
             Create User
-          </button>
+          </Button>
         }
+        startTransition={startTransition}
       />
-      {users.length ? (
-        <DataTable
+      <DataTable
           rows={users}
+          compact
+          tableClassName="min-w-[1248px] table-fixed"
+          isLoading={isPending}
+          emptyTitle="No users found"
+          emptyDescription="Try changing the search or filters, or create a user account."
+          emptyAction={<Button variant="secondary" onClick={openCreate}><Plus size={16} />Create User</Button>}
           columns={[
             {
               key: "avatar",
               header: "",
+              headerClassName: "w-14",
+              className: "w-14",
               render: (user: SerializedUser) => (
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600">
                   {user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
@@ -91,24 +94,32 @@ export function UsersPageContent({
             {
               key: "name",
               header: "Name",
-              render: (user: SerializedUser) => <span className="font-semibold">{user.name}</span>,
+              headerClassName: "w-[160px]",
+              className: "w-[160px]",
+              render: (user: SerializedUser) => <span className="block truncate font-semibold" title={user.name}>{user.name}</span>,
             },
             {
               key: "email",
               header: "Email",
-              render: (user: SerializedUser) => user.email,
+              headerClassName: "w-[220px]",
+              className: "w-[220px]",
+              render: (user: SerializedUser) => <span className="block truncate" title={user.email}>{user.email}</span>,
             },
             {
               key: "role",
               header: "Role",
-              render: (user: SerializedUser) => <Badge label={user.role} />,
+              headerClassName: "w-24",
+              className: "w-24",
+              render: (user: SerializedUser) => <Badge label={user.role === "SALES" ? "Sales" : "Admin"} toneKey={user.role} className="whitespace-nowrap" />,
             },
             {
               key: "salesPrivilege",
               header: "Sales Privilege",
+              headerClassName: "w-[130px]",
+              className: "w-[130px]",
               render: (user: SerializedUser) =>
                 user.role === "SALES" && user.salesPrivilege ? (
-                  <Badge label={user.salesPrivilege} />
+                  <Badge label={user.salesPrivilege === "JUNIOR" ? "Junior" : "Senior"} toneKey={user.salesPrivilege} className="whitespace-nowrap" />
                 ) : (
                   <span className="text-xs text-[var(--color-muted)]">-</span>
                 ),
@@ -116,21 +127,23 @@ export function UsersPageContent({
             {
               key: "active",
               header: "Status",
+              headerClassName: "w-24",
+              className: "w-24",
               render: (user: SerializedUser) =>
-                user.active ? (
-                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Active</span>
-                ) : (
-                  <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">Inactive</span>
-                ),
+                <Badge label={user.active ? "Active" : "Inactive"} toneKey={user.active ? "Active" : "Inactive"} className="whitespace-nowrap" />,
             },
             {
               key: "assignedLeads",
               header: "Assigned Leads",
-              render: (user: SerializedUser) => user.assignedLeads.toString(),
+              headerClassName: "w-28 text-right",
+              className: "w-28 text-right tabular-nums",
+              render: (user: SerializedUser) => user.assignedLeads,
             },
             {
               key: "lastLoginAt",
               header: "Last Login",
+              headerClassName: "w-[150px]",
+              className: "w-[150px] whitespace-nowrap",
               render: (user: SerializedUser) =>
                 <DateTimeDisplay
                   date={user.lastLoginAt}
@@ -141,31 +154,26 @@ export function UsersPageContent({
             {
               key: "createdAt",
               header: "Created",
+              headerClassName: "w-[130px]",
+              className: "w-[130px] whitespace-nowrap",
               render: (user: SerializedUser) => formatDate(user.createdAt, "-", timeZone),
             },
             {
               key: "actions",
               header: "Actions",
+              headerClassName: "w-24 text-center",
+              className: "w-24 text-center",
               render: (user: SerializedUser) => (
-                <button
-                  type="button"
-                  onClick={() => openEdit(user)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-ink)] transition hover:bg-slate-50"
-                >
+                <Button variant="secondary" size="sm" onClick={() => openEdit(user)}>
                   Edit
-                </button>
+                </Button>
               ),
             },
           ]}
         />
-      ) : (
-        <EmptyState
-          title="No users found"
-          description="Try adjusting your filters or create a new user."
-        />
-      )}
 
       <UserEditModal
+        key={modalMode === "edit" && selectedUser ? selectedUser.id : "new-user"}
         open={modalOpen}
         onClose={closeModal}
         user={modalMode === "edit" && selectedUser ? {

@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { LEAD_STATUSES, LEAD_PRIORITIES, LEAD_CATEGORIES } from "@/lib/lead-constants";
+import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 
 export type LeadFormData = {
   id: string;
@@ -63,6 +64,7 @@ export function LeadEditModal({
   const [category, setCategory] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [assignedUserId, setAssignedUserId] = useState("");
+  const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose: !pending });
 
   useEffect(() => {
     if (!open) return;
@@ -97,41 +99,6 @@ export function LeadEditModal({
     }
     setError(null);
   }, [open, lead]);
-
-  // Keep the latest onClose in a ref so effects can call it without
-  // making it a dependency (avoids unstable inline-arrow identity).
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  });
-
-  // Scroll-lock: runs when modal opens/closes, cleans up on unmount/close.
-  // Captures no reactive values beyond `open` → stable [open] deps.
-  useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    const previousPaddingRight = document.body.style.paddingRight;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = "hidden";
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.paddingRight = previousPaddingRight;
-    };
-  }, [open]);
-
-  // Escape key: reads the ref for latest onClose.
-  // Stable [open] deps — the ref always holds the current callback.
-  useEffect(() => {
-    if (!open) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onCloseRef.current();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,23 +147,33 @@ export function LeadEditModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={pending ? undefined : onClose} />
 
       <div
+        ref={dialogRef}
+        data-accessible-dialog
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lead-edit-title"
+        tabIndex={-1}
         className="relative z-10 mt-6 mb-6 w-[90%] max-w-4xl flex flex-col bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] overflow-hidden"
         style={{ height: "88vh", maxHeight: "88vh" }}
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-4 shrink-0">
-          <h2 className="text-lg font-semibold text-[var(--color-ink)]">
+          <h2 id="lead-edit-title" className="text-lg font-semibold text-[var(--color-ink)]">
             {isEdit ? "Edit Lead" : "Create Lead"}
           </h2>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={onClose}
-            className="rounded-xl p-2 text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)] transition"
+            aria-label="Close lead form"
+            disabled={pending}
+            className="h-8 w-8 p-1.5"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
+          </Button>
         </div>
 
         <div className="overflow-y-auto p-6 flex-1">
@@ -205,7 +182,7 @@ export function LeadEditModal({
               <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Basic Information</h3>
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="Name" htmlFor="lead-name" required className="col-span-2">
-                  <Input id="lead-name" value={name} onChange={(e) => setName(e.target.value)} required />
+                <Input id="lead-name" data-autofocus value={name} onChange={(e) => setName(e.target.value)} required />
                 </FormField>
                 <FormField label="Company" htmlFor="lead-company">
                   <Input id="lead-company" value={company} onChange={(e) => setCompany(e.target.value)} />

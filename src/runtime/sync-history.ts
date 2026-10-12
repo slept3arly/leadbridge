@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import type { ExecutionContext, ConnectorExecutionResult } from "./runtime-types";
+import type { ExecutionFence } from "@/services/execution-fence";
+import { withExecutionFence } from "@/services/execution-fence";
+import type { Prisma } from "@/generated/prisma/client";
 
 type ConnectorStatus = "INACTIVE" | "ACTIVE" | "ERROR";
 
@@ -13,8 +16,10 @@ export interface SyncBreakdown {
 }
 
 export class SyncHistory {
+  constructor(private readonly fence?: ExecutionFence) {}
+
   async recordStart(context: ExecutionContext): Promise<string> {
-    const run = await prisma.connectorSyncRun.create({
+    const createRun = (db: Prisma.TransactionClient | typeof prisma) => db.connectorSyncRun.create({
       data: {
         connectorId: context.connectorId,
         status: "ACTIVE",
@@ -37,6 +42,7 @@ export class SyncHistory {
         } as object,
       },
     });
+    const run = this.fence ? await withExecutionFence(this.fence, createRun) : await createRun(prisma);
     return run.id;
   }
 
@@ -48,7 +54,7 @@ export class SyncHistory {
   ): Promise<void> {
     const { status, errorMessage } = this.mapResult(result);
 
-    await prisma.connectorSyncRun.update({
+    const updateRun = (db: Prisma.TransactionClient | typeof prisma) => db.connectorSyncRun.update({
       where: { id: syncRunId },
       data: {
         status,
@@ -71,16 +77,24 @@ export class SyncHistory {
         } as object,
       },
     });
-
-    await this.updateConnectorStatus(connectorId, result);
+    if (this.fence) {
+      await withExecutionFence(this.fence, async (tx) => {
+        await updateRun(tx);
+        await this.updateConnectorStatus(connectorId, result, tx);
+      });
+    } else {
+      await updateRun(prisma);
+      await this.updateConnectorStatus(connectorId, result);
+    }
   }
 
   private async updateConnectorStatus(
     connectorId: string,
     result: ConnectorExecutionResult,
+    db: Prisma.TransactionClient | typeof prisma = prisma,
   ): Promise<void> {
     const isSuccess = result.status === "success";
-    await prisma.connector.update({
+    await db.connector.update({
       where: { id: connectorId },
       data: {
         lastSyncedAt: new Date(),

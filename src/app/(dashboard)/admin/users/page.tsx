@@ -59,6 +59,7 @@ export default async function AdminUsersPage({
     <>
       <Navbar
         title="User Administration"
+        subtitle="Manage Admin and Sales accounts"
         showResync
         actions={
           <>

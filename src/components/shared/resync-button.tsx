@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 
 export function ResyncButton() {
   const router = useRouter();
@@ -19,15 +20,17 @@ export function ResyncButton() {
   };
 
   return (
-    <button
+    <Button
       type="button"
+      variant="secondary"
+      size="sm"
       onClick={handleRefresh}
       disabled={loading}
       title="Resync dashboard data"
-      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 hover:text-[var(--color-ink)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 h-9"
+      className="h-9 text-xs"
     >
       <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
       Resync
-    </button>
+    </Button>
   );
 }

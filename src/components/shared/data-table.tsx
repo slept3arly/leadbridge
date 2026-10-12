@@ -18,6 +18,8 @@ export function DataTable<T>({
   emptyDescription = "There is nothing to display here yet.",
   emptyAction,
   className,
+  tableClassName,
+  compact = false,
   rowKey,
   onRowClick,
 }: {
@@ -28,11 +30,13 @@ export function DataTable<T>({
   emptyDescription?: string;
   emptyAction?: ReactNode;
   className?: string;
+  tableClassName?: string;
+  compact?: boolean;
   rowKey?: (row: T, index: number) => string | number;
   onRowClick?: (row: T) => void;
 }) {
   if (isLoading) {
-    return <SkeletonTable rows={5} cols={columns.length} />;
+    return <SkeletonTable rows={5} cols={columns.length} compact={compact} />;
   }
 
   if (rows.length === 0) {
@@ -62,7 +66,7 @@ export function DataTable<T>({
   return (
     <div className={cn("w-full overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)]", className)}>
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-[var(--color-border)] text-left text-sm" role="table">
+        <table className={cn("min-w-full divide-y divide-[var(--color-border)] text-left text-sm", tableClassName)} role="table">
           <thead>
             <tr className="border-b border-[var(--color-border)] bg-slate-50/80">
               {columns.map((column) => (
@@ -70,7 +74,7 @@ export function DataTable<T>({
                   key={column.key}
                   scope="col"
                   className={cn(
-                    "px-5 py-3.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]",
+                    compact ? "whitespace-nowrap px-3 py-2.5 text-xs font-semibold uppercase tracking-[0.04em] text-[var(--color-muted)]" : "px-5 py-3.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]",
                     column.headerClassName
                   )}
                 >
@@ -83,13 +87,21 @@ export function DataTable<T>({
             {rows.map((row, index) => (
               <tr
                 key={rowKey ? rowKey(row, index) : index}
-                className={`transition-colors duration-150 ${onRowClick ? "cursor-pointer hover:bg-slate-50/80" : "hover:bg-slate-50/50"}`}
+                className={`transition-colors duration-150 ${onRowClick ? "cursor-pointer hover:bg-slate-50/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand)]" : "hover:bg-slate-50/50"}`}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={onRowClick ? (event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onRowClick(row);
+                  }
+                } : undefined}
               >
                 {columns.map((column) => (
                   <td
                     key={column.key}
-                    className={cn("px-5 py-4 align-top", column.className)}
+                    className={cn(compact ? "px-3 py-2.5 align-middle" : "px-5 py-4 align-top", column.className)}
                   >
                     {column.render(row, index)}
                   </td>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { LeadHeader } from "@/components/sales/lead-header";
 import { LeadInfoSection } from "@/components/sales/lead-info-section";
@@ -17,7 +17,8 @@ import { useLeadDetails, type LeadDetail, type LeadFollowUp, type ActivityEventI
 import { CheckCircle2, RotateCcw, Trash2, Plus, Pencil } from "lucide-react";
 import { LogActivityModal } from "@/components/sales/log-activity-modal";
 import { LeadEditModal } from "@/components/leads/lead-edit-modal";
-import { formatDate, formatTime, formatTimeValue } from "@/lib/utils";
+import { formatDate, formatTime } from "@/lib/utils";
+import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 
 type LeftTab = "activity" | "details";
 
@@ -43,27 +44,8 @@ function isResponded(response: string) {
   return response === "PICKED_UP" || response === "REPLIED";
 }
 
-export function useModalState(open: boolean) {
-  const onCloseRef = useRef<() => void>(() => {});
-
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    const prevPad = document.body.style.paddingRight;
-    const sw = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = "hidden";
-    if (sw > 0) document.body.style.paddingRight = `${sw}px`;
-    return () => { document.body.style.overflow = prev; document.body.style.paddingRight = prevPad; };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onCloseRef.current(); };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [open]);
-
-  return { onCloseRef };
+export function useModalState(open: boolean, onClose: () => void, canClose = true) {
+  return useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose });
 }
 
 function ScheduleFollowUpModal({
@@ -86,8 +68,7 @@ function ScheduleFollowUpModal({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { onCloseRef } = useModalState(open);
-  onCloseRef.current = onClose;
+  const dialogRef = useModalState(open, onClose, !saving);
 
   useEffect(() => {
     if (open) {
@@ -116,8 +97,6 @@ function ScheduleFollowUpModal({
 
       if (logActivity) {
         // Log activity with follow-up scheduling
-        const responseLabel = response.replaceAll("_", " ");
-        const interestLabel = interest ? ` (${interest.replaceAll("_", " ")})` : "";
         await axios.post(`/api/leads/${leadId}/activities`, {
           action,
           response,
@@ -152,19 +131,19 @@ function ScheduleFollowUpModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label="Schedule follow-up" className="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-xl border border-[var(--color-border)] max-h-[85vh] flex flex-col">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
+      <div ref={dialogRef} data-accessible-dialog role="dialog" aria-modal="true" aria-label="Schedule follow-up" tabIndex={-1} className="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-xl border border-[var(--color-border)] max-h-[85vh] flex flex-col">
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
           <h2 className="text-lg font-bold text-[var(--color-ink)]">Schedule Follow-up</h2>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-[var(--color-muted)]">Date</label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+              <label htmlFor="schedule-follow-up-date" className="text-xs font-medium text-[var(--color-muted)]">Date</label>
+              <Input id="schedule-follow-up-date" data-autofocus type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-[var(--color-muted)]">Time</label>
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              <label htmlFor="schedule-follow-up-time" className="text-xs font-medium text-[var(--color-muted)]">Time</label>
+              <Input id="schedule-follow-up-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
             </div>
           </div>
 
@@ -176,22 +155,22 @@ function ScheduleFollowUpModal({
           {logActivity && (
             <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-[var(--color-muted)]">Action</label>
-                <Select value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
+                <label htmlFor="schedule-activity-action" className="text-xs font-semibold text-[var(--color-muted)]">Action</label>
+                <Select id="schedule-activity-action" value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
                   {ACTION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </Select>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-[var(--color-muted)]">Response</label>
-                <Select value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
+                <label htmlFor="schedule-activity-response" className="text-xs font-semibold text-[var(--color-muted)]">Response</label>
+                <Select id="schedule-activity-response" value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
                   <option value="">Select response</option>
                   {responses.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </Select>
               </div>
               {interestVisible && (
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-[var(--color-muted)]">Interest</label>
-                  <Select value={interest} onChange={(e) => setInterest(e.target.value)}>
+                  <label htmlFor="schedule-activity-interest" className="text-xs font-semibold text-[var(--color-muted)]">Interest</label>
+                  <Select id="schedule-activity-interest" value={interest} onChange={(e) => setInterest(e.target.value)}>
                     <option value="">Select interest</option>
                     <option value="INTERESTED">Interested</option>
                     <option value="NOT_INTERESTED">Not Interested</option>
@@ -199,8 +178,8 @@ function ScheduleFollowUpModal({
                 </div>
               )}
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-[var(--color-muted)]">Notes</label>
-                <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Add notes..." className="resize-none" />
+                <label htmlFor="schedule-activity-notes" className="text-xs font-semibold text-[var(--color-muted)]">Notes</label>
+                <Textarea id="schedule-activity-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Add notes..." className="resize-none" />
               </div>
             </div>
           )}
@@ -244,8 +223,7 @@ function CompleteFollowUpModal({
   const [nextTime, setNextTime] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { onCloseRef } = useModalState(open);
-  onCloseRef.current = onClose;
+  const dialogRef = useModalState(open, onClose, !saving);
 
   useEffect(() => {
     if (open) {
@@ -305,8 +283,8 @@ function CompleteFollowUpModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label="Complete follow-up" className="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-xl border border-[var(--color-border)] max-h-[85vh] flex flex-col">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
+      <div ref={dialogRef} data-accessible-dialog role="dialog" aria-modal="true" aria-label="Complete follow-up" tabIndex={-1} className="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-xl border border-[var(--color-border)] max-h-[85vh] flex flex-col">
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
           <div>
             <h2 className="text-lg font-bold text-[var(--color-ink)]">Complete Follow-up</h2>
@@ -314,8 +292,8 @@ function CompleteFollowUpModal({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--color-ink)]">Notes / Outcome</label>
-            <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="What happened? What did the customer say?" rows={3} className="resize-none" />
+            <label htmlFor="complete-follow-up-notes" className="text-sm font-medium text-[var(--color-ink)]">Notes / Outcome</label>
+            <Textarea id="complete-follow-up-notes" data-autofocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="What happened? What did the customer say?" rows={3} className="resize-none" />
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer">
@@ -326,22 +304,22 @@ function CompleteFollowUpModal({
           {logActivity && (
             <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-[var(--color-muted)]">Action</label>
-                <Select value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
+                <label htmlFor="complete-activity-action" className="text-xs font-semibold text-[var(--color-muted)]">Action</label>
+                <Select id="complete-activity-action" value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
                   {ACTION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </Select>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-[var(--color-muted)]">Response</label>
-                <Select value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
+                <label htmlFor="complete-activity-response" className="text-xs font-semibold text-[var(--color-muted)]">Response</label>
+                <Select id="complete-activity-response" value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
                   <option value="">Select response</option>
                   {responses.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </Select>
               </div>
               {interestVisible && (
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-[var(--color-muted)]">Interest</label>
-                  <Select value={interest} onChange={(e) => setInterest(e.target.value)}>
+                  <label htmlFor="complete-activity-interest" className="text-xs font-semibold text-[var(--color-muted)]">Interest</label>
+                  <Select id="complete-activity-interest" value={interest} onChange={(e) => setInterest(e.target.value)}>
                     <option value="">Select interest</option>
                     <option value="INTERESTED">Interested</option>
                     <option value="NOT_INTERESTED">Not Interested</option>
@@ -349,8 +327,8 @@ function CompleteFollowUpModal({
                 </div>
               )}
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-[var(--color-muted)]">Notes</label>
-                <Textarea value={activityNotes} onChange={(e) => setActivityNotes(e.target.value)} rows={2} placeholder="Add notes..." className="resize-none" />
+                <label htmlFor="complete-activity-notes" className="text-xs font-semibold text-[var(--color-muted)]">Notes</label>
+                <Textarea id="complete-activity-notes" value={activityNotes} onChange={(e) => setActivityNotes(e.target.value)} rows={2} placeholder="Add notes..." className="resize-none" />
               </div>
             </div>
           )}
@@ -363,12 +341,12 @@ function CompleteFollowUpModal({
           {scheduleNext && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-medium text-[var(--color-muted)]">Date</label>
-                <Input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} required />
+                <label htmlFor="complete-follow-up-date" className="text-xs font-medium text-[var(--color-muted)]">Date</label>
+                <Input id="complete-follow-up-date" type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} required />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-[var(--color-muted)]">Time</label>
-                <Input type="time" value={nextTime} onChange={(e) => setNextTime(e.target.value)} />
+                <label htmlFor="complete-follow-up-time" className="text-xs font-medium text-[var(--color-muted)]">Time</label>
+                <Input id="complete-follow-up-time" type="time" value={nextTime} onChange={(e) => setNextTime(e.target.value)} />
               </div>
             </div>
           )}
@@ -405,8 +383,7 @@ function RescheduleModal({
   const [time, setTime] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { onCloseRef } = useModalState(open);
-  onCloseRef.current = onClose;
+  const dialogRef = useModalState(open, onClose, !saving);
 
   useEffect(() => {
     if (!open || !followUp) return;
@@ -443,18 +420,18 @@ function RescheduleModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label="Reschedule follow-up" className="relative z-10 w-full max-w-sm rounded-2xl bg-white shadow-xl border border-[var(--color-border)]">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
+      <div ref={dialogRef} data-accessible-dialog role="dialog" aria-modal="true" aria-label="Reschedule follow-up" tabIndex={-1} className="relative z-10 w-full max-w-sm rounded-2xl bg-white shadow-xl border border-[var(--color-border)]">
         <div className="p-6 space-y-4">
           <h2 className="text-lg font-bold text-[var(--color-ink)]">Reschedule Follow-up</h2>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-[var(--color-muted)]">Date</label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+              <label htmlFor="reschedule-follow-up-date" className="text-xs font-medium text-[var(--color-muted)]">Date</label>
+              <Input id="reschedule-follow-up-date" data-autofocus type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-[var(--color-muted)]">Time</label>
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              <label htmlFor="reschedule-follow-up-time" className="text-xs font-medium text-[var(--color-muted)]">Time</label>
+              <Input id="reschedule-follow-up-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
             </div>
           </div>
           {error && (
@@ -491,8 +468,7 @@ function EditActivityModal({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { onCloseRef } = useModalState(open);
-  onCloseRef.current = onClose;
+  const dialogRef = useModalState(open, onClose, !saving);
 
   const entry = activity?.entries.find((e) => e.action);
 
@@ -532,27 +508,27 @@ function EditActivityModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label="Edit activity" className="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-xl border border-[var(--color-border)] max-h-[85vh] flex flex-col">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
+      <div ref={dialogRef} data-accessible-dialog role="dialog" aria-modal="true" aria-label="Edit activity" tabIndex={-1} className="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-xl border border-[var(--color-border)] max-h-[85vh] flex flex-col">
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
           <h2 className="text-lg font-bold text-[var(--color-ink)]">Edit Activity</h2>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--color-ink)]">Action</label>
-            <Select value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
+            <label htmlFor="edit-activity-action" className="text-sm font-medium text-[var(--color-ink)]">Action</label>
+            <Select id="edit-activity-action" data-autofocus value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
               {ACTION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--color-ink)]">Response</label>
-            <Select value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
+            <label htmlFor="edit-activity-response" className="text-sm font-medium text-[var(--color-ink)]">Response</label>
+            <Select id="edit-activity-response" value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
               <option value="">Select response</option>
               {(RESPONSE_OPTIONS[action] ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </div>
           {interestVisible && (
             <div className="space-y-2">
-              <label className="text-sm font-medium text-[var(--color-ink)]">Interest</label>
-              <Select value={interest} onChange={(e) => setInterest(e.target.value)}>
+              <label htmlFor="edit-activity-interest" className="text-sm font-medium text-[var(--color-ink)]">Interest</label>
+              <Select id="edit-activity-interest" value={interest} onChange={(e) => setInterest(e.target.value)}>
                 <option value="">Select interest</option>
                 <option value="INTERESTED">Interested</option>
                 <option value="NOT_INTERESTED">Not Interested</option>
@@ -560,8 +536,8 @@ function EditActivityModal({
             </div>
           )}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--color-ink)]">Notes</label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Add notes..." className="resize-none" />
+            <label htmlFor="edit-activity-notes" className="text-sm font-medium text-[var(--color-ink)]">Notes</label>
+            <Textarea id="edit-activity-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Add notes..." className="resize-none" />
           </div>
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700" role="alert">
@@ -711,7 +687,6 @@ function FollowUpsColumn({
 export function LeadDetailsModal({
   leadId,
   currentUserId,
-  isAdmin,
   canArchive = false,
   canDelete = false,
   leadSources,
@@ -729,7 +704,7 @@ export function LeadDetailsModal({
 }) {
   const [activeTab, setActiveTab] = useState<LeftTab>("activity");
   const [saving, setSaving] = useState(false);
-  const { data, loading: detailsLoading, refresh, patchData, completeFollowUp } = useLeadDetails(leadId);
+  const { data, loading: detailsLoading, refresh, patchData } = useLeadDetails(leadId);
   const [leadDraft, setLeadDraft] = useState<LeadDetail | null>(null);
 
   const [logActivityOpen, setLogActivityOpen] = useState(false);
@@ -755,30 +730,7 @@ export function LeadDetailsModal({
     setLeadDraft(data?.lead ?? null);
   }, [data?.lead, leadId]);
 
-  const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; });
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    const previousPaddingRight = document.body.style.paddingRight;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = "hidden";
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.paddingRight = previousPaddingRight;
-    };
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onCloseRef.current();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  const dialogRef = useAccessibleDialog<HTMLDivElement>({ open: true, onClose, canClose: !saving });
 
   const handleFieldChange = useCallback((field: string, value: string) => {
     setLeadDraft((prev) => prev ? { ...prev, [field]: value } : prev);
@@ -889,9 +841,15 @@ export function LeadDetailsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
 
       <div
+        ref={dialogRef}
+        data-accessible-dialog
+        role="dialog"
+        aria-modal="true"
+        aria-label="Lead details"
+        tabIndex={-1}
         className="relative z-10 mt-4 mb-4 w-[95%] max-w-6xl flex flex-col bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] overflow-hidden"
         style={{ height: "92vh", maxHeight: "92vh" }}
       >

@@ -162,7 +162,7 @@ const restAuthConfigSchema = z.discriminatedUnion("type", [
 
 const paginationConfigSchema = z.object({
   strategy: z.enum(["PAGE_NUMBER", "OFFSET", "CURSOR", "NEXT_URL", "TOKEN"]),
-  pageSize: z.number().int().min(1).max(1000).optional(),
+  pageSize: z.number().int().min(1).max(500).optional(),
   pageParam: z.string().optional(),
   perPageParam: z.string().optional(),
   offsetParam: z.string().optional(),
@@ -172,7 +172,7 @@ const paginationConfigSchema = z.object({
   nextUrlPath: z.string().optional(),
   tokenParam: z.string().optional(),
   tokenPath: z.string().optional(),
-  maxPages: z.number().int().min(1).max(1000).optional(),
+  maxPages: z.number().int().min(1).max(100).optional(),
 }).optional();
 
 export const restConnectorConfigSchema = z.object({
@@ -181,11 +181,13 @@ export const restConnectorConfigSchema = z.object({
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
   headers: z.record(z.string(), z.string()).optional(),
   queryParams: z.record(z.string(), z.string()).optional(),
-  body: z.string().optional(),
+  body: z.string().max(1_048_576).optional(),
   auth: restAuthConfigSchema.optional(),
   pagination: paginationConfigSchema,
   leadArrayPath: z.string().optional(),
-  timeout: z.number().int().min(100).max(300000).optional(),
-  retryCount: z.number().int().min(0).max(10).optional(),
-  rateLimitDelayMs: z.number().int().min(0).max(60000).optional(),
+  timeout: z.number().int().min(100).max(30000).optional(),
+  retryCount: z.number().int().min(0).max(3).optional(),
+  rateLimitDelayMs: z.number().int().min(0).max(10000).optional(),
 });
+
+export const followUpUpdateSchema = followUpSchema.omit({ leadId: true }).partial().strict();

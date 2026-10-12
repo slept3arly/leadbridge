@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
+import type { ExecutionFence } from "./execution-fence";
+import { withExecutionFence } from "./execution-fence";
 
 type HealthStatus = "HEALTHY" | "WARNING" | "ERROR";
 type ConnectorResultStatus = "success" | "failed" | "skipped" | "retry" | "cancelled";
@@ -9,8 +12,10 @@ export class ConnectorHealthService {
     status: ConnectorResultStatus,
     durationMs: number,
     errorMessage?: string,
+    fence?: ExecutionFence,
   ): Promise<void> {
-    const connector = await prisma.connector.findUnique({
+    const update = async (db: Prisma.TransactionClient | typeof prisma) => {
+    const connector = await db.connector.findUnique({
       where: { id: connectorId },
       select: { consecutiveFailures: true, averageDurationMs: true, lastDurationMs: true },
     });
@@ -30,7 +35,7 @@ export class ConnectorHealthService {
       healthStatus = "WARNING";
     }
 
-    await prisma.connector.update({
+    await db.connector.update({
       where: { id: connectorId },
       data: {
         consecutiveFailures,
@@ -42,6 +47,9 @@ export class ConnectorHealthService {
           : { lastFailureAt: new Date(), lastError: errorMessage ?? "Unknown error", status: "ERROR" as const }),
       },
     });
+    };
+    if (fence) await withExecutionFence(fence, update);
+    else await update(prisma);
   }
 
   async getHealth(connectorId: string): Promise<{

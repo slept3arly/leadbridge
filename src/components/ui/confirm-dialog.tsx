@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 
 export function ConfirmDialog({
   open,
@@ -26,29 +26,7 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    const prevPad = document.body.style.paddingRight;
-    const sw = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = "hidden";
-    if (sw > 0) document.body.style.paddingRight = `${sw}px`;
-    return () => {
-      document.body.style.overflow = prev;
-      document.body.style.paddingRight = prevPad;
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isLoading) onCancel();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, isLoading, onCancel]);
+  const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose: onCancel, canClose: !isLoading });
 
   if (!open) return null;
 
@@ -60,6 +38,8 @@ export function ConfirmDialog({
       />
       <div
         ref={dialogRef}
+        data-accessible-dialog
+        tabIndex={-1}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"

@@ -23,7 +23,7 @@ export function Navbar({
           <p className="mt-0.5 text-sm text-[var(--color-muted)]">{subtitle}</p>
         )}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
         {showResync && <ResyncButton />}
         {followUpDropdown}
         {actions}

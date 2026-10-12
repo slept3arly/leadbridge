@@ -9,6 +9,8 @@ import { leadSchema } from "@/lib/validation";
 import { activityEventService } from "@/services/activity-event.service";
 import { duplicateService } from "@/services/duplicate.service";
 import { can, Permission } from "@/lib/permissions";
+import type { ExecutionFence } from "@/services/execution-fence";
+import { assertExecutionFence } from "@/services/execution-fence";
 
 export type LeadInput = z.infer<typeof leadSchema>;
 type Actor = { id: string; role: UserRole; salesPrivilege?: SalesPrivilege | null };
@@ -18,7 +20,7 @@ const leadListSelect = {
   email: true, phone: true, city: true, state: true,
   product: true, requirement: true,
   status: true, priority: true, category: true, createdAt: true, updatedAt: true,
-  nextFollowUpAt: true, lastFollowUpAt: true,
+  nextFollowUpAt: true, lastFollowUpAt: true, isArchived: true,
   assignedUser: { select: { id: true, name: true } },
   source: { select: { id: true, name: true } },
   followUps: {
@@ -275,7 +277,7 @@ export class LeadService {
     return leads.map(toApiLead);
   }
 
-  async create(data: LeadInput, actor: Actor): Promise<CreateLeadResult> {
+  async create(data: LeadInput, actor: Actor, executionFence?: ExecutionFence): Promise<CreateLeadResult> {
     if (!can(actor, Permission.CREATE_LEAD)) {
       throw new ServiceError("You do not have permission to create leads.", 403);
     }
@@ -303,6 +305,7 @@ export class LeadService {
     const duplicates = await duplicateService.findPotentialDuplicates(data);
     const { name, customFields, rawPayload, status, priority, category, ...rest } = data;
     return prisma.$transaction(async (tx) => {
+      if (executionFence) await assertExecutionFence(tx, executionFence);
       try {
         const lead = await tx.lead.create({
           data: {

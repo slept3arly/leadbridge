@@ -2,6 +2,7 @@ import type { ExecutionContext, RawPayload, IConnector } from "@/runtime/runtime
 import type { RestConnectorConfig, RestDocument, RestMethod } from "./rest-types";
 import { RestClient } from "./rest-client";
 import { classifyRestError, RestConfigurationError } from "./rest-errors";
+import { MAX_REST_PAGES, MAX_REST_PAGE_SIZE, MAX_REST_REQUEST_TIMEOUT_MS } from "./rest-security";
 
 const CONNECTOR_TYPE = "rest";
 
@@ -26,10 +27,13 @@ function validateConfig(config: unknown): RestConnectorConfig {
     queryParams: (c.queryParams as Record<string, string>) ?? {},
     body: c.body as string | undefined,
     auth: (c.auth as RestConnectorConfig["auth"]) ?? { type: "NONE" },
-    pagination: (c.pagination as RestConnectorConfig["pagination"]) ?? { strategy: "PAGE_NUMBER", pageSize: 50 },
+    pagination: (() => {
+      const p = (c.pagination as RestConnectorConfig["pagination"]) ?? { strategy: "PAGE_NUMBER" as const, pageSize: 50 };
+      return { ...p, pageSize: Math.min(p.pageSize ?? 50, MAX_REST_PAGE_SIZE), maxPages: Math.min(p.maxPages ?? 50, MAX_REST_PAGES) };
+    })(),
     leadArrayPath: (c.leadArrayPath as string) ?? "data",
-    timeout: (c.timeout as number) ?? 30000,
-    retryCount: (c.retryCount as number) ?? 3,
+    timeout: Math.min((c.timeout as number) ?? 30000, MAX_REST_REQUEST_TIMEOUT_MS),
+    retryCount: Math.min((c.retryCount as number) ?? 3, 3),
     rateLimitDelayMs: (c.rateLimitDelayMs as number) ?? 200,
   };
 }
@@ -79,8 +83,6 @@ export class RestConnector implements IConnector {
 
   async execute(context: ExecutionContext): Promise<RawPayload[]> {
     context.logger.info("REST connector execution started", {
-      baseUrl: this.config.baseUrl,
-      endpoint: this.config.endpoint,
       method: this.config.method,
       authType: this.config.auth.type,
     });

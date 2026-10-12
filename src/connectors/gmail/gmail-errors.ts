@@ -41,10 +41,10 @@ export function classifyGmailError(error: unknown): Error {
     const message = error.message.toLowerCase();
 
     if (status === 401 || message.includes("unauthorized") || message.includes("invalid grant")) {
-      return new GmailAuthError({ originalMessage: error.message });
+      return new GmailAuthError();
     }
     if (status === 403 || message.includes("forbidden") || message.includes("insufficient")) {
-      return new GmailPermissionError({ originalMessage: error.message });
+      return new GmailPermissionError();
     }
     if (
       status === 429 ||
@@ -52,7 +52,7 @@ export function classifyGmailError(error: unknown): Error {
       message.includes("rate limit") ||
       message.includes("too many requests")
     ) {
-      return new GmailQuotaError({ originalMessage: error.message });
+      return new GmailQuotaError();
     }
     if (
       status === 404 ||
@@ -60,7 +60,7 @@ export function classifyGmailError(error: unknown): Error {
       message.includes("expired") ||
       message.includes("history")
     ) {
-      return new GmailHistoryExpiredError({ originalMessage: error.message });
+      return new GmailHistoryExpiredError();
     }
     if (
       status === 503 ||
@@ -68,7 +68,7 @@ export function classifyGmailError(error: unknown): Error {
       message.includes("unavailable") ||
       message.includes("backend error")
     ) {
-      return new GmailMailboxError({ originalMessage: error.message });
+      return new GmailMailboxError();
     }
   }
   return error instanceof Error ? error : new Error(String(error));

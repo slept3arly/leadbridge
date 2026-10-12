@@ -28,7 +28,7 @@ export class ParserRuntime {
 
     try {
       const lead = parser.parse(payload);
-      context.logger.debug("Parser completed", { parserKey, leadName: lead.name });
+      context.logger.debug("Parser completed", { parserKey });
       return lead;
     } catch (error) {
       throw new ParserError(

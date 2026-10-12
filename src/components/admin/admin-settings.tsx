@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
-import { LoadingSpinner, SkeletonCard } from "@/components/ui/loading";
+import { SkeletonCard } from "@/components/ui/loading";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { Save, RotateCcw } from "lucide-react";
 
@@ -41,24 +41,34 @@ export function AdminSettings() {
   const [initialValues, setInitialValues] = useState<Record<string, string>>({});
   const [validation, setValidation] = useState<ValidationErrors>({});
 
-  useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((json) => {
-        const settings = json.data.settings as Record<string, unknown>;
-        const defs = json.data.definitions as SettingDef[];
-        setData({ settings, definitions: defs });
-        const initial: Record<string, string> = {};
-        for (const def of defs) {
-          const val = settings[def.key] ?? def.defaultValue;
-          initial[def.key] = String(val);
-        }
-        setValues({ ...initial });
-        setInitialValues(initial);
-      })
-      .catch((err) => setError(getErrorMessage(err, "Failed to load settings")))
-      .finally(() => setLoading(false));
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/settings");
+      const json = await response.json();
+      if (!response.ok) throw new Error(getErrorMessage(json.error, "Failed to load settings"));
+      const settings = json.data.settings as Record<string, unknown>;
+      const definitions = json.data.definitions as SettingDef[];
+      const initial: Record<string, string> = {};
+      for (const def of definitions) {
+        initial[def.key] = String(settings[def.key] ?? def.defaultValue);
+      }
+      setData({ settings, definitions });
+      setValues(initial);
+      setInitialValues(initial);
+      setValidation({});
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to load settings"));
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadSettings(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadSettings]);
 
   const hasChanges = Object.keys(values).some((key) => values[key] !== initialValues[key]);
 
@@ -81,7 +91,7 @@ export function AdminSettings() {
     setValidation(errs);
   };
 
-  const resetDefaults = async () => {
+  const resetDefaults = () => {
     if (!data) return;
     const defaults: Record<string, string> = {};
     for (const def of data.definitions) {
@@ -89,6 +99,13 @@ export function AdminSettings() {
     }
     setValues(defaults);
     setValidation(validate(defaults));
+  };
+
+  const discardChanges = () => {
+    setValues({ ...initialValues });
+    setValidation({});
+    setError(null);
+    setSuccess(null);
   };
 
   const isFormValid = Object.keys(validation).length === 0;
@@ -152,7 +169,8 @@ export function AdminSettings() {
   if (loading) {
     return (
       <div className="space-y-6">
-        {Array.from({ length: 2 }).map((_, i) => <SkeletonCard key={i} />)}
+        <SkeletonCard />
+        <div className="flex justify-end gap-2"><div className="h-9 w-28 animate-pulse rounded-lg bg-slate-200" /><div className="h-9 w-32 animate-pulse rounded-lg bg-slate-200" /></div>
       </div>
     );
   }
@@ -161,7 +179,8 @@ export function AdminSettings() {
     return (
       <Card>
         <CardContent>
-          <p className="text-sm text-red-600">{error}</p>
+          <p className="text-sm text-red-600" role="alert">{error}</p>
+          <Button variant="secondary" onClick={() => void loadSettings()} className="mt-4">Try again</Button>
         </CardContent>
       </Card>
     );
@@ -176,8 +195,8 @@ export function AdminSettings() {
       {(error || success) && (
         <Card>
           <CardContent>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            {success && <p className="text-sm text-emerald-600">{success}</p>}
+            {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+            {success && <p className="text-sm text-emerald-600" role="status">{success}</p>}
           </CardContent>
         </Card>
       )}
@@ -201,8 +220,13 @@ export function AdminSettings() {
                   >
                     <Input
                       id={`setting-${def.key}`}
+                      type={typeof def.defaultValue === "number" ? "number" : "text"}
+                      min={def.key === "default_page_size" ? 5 : undefined}
+                      max={def.key === "default_page_size" ? 200 : undefined}
+                      step={def.key === "default_page_size" ? 1 : undefined}
                       value={values[def.key] ?? ""}
                       onChange={(e) => setValue(def.key, e.target.value)}
+                      disabled={saving}
                     />
                   </FormField>
                 ))}
@@ -211,8 +235,8 @@ export function AdminSettings() {
         </Card>
       ))}
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="secondary"
             size="sm"
@@ -220,8 +244,9 @@ export function AdminSettings() {
             disabled={saving}
           >
             <RotateCcw size={14} />
-            Reset to Defaults
+            Restore Defaults
           </Button>
+          {hasChanges && <Button variant="ghost" size="sm" onClick={discardChanges} disabled={saving}>Discard Changes</Button>}
         </div>
         <Button
           onClick={handleSave}

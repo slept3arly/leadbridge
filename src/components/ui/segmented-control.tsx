@@ -12,24 +12,28 @@ type SegmentedControlProps<T extends string> = {
   options: SegmentedOption<T>[];
   value: T;
   onChange: (value: T) => void;
+  ariaLabel?: string;
 };
 
 export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
+  ariaLabel = "View options",
 }: SegmentedControlProps<T>) {
   return (
-    <div className="inline-flex items-center rounded-xl bg-slate-100/80 p-1">
+    <div role="group" aria-label={ariaLabel} className="inline-flex items-center rounded-xl bg-slate-100/80 p-1">
       {options.map((option) => {
         const isActive = option.value === value;
         return (
           <button
             key={option.value}
             type="button"
+            aria-pressed={isActive}
             onClick={() => onChange(option.value)}
             className={cn(
               "inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-150",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2",
               isActive
                 ? "bg-white text-[var(--color-ink)] shadow-sm"
                 : "text-[var(--color-muted)] hover:text-[var(--color-ink)]",

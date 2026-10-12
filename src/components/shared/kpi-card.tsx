@@ -1,20 +1,22 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import type { ReactNode } from "react";
 
 export function KpiCard({
   title,
   count,
   description,
   href,
+  children,
 }: {
   title: string;
   count: number;
   description: string;
-  href: string;
+  href?: string;
+  children?: ReactNode;
 }) {
-  return (
-    <Link href={href} className="block">
-      <Card className="cursor-pointer transition hover:shadow-md p-4 h-full">
+  const card = (
+      <Card className={`${href ? "cursor-pointer " : ""}transition hover:shadow-md p-4 h-full`}>
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-[var(--color-ink)] leading-tight">{title}</p>
@@ -22,7 +24,8 @@ export function KpiCard({
           </div>
           <p className="text-3xl font-bold text-[var(--color-ink)] tabular-nums whitespace-nowrap">{count}</p>
         </div>
+        {children}
       </Card>
-    </Link>
   );
+  return href ? <Link href={href} className="block h-full">{card}</Link> : card;
 }

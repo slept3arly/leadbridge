@@ -85,14 +85,16 @@ export function SkeletonTable({
   rows = 5,
   cols = 4,
   className,
+  compact = false,
 }: {
   rows?: number;
   cols?: number;
   className?: string;
+  compact?: boolean;
 }) {
   return (
     <div className={cn("w-full overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white", className)}>
-      <div className="border-b border-[var(--color-border)] bg-slate-50 px-6 py-4">
+      <div className={cn("border-b border-[var(--color-border)] bg-slate-50", compact ? "px-3 py-2.5" : "px-6 py-4")}>
         <div className="flex gap-4">
           {Array.from({ length: cols }).map((_, i) => (
             <div
@@ -103,9 +105,9 @@ export function SkeletonTable({
           ))}
         </div>
       </div>
-      <div className="divide-y divide-[var(--color-border)] px-6 py-3">
+      <div className={cn("divide-y divide-[var(--color-border)]", compact ? "px-3 py-1" : "px-6 py-3")}>
         {Array.from({ length: rows }).map((_, rowIndex) => (
-          <div key={rowIndex} className="flex gap-4 py-4 animate-pulse">
+          <div key={rowIndex} className={cn("flex gap-4 animate-pulse", compact ? "py-2.5" : "py-4")}>
             {Array.from({ length: cols }).map((_, colIndex) => (
               <div
                 key={colIndex}

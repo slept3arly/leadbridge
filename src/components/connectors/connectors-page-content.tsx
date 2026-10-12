@@ -13,6 +13,7 @@ import { IconActionButton } from "@/components/ui/icon-action-button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { KpiCard } from "@/components/shared/kpi-card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ConnectorEditModal } from "@/components/connectors/connector-edit-modal";
 import { SyncHistoryModal } from "@/components/connectors/sync-history-modal";
 import { Play, RefreshCw, Plus, Trash2, Bug, WifiOff, History } from "lucide-react";
@@ -61,6 +62,8 @@ export function ConnectorsPageContent({
   const [testResult, setTestResult] = useState<{ connectorId: string; success: boolean; message: string } | null>(null);
 
   const [historyConnectorId, setHistoryConnectorId] = useState<string | null>(null);
+  const [deleteConnector, setDeleteConnector] = useState<SerializedConnector | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const openCreate = () => {
     setSelectedConnector(null);
@@ -134,32 +137,38 @@ export function ConnectorsPageContent({
     }
   }, [router]);
 
-  const handleDelete = useCallback(async (connector: SerializedConnector) => {
-    if (!confirm(`Delete connector "${connector.name}"? This cannot be undone.`)) return;
+  const handleDelete = useCallback(async () => {
+    if (!deleteConnector) return;
+    setDeleting(true);
     try {
-      await axios.delete(`/api/connectors/${connector.id}`);
+      await axios.delete(`/api/connectors/${deleteConnector.id}`);
       toast.success("Connector deleted");
+      setDeleteConnector(null);
       router.refresh();
     } catch {
       toast.error("Failed to delete connector");
+    } finally {
+      setDeleting(false);
     }
-  }, [router]);
+  }, [deleteConnector, router]);
 
   const kpiCards = [
-    { title: "Total Connectors", count: kpi.total, description: "All configured connectors", href: "#" },
-    { title: "Healthy", count: kpi.healthy, description: "No issues detected", href: "#" },
-    { title: "Warnings", count: kpi.warning, description: "Needs attention", href: "#" },
-    { title: "Offline", count: kpi.error, description: "Sync failures detected", href: "#" },
-    { title: "Running Syncs", count: kpi.running, description: "Currently syncing", href: "#" },
+    { title: "Total Connectors", count: kpi.total, description: "All configured connectors" },
+    { title: "Healthy", count: kpi.healthy, description: "No issues detected" },
+    { title: "Warnings", count: kpi.warning, description: "Needs attention" },
+    { title: "Errors", count: kpi.error, description: "Connectors with repeated failures" },
+    { title: "Running Syncs", count: kpi.running, description: "Currently syncing" },
   ];
 
   return (
     <>
       <Navbar
         title="Connectors"
+        subtitle="Manage lead imports, connection status, and sync history."
         showResync
         actions={
           <>
+            <Button onClick={openCreate} className="h-10 whitespace-nowrap"><Plus size={16} />Create Connector</Button>
             <ExportButton type="sync-history" label="Sync History" />
             <SignOutButton />
           </>
@@ -174,17 +183,11 @@ export function ConnectorsPageContent({
         </div>
       )}
 
-      <div className="flex gap-3 items-center">
-        <div className="flex-1" />
-        <Button variant="secondary" onClick={openCreate}>
-          <Plus size={16} />
-          Create Connector
-        </Button>
-      </div>
-
       {connectors.length ? (
         <DataTable
           rows={connectors}
+          compact
+          tableClassName="w-full"
           columns={[
             {
               key: "name",
@@ -193,19 +196,8 @@ export function ConnectorsPageContent({
                 <div>
                   <p className="font-semibold">{c.name}</p>
                   <p className="text-xs text-[var(--color-muted)]">{c.type.toUpperCase()}</p>
-                  <p className="text-xs text-[var(--color-muted)]">
-                    {c.source?.name ? `Provider: ${c.source.name}` : "Provider: Unassigned"}
-                  </p>
+                  <p className="text-xs text-[var(--color-muted)]">Provider: {c.source?.name ?? "Unassigned"}</p>
                 </div>
-              ),
-            },
-            {
-              key: "provider",
-              header: "Provider",
-              render: (c: SerializedConnector) => (
-                <span className="text-sm text-[var(--color-ink)]">
-                  {c.source?.name ?? "Unassigned"}
-                </span>
               ),
             },
             {
@@ -213,9 +205,9 @@ export function ConnectorsPageContent({
               header: "Status",
               render: (c: SerializedConnector) => (
                 <div className="flex flex-col gap-1">
-                  <Badge label={STATUS_LABELS[c.status] ?? c.status} toneKey={c.status === "ACTIVE" ? "HEALTHY" : c.status === "ERROR" ? "LOST" : "INACTIVE"} />
-                  {c.isRunning && <Badge label="Running" toneKey="PENDING" />}
-                  {!c.enabled && <span className="text-xs text-[var(--color-muted)]">Disabled</span>}
+                  <Badge label={STATUS_LABELS[c.status] ?? c.status} toneKey={c.status === "ACTIVE" ? "HEALTHY" : c.status === "ERROR" ? "ERROR" : "INACTIVE"} />
+                  {c.isRunning && <Badge label="Running" toneKey="SALES" />}
+                  <Badge label={c.enabled ? "Enabled" : "Disabled"} toneKey={c.enabled ? "HEALTHY" : "MEDIUM"} />
                 </div>
               ),
             },
@@ -223,10 +215,7 @@ export function ConnectorsPageContent({
               key: "health",
               header: "Health",
               render: (c: SerializedConnector) => (
-                <Badge
-                  label={HEALTH_LABELS[c.healthStatus] ?? c.healthStatus}
-                  toneKey={c.healthStatus === "HEALTHY" ? "CONVERTED" : c.healthStatus === "WARNING" ? "ON_HOLD" : "LOST"}
-                />
+                  <Badge label={HEALTH_LABELS[c.healthStatus] ?? c.healthStatus} toneKey={c.healthStatus} />
               ),
             },
             {
@@ -258,7 +247,7 @@ export function ConnectorsPageContent({
                 <div>
                   <DateTimeCell value={c.lastFailureAt} fallback="-" />
                   {c.lastError && (
-                    <p className="text-xs text-red-600 mt-0.5 max-w-[200px] truncate" title={c.lastError}>
+                    <p className="mt-0.5 max-w-[200px] truncate text-xs text-[var(--color-danger)]" title={c.lastError}>
                       {c.lastError}
                     </p>
                   )}
@@ -308,15 +297,15 @@ export function ConnectorsPageContent({
                     <IconActionButton
                       icon={Trash2}
                       label="Delete connector"
-                      onClick={() => handleDelete(c)}
+                      onClick={() => setDeleteConnector(c)}
                     />
                   </div>
                   {testResult?.connectorId === c.id && (
                     <p
-                      className={`text-xs mt-1 px-2 py-1 rounded ${
+                      className={`mt-1 rounded px-2 py-1 text-xs ${
                         testResult.success
-                          ? "bg-green-50 text-green-700"
-                          : "bg-red-50 text-red-700"
+                          ? "bg-[var(--color-success)]/10 text-[var(--color-success)]"
+                          : "bg-[var(--color-danger)]/10 text-[var(--color-danger)]"
                       }`}
                     >
                       {testResult.success ? "\u2713 " : "\u2717 "}
@@ -345,6 +334,15 @@ export function ConnectorsPageContent({
       <SyncHistoryModal
         connectorId={historyConnectorId}
         onClose={() => setHistoryConnectorId(null)}
+      />
+      <ConfirmDialog
+        open={!!deleteConnector}
+        title="Delete this connector?"
+        description={`“${deleteConnector?.name ?? ""}” and its sync history will be permanently deleted.`}
+        confirmLabel="Delete connector"
+        isLoading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => { if (!deleting) setDeleteConnector(null); }}
       />
     </>
   );

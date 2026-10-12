@@ -63,12 +63,16 @@ export function SalesTableControls({
   initial,
   pagination,
   leadSources,
+  assignableUsers,
+  adminMode = false,
   actions,
   startTransition,
 }: {
   initial: Partial<TableQueryState>;
-  pagination?: { page: number; pageSize?: number; total?: number; totalPages: number };
+  pagination?: { page: number; pageSize: number; total: number; totalPages: number };
   leadSources: Array<{ id: string; name: string }>;
+  assignableUsers?: Array<{ id: string; name: string }>;
+  adminMode?: boolean;
   actions?: React.ReactNode;
   startTransition?: TransitionStartFunction;
 }) {
@@ -100,6 +104,11 @@ export function SalesTableControls({
   }, [filterOpen]);
 
   const followUp = query.filters.followUp ?? "";
+  const assignedQuickFilter = query.filters.assignedUserId === "unassigned"
+    ? "unassigned"
+    : query.filters.assignedUserId
+      ? "__assigned__"
+      : "";
 
   const handleFollowUpChange = (value: string) => {
     if (value) {
@@ -170,6 +179,18 @@ export function SalesTableControls({
       const opt = leadSources.find((s) => s.id === query.filters.source);
       labels.push({ key: "source", label: `Source: ${opt?.name ?? query.filters.source}` });
     }
+    if (query.filters.assignedUserId === "unassigned") {
+      labels.push({ key: "assignedUserId", label: "Unassigned" });
+    } else if (query.filters.assignedUserId) {
+      const user = assignableUsers?.find((item) => item.id === query.filters.assignedUserId);
+      labels.push({ key: "assignedUserId", label: `Assigned: ${user?.name ?? query.filters.assignedUserId}` });
+    }
+    if (adminMode && query.filters.followUp) {
+      const followUpLabel = query.filters.followUp === "new"
+        ? "No Follow-up Yet"
+        : query.filters.followUp[0].toUpperCase() + query.filters.followUp.slice(1);
+      labels.push({ key: "followUp", label: `Follow-up: ${followUpLabel}` });
+    }
     if (query.filters.archived === "true") {
       labels.push({ key: "archived", label: "Showing archived" });
     }
@@ -209,7 +230,7 @@ export function SalesTableControls({
       labels.push({ key: "activityInterest", label: `Interest: ${opt?.label ?? query.filters.activityInterest}` });
     }
     return labels;
-  }, [query.filters, query.dateFrom, query.dateTo, leadSources, hydrated]);
+  }, [query.filters, query.dateFrom, query.dateTo, leadSources, assignableUsers, adminMode, hydrated]);
 
   const resetAll = () => {
     query.update({
@@ -247,14 +268,15 @@ export function SalesTableControls({
   return (
     <div className="space-y-4">
       {/* Search + Filter row */}
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="flex-1 min-w-0">
           <SearchToolbar
             value={query.search}
             onChange={(value) => query.update({ search: value })}
           />
         </div>
-        {actions && <div className="shrink-0">{actions}</div>}
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         <div className="relative shrink-0">
           <button
             ref={triggerRef}
@@ -462,12 +484,42 @@ export function SalesTableControls({
                   </Select>
                 </div>
 
-                {/* FROM / TO (Only when activityDate === "custom") */}
-                {query.filters.activityDate === "custom" && (
+                {adminMode && <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                    Assigned To
+                  </p>
+                  <Select
+                    value={query.filters.assignedUserId ?? ""}
+                    onChange={(e) => setFilter("assignedUserId", e.target.value)}
+                  >
+                    <option value="">All Salespeople</option>
+                    <option value="unassigned">Unassigned</option>
+                    {assignableUsers?.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+                  </Select>
+                </div>}
+
+                {adminMode && <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                    Follow-up
+                  </p>
+                  <Select
+                    value={followUp}
+                    onChange={(e) => setFilter("followUp", e.target.value)}
+                  >
+                    <option value="">Any Follow-up</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="today">Today</option>
+                    <option value="upcoming">Upcoming</option>
+                    <option value="new">No Follow-up Yet</option>
+                  </Select>
+                </div>}
+
+                {/* Admin can also filter lead creation dates; custom activity dates use the same server range. */}
+                {(adminMode || query.filters.activityDate === "custom") && (
                   <>
                     <div>
                       <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
-                        From
+                        {adminMode && query.filters.activityDate !== "custom" ? "Created From" : "From"}
                       </p>
                       <input
                         type="date"
@@ -479,7 +531,7 @@ export function SalesTableControls({
 
                     <div>
                       <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
-                        To
+                        {adminMode && query.filters.activityDate !== "custom" ? "Created To" : "To"}
                       </p>
                       <input
                         type="date"
@@ -494,39 +546,35 @@ export function SalesTableControls({
             </div>
           )}
         </div>
+        </div>
       </div>
 
       {/* Quick-filter row: SegmentedControl + Active Filters + Pagination */}
+      <div className="space-y-2">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <SegmentedControl
+        <div className="flex flex-wrap items-center gap-3">
+          {adminMode && <SegmentedControl
+            ariaLabel="Lead assignment"
+            options={[{ value: "", label: "All Leads" }, { value: "unassigned", label: "Unassigned" }]}
+            value={assignedQuickFilter}
+            onChange={(value) => {
+              const next = { ...query.filters };
+              if (value) next.assignedUserId = value;
+              else delete next.assignedUserId;
+              query.update({ filters: next, page: 1 });
+            }}
+          />}
+          {!adminMode && <SegmentedControl
+            ariaLabel="Follow-up date"
             options={FOLLOW_UP_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
             value={followUp}
             onChange={handleFollowUpChange}
-          />
-          {activeFilterLabels.length > 0 && (
-            <>
-              <div className="h-5 w-px bg-[var(--color-border)] shrink-0" />
-              <div className="flex items-center gap-2 flex-wrap min-w-0">
-                {activeFilterLabels.map((filter) => (
-                  <FilterChip
-                    key={filter.key}
-                    label={filter.label}
-                    onRemove={() => removeFilter(filter.key)}
-                  />
-                ))}
-                <Button variant="ghost" size="sm" onClick={resetAll} className="shrink-0">
-                  <RotateCcw size={12} />
-                  Reset
-                </Button>
-              </div>
-            </>
-          )}
+          />}
         </div>
-        {pagination && pagination.total && pagination.pageSize && (
+        {pagination && (
           <div className="flex items-center gap-3">
             <span className="text-sm text-[var(--color-muted)] whitespace-nowrap">
-              {`Showing ${(pagination.page - 1) * pagination.pageSize + 1}\u2013${Math.min(pagination.page * pagination.pageSize, pagination.total)} of ${pagination.total}`}
+              {pagination.total === 0 ? "Showing 0 of 0" : `Showing ${(pagination.page - 1) * pagination.pageSize + 1}\u2013${Math.min(pagination.page * pagination.pageSize, pagination.total)} of ${pagination.total}`}
             </span>
             {pagination.totalPages > 1 && (
               <div className="flex items-center gap-1.5">
@@ -559,6 +607,13 @@ export function SalesTableControls({
             )}
           </div>
         )}
+      </div>
+      {activeFilterLabels.length > 0 && <div className="flex flex-wrap items-center gap-2">
+        {activeFilterLabels.map((filter) => <FilterChip key={filter.key} label={filter.label} onRemove={() => removeFilter(filter.key)} />)}
+        <Button variant="ghost" size="sm" onClick={resetAll} className="shrink-0">
+          <RotateCcw size={12} /> Reset
+        </Button>
+      </div>}
       </div>
     </div>
   );

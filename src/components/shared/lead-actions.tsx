@@ -8,6 +8,7 @@ import { LeadActionPanel } from "@/components/sales/lead-action-panel";
 import { LeadDetailsModal } from "@/components/sales/lead-details-modal";
 import { toast } from "sonner";
 import axios from "axios";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type Lead = { id: string; name: string; status: string; priority: string; assignedUser?: { name: string } | null };
 type User = { id: string; name: string };
@@ -37,7 +38,23 @@ export function LeadActions({
   const [saving, setSaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      await axios.delete(`/api/leads/${lead.id}`);
+      toast.success("Lead deleted");
+      setConfirmDeleteOpen(false);
+      router.refresh();
+    } catch {
+      setError("Failed to delete lead.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <>
@@ -54,18 +71,7 @@ export function LeadActions({
             setArchiving(false);
           }
         }}
-        onDelete={async () => {
-          if (!confirm("Delete this lead permanently?")) return;
-          setDeleting(true);
-          try {
-            await axios.delete(`/api/leads/${lead.id}`);
-            toast.success("Lead deleted");
-            router.refresh();
-          } catch {
-            setError("Failed to delete lead.");
-            setDeleting(false);
-          }
-        }}
+        onDelete={() => setConfirmDeleteOpen(true)}
         isArchiving={archiving}
         isDeleting={deleting}
         canDelete={canDelete}
@@ -101,6 +107,15 @@ export function LeadActions({
           onUpdate={() => { if (onUpdate) onUpdate(); }}
         />
       )}
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Delete this lead?"
+        description="This permanently deletes the lead and its CRM record."
+        confirmLabel="Delete lead"
+        isLoading={deleting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
     </>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
-import { Pagination } from "@/components/ui/pagination";
+import { useState, useRef, useEffect, useMemo, type ReactNode, type TransitionStartFunction } from "react";
 import { SearchToolbar } from "@/components/shared/search-toolbar";
+import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { ActiveFilters } from "@/components/shared/active-filters";
 import { Filter, X } from "lucide-react";
@@ -28,12 +28,14 @@ export function UserTableControls({
   initial,
   pagination,
   actions,
+  startTransition,
 }: {
   initial: Partial<TableQueryState>;
-  pagination?: { page: number; totalPages: number };
+  pagination?: { page: number; pageSize: number; total: number; totalPages: number };
   actions?: ReactNode;
+  startTransition?: TransitionStartFunction;
 }) {
-  const query = useTableQuery(initial);
+  const query = useTableQuery(initial, 300, startTransition);
   const [filterOpen, setFilterOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -132,7 +134,7 @@ export function UserTableControls({
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="flex-1 min-w-0">
           <SearchToolbar
             value={query.search}
@@ -140,15 +142,14 @@ export function UserTableControls({
             placeholder="Search users..."
           />
         </div>
-        {actions && (
-          <div className="shrink-0">{actions}</div>
-        )}
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         <div className="relative shrink-0">
           <button
             ref={triggerRef}
             type="button"
             onClick={() => setFilterOpen(!filterOpen)}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 h-10"
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-4 py-1.5 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 h-10"
           >
             <Filter size={16} />
             Filters
@@ -273,21 +274,22 @@ export function UserTableControls({
             </div>
           )}
         </div>
+        </div>
       </div>
 
-      <ActiveFilters
-        filters={activeFilterLabels}
-        onRemove={removeFilter}
-        onReset={resetAll}
-      />
-
-      {pagination && (
-        <Pagination
-          page={pagination.page}
-          totalPages={pagination.totalPages}
-          onChange={(page) => query.update({ page })}
-        />
-      )}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <ActiveFilters filters={activeFilterLabels} onRemove={removeFilter} onReset={resetAll} />
+        {pagination && <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+          <span className="text-sm text-[var(--color-muted)] tabular-nums">
+            {pagination.total === 0 ? "Showing 0 of 0" : `Showing ${(pagination.page - 1) * pagination.pageSize + 1}–${Math.min(pagination.page * pagination.pageSize, pagination.total)} of ${pagination.total}`}
+          </span>
+          {pagination.totalPages > 1 && <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" disabled={pagination.page <= 1} onClick={() => query.update({ page: pagination.page - 1 })}>Previous</Button>
+            <span className="text-sm text-[var(--color-muted)] tabular-nums">{pagination.page} / {pagination.totalPages}</span>
+            <Button variant="secondary" size="sm" disabled={pagination.page >= pagination.totalPages} onClick={() => query.update({ page: pagination.page + 1 })}>Next</Button>
+          </div>}
+        </div>}
+      </div>
     </div>
   );
 }

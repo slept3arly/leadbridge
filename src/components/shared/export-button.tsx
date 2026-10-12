@@ -2,6 +2,7 @@
 
 import { Download } from "lucide-react";
 import { auditExportParams } from "@/lib/audit-export-params";
+import { Button } from "@/components/ui/button";
 
 export function ExportButton({ type, label, params, iconOnly }: { type: string; label?: string; params?: Record<string, string>; iconOnly?: boolean }) {
   const handleExport = () => {
@@ -15,26 +16,30 @@ export function ExportButton({ type, label, params, iconOnly }: { type: string; 
 
   if (iconOnly) {
     return (
-      <button
+      <Button
         type="button"
+        variant="secondary"
+        size="sm"
         onClick={handleExport}
         title="Export"
         aria-label="Export leads"
-        className="inline-flex items-center justify-center rounded-xl border border-[var(--color-border)] bg-white text-[var(--color-ink)] transition hover:bg-slate-50 hover:text-[var(--color-ink)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 h-9 w-9 p-1.5"
+        className="h-9 w-9 p-1.5"
       >
         <Download size={16} aria-hidden="true" />
-      </button>
+      </Button>
     );
   }
 
   return (
-    <button
+    <Button
       type="button"
+      variant="secondary"
+      size="sm"
       onClick={handleExport}
-      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 hover:text-[var(--color-ink)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 h-9"
+      className="h-9"
     >
       <Download size={16} />
       {label ?? `Export ${type}`}
-    </button>
+    </Button>
   );
 }

@@ -1,7 +1,7 @@
 # LeadBridge Frontend
 
 > **Status:** Canonical
-> **Last verified:** 2026-09-17
+> **Last verified:** 2026-10-09
 > **Source of truth:** `src/app/`, `src/components/`, `src/hooks/`
 
 ## Rendering Model
@@ -27,6 +27,10 @@
 | `/sales/my-leads` | `src/app/(dashboard)/sales/my-leads/page.tsx` | My Leads list |
 | `/sales/tasks` | `src/app/(dashboard)/sales/tasks/page.tsx` | Tasks / Attention Center |
 | `/sales/profile` | `src/app/(dashboard)/sales/profile/page.tsx` | User profile |
+
+The Admin dashboard presents CRM-wide lead totals, status and priority breakdowns, assignment and pending follow-up workload, daily sales activity, salesperson performance, connector status and recent syncs, and recent activity. Its metric cards and tables reuse the shared `KpiCard`, `Badge`, and `DataTable` components.
+
+The Admin Leads page lists CRM-wide leads with URL-backed search, assignment, status, priority, source, archive, activity, follow-up, date, sort, and pagination filters. It reuses the Sales leads filter controls and shared compact table styling, with Admin assignment filters and quick links enabled. Rows open the shared lead details workflow for activity and follow-up management; create/edit, archive/restore, delete, and export use existing API routes and services. Archived leads are shown by selecting the archived filter, while the default list excludes them.
 
 ## Loading States (6)
 
@@ -126,14 +130,21 @@ Defined in `src/app/globals.css`:
 
 ```css
 :root {
-  --color-surface: #f8fafc;   /* Layer 1: Canvas */
-  --color-panel: #ffffff;      /* Layer 2: Cards */
-  --color-border: #e2e8f0;    /* Borders */
-  --color-ink: #0f172a;       /* Primary text */
-  --color-muted: #64748b;     /* Secondary text */
-  --color-brand: #2563eb;     /* Brand accent */
+  --color-ink: #172033;            /* Primary text */
+  --color-brand: #315cde;          /* Primary actions and focus */
+  --color-brand-strong: #203b8f;   /* Brand hover */
+  --color-surface: #eef1f6;        /* Page background */
+  --color-surface-raised: #e2e8f0; /* Raised surfaces */
+  --color-panel: #ffffff;          /* Cards and panels */
+  --color-muted: #6b7485;          /* Secondary text */
+  --color-border: #d8deea;         /* Borders */
+  --color-success: #198754;        /* Success state */
+  --color-warning: #dd8c1d;        /* Warning state */
+  --color-danger: #d64545;         /* Error and destructive state */
 }
 ```
+
+These values are defined in `src/app/globals.css` and exposed through Tailwind CSS v4's `@theme` block.
 
 ## Custom Hooks (`src/hooks/`)
 

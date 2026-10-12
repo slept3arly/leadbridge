@@ -1,43 +1,167 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, CardEmptyState } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CardEmptyState } from "@/components/ui/card";
+import { DataTable, type Column } from "@/components/shared/data-table";
+import { KpiCard } from "@/components/shared/kpi-card";
 import { formatDateTime, formatTimeAgo } from "@/lib/utils";
 
+type StatusMetric = { status: string; count: number };
+type PriorityMetric = { priority: string; count: number };
+type RecentActivity = {
+  id: string;
+  type: string;
+  message: string;
+  actorName: string;
+  leadId: string;
+  leadName: string;
+  leadNumber: string;
+  createdAt: string;
+};
+type RecentSync = {
+  id: string;
+  connectorName: string;
+  status: string;
+  recordsSeen: number;
+  recordsCreated: number;
+  startedAt: string;
+  completedAt: string | null;
+};
+type SalespersonPerformance = {
+  userId: string;
+  name: string;
+  assignedLeads: number;
+  workedToday: number;
+  calls: number;
+  whatsapp: number;
+  responses: number;
+};
+
 interface DashboardData {
-  cards: { totalLeads: number; activeLeads: number; newToday: number; won: number; lost: number; unassigned: number };
-  charts: {
-    statusBreakdown: { status: string; count: number }[];
-    leadSources: { byProvider: { providerId: string | null; providerName: string; count: number }[]; byConnector: { connectorId: string | null; connectorName: string; connectorType: string; count: number }[] };
-    salespersonLoad: { userId: string | null; userName: string; leadCount: number }[];
-  };
-  connectorHealth: { id: string; name: string; type: string; healthStatus: string; status: string; isRunning: boolean; enabled: boolean }[];
-  recentActivity: { id: string; type: string; message: string; actorName: string; leadId: string; leadName: string; leadNumber: string; createdAt: string }[];
-  recentSyncs: { id: string; connectorName: string; status: string; recordsSeen: number; recordsCreated: number; startedAt: string; completedAt: string | null }[];
-  renderedAt: string;
-  pending: { parserRequests: number; unmatchedEmails: number };
-  insights: {
-    newToday: number;
-    trend: number;
+  cards: { totalLeads: number; newToday: number; convertedLeads: number };
+  charts: { statusBreakdown: StatusMetric[]; priorityBreakdown: PriorityMetric[] };
+  workload: {
+    assigned: number;
     unassigned: number;
-    inactiveConnectors: number;
-    recentFailedSyncs: number;
-    duplicateEmails: number;
-    inactiveUsers: number;
-    unhealthyConnectors: number;
+    activeSalesUsers: number;
+    pendingFollowUps: number;
+    overdueFollowUps: number;
   };
+  activity: { workedLeads: number; callsLogged: number; whatsappLogged: number; responseEntries: number };
+  connectorHealth: { id: string; name: string; type: string; healthStatus: string; status: string; isRunning: boolean; enabled: boolean }[];
+  recentActivity: RecentActivity[];
+  recentSyncs: RecentSync[];
+  salespersonPerformance: SalespersonPerformance[];
+  renderedAt: string;
 }
 
-const STATUS_BADGE_MAP: Record<string, string> = {
-  NEW: "NEW", ON_HOLD: "ON_HOLD", CONVERTED: "CONVERTED", LOST: "LOST", SPAM: "SPAM",
+const STATUS_LABELS: Record<string, string> = {
+  NEW: "New",
+  ON_HOLD: "On Hold",
+  CONVERTED: "Converted",
+  LOST: "Lost",
+  SPAM: "Spam",
 };
+
+const PRIORITY_LABELS: Record<string, string> = {
+  URGENT: "Urgent",
+  HIGH: "High",
+  MEDIUM: "Medium",
+  LOW: "Low",
+};
+
+const ACTIVITY_COLUMNS: Column<RecentActivity>[] = [
+  {
+    key: "time",
+    header: "Time",
+    className: "whitespace-nowrap text-xs text-[var(--color-muted)]",
+    render: (row) => formatTimeAgo(row.createdAt),
+  },
+  {
+    key: "actor",
+    header: "Actor",
+    className: "font-medium text-[var(--color-ink)]",
+    render: (row) => row.actorName,
+  },
+  {
+    key: "activity",
+    header: "Activity",
+    render: (row) => <span className="text-[var(--color-ink)]">{row.message}</span>,
+  },
+  {
+    key: "lead",
+    header: "Lead",
+    className: "text-[var(--color-muted)]",
+    render: (row) => `${row.leadName}${row.leadNumber ? ` (#${row.leadNumber})` : ""}`,
+  },
+];
+
+const SYNC_COLUMNS: Column<RecentSync>[] = [
+  { key: "connector", header: "Connector", className: "font-medium", render: (row) => row.connectorName },
+  { key: "status", header: "Status", render: (row) => <Badge label={row.status} /> },
+  { key: "seen", header: "Records Seen", render: (row) => row.recordsSeen },
+  { key: "created", header: "Leads Added", render: (row) => row.recordsCreated },
+  {
+    key: "started",
+    header: "Started",
+    className: "whitespace-nowrap text-xs text-[var(--color-muted)]",
+    render: (row) => formatDateTime(row.startedAt),
+  },
+];
+
+const SALESPERFORMANCE_COLUMNS: Column<SalespersonPerformance>[] = [
+  { key: "salesperson", header: "Salesperson", className: "whitespace-nowrap font-medium text-[var(--color-ink)]", render: (row) => row.name },
+  { key: "assignedLeads", header: "Assigned Leads", className: "whitespace-nowrap", render: (row) => row.assignedLeads },
+  { key: "workedToday", header: "Worked Today", className: "whitespace-nowrap", render: (row) => row.workedToday },
+  { key: "calls", header: "Calls", className: "whitespace-nowrap", render: (row) => row.calls },
+  { key: "whatsapp", header: "WhatsApp", className: "whitespace-nowrap", render: (row) => row.whatsapp },
+  { key: "responses", header: "Responses", className: "whitespace-nowrap", render: (row) => row.responses },
+  {
+    key: "viewLeads",
+    header: "View Leads",
+    className: "whitespace-nowrap",
+    render: (row) => (
+      <Link
+        href={`/admin/leads?filter.assignedUserId=${encodeURIComponent(row.userId)}`}
+        className="font-medium text-[var(--color-brand)] hover:underline"
+      >
+        View Leads
+      </Link>
+    ),
+  },
+];
+
+function SectionHeading({ title, description, href, linkLabel }: {
+  title: string;
+  description?: string;
+  href?: string;
+  linkLabel?: string;
+}) {
+  return (
+    <div className="mb-4 flex items-start justify-between gap-4">
+      <div>
+        <h2 className="text-base font-semibold text-[var(--color-ink)]">{title}</h2>
+        {description && <p className="mt-1 text-sm text-[var(--color-muted)]">{description}</p>}
+      </div>
+      {href && linkLabel && (
+        <Link href={href} className="shrink-0 text-xs font-medium text-[var(--color-brand)] hover:underline">
+          {linkLabel}
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function healthLabel(status: string) {
+  if (status === "HEALTHY") return "Healthy";
+  if (status === "WARNING") return "Needs attention";
+  return "Unavailable";
+}
 
 export function AdminDashboardClient({ data }: { data: DashboardData }) {
   const [hydrated, setHydrated] = useState(false);
-  const i = data.insights;
   const todayISO = data.renderedAt.slice(0, 10);
 
   useEffect(() => {
@@ -45,319 +169,149 @@ export function AdminDashboardClient({ data }: { data: DashboardData }) {
     return () => window.clearTimeout(timer);
   }, []);
 
+  const recentActivityColumns = hydrated
+    ? ACTIVITY_COLUMNS
+    : ACTIVITY_COLUMNS.map((column) => column.key === "time"
+      ? { ...column, render: (row: RecentActivity) => formatTimeAgo(row.createdAt, "UTC", data.renderedAt) }
+      : column);
+  const recentSyncColumns = hydrated
+    ? SYNC_COLUMNS
+    : SYNC_COLUMNS.map((column) => column.key === "started"
+      ? { ...column, render: (row: RecentSync) => formatDateTime(row.startedAt, "-", "UTC") }
+      : column);
+
   return (
     <div className="space-y-8">
-
-      {/* Insights */}
       <section>
-        <h2 className="mb-4 text-base font-semibold text-[var(--color-ink)]">Insights</h2>
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-          <InsightCard
-            title="Today's New Leads"
-            count={i.newToday}
-            description={i.trend > 0 ? `+${i.trend} vs yesterday` : i.trend < 0 ? `${i.trend} vs yesterday` : "Same as yesterday"}
-            href={`/admin/leads?dateFrom=${todayISO}`}
-            highlight={i.newToday > 0}
-          />
-          <InsightCard
-            title="Unassigned Leads"
-            count={i.unassigned}
-            description="Requiring sales assignment"
-            href="/admin/leads?filter.assignedUserId=unassigned"
-            highlight={i.unassigned > 0}
-          />
-          <InsightCard
-            title="Failed Syncs"
-            count={i.recentFailedSyncs}
-            description="In last 24 hours"
-            href={i.recentFailedSyncs > 0 ? "/admin/connectors" : undefined}
-            highlight={i.recentFailedSyncs > 0}
-          />
-          <InsightCard
-            title="Unhealthy Connectors"
-            count={i.unhealthyConnectors}
-            description="Requiring attention"
-            href={i.unhealthyConnectors > 0 ? "/admin/connectors" : undefined}
-            highlight={i.unhealthyConnectors > 0}
-          />
-          <InsightCard
-            title="Inactive Connectors"
-            count={i.inactiveConnectors}
-            description="Disabled in settings"
-            href={i.inactiveConnectors > 0 ? "/admin/connectors" : undefined}
-            highlight={i.inactiveConnectors > 0}
-          />
-          <InsightCard
-            title="Parser Requests"
-            count={data.pending.parserRequests}
-            description="Awaiting parser mapping"
-            href={data.pending.parserRequests > 0 ? "/admin/providers" : undefined}
-            highlight={data.pending.parserRequests > 0}
-          />
-          <InsightCard
-            title="Unmatched Emails"
-            count={data.pending.unmatchedEmails}
-            description="Requiring manual review"
-            href={data.pending.unmatchedEmails > 0 ? "/admin/providers" : undefined}
-            highlight={data.pending.unmatchedEmails > 0}
-          />
-          <InsightCard
-            title="Inactive Users"
-            count={i.inactiveUsers}
-            description="Accounts disabled"
-            href={i.inactiveUsers > 0 ? "/admin/users" : undefined}
-            highlight={i.inactiveUsers > 0}
-          />
+        <SectionHeading title="Lead Overview" description="Lead totals for the whole CRM." />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <KpiCard title="Total Leads" count={data.cards.totalLeads} description="All leads in the CRM" href="/admin/leads" />
+          <KpiCard title="New Leads Today" count={data.cards.newToday} description="Leads added today" href={`/admin/leads?dateFrom=${todayISO}`} />
+          <KpiCard title="Converted Leads" count={data.cards.convertedLeads} description="Leads marked as converted" href="/admin/leads?filter.status=CONVERTED" />
         </div>
       </section>
 
-      {/* Pipeline */}
       <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-[var(--color-ink)]">Pipeline</h2>
-          <Link href="/admin/leads" className="text-xs font-medium text-[var(--color-brand)] hover:underline">View All Leads</Link>
+        <SectionHeading
+          title="Lead Status and Priority"
+          description="Counts include archived leads."
+          href="/admin/leads"
+          linkLabel="View All Leads"
+        />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {data.charts.statusBreakdown.map(({ status, count }) => (
+            <KpiCard
+              key={status}
+              title={STATUS_LABELS[status] ?? status}
+              count={count}
+              description={status === "NEW"
+                ? "Leads not yet moved to another status"
+                : status === "ON_HOLD"
+                  ? "Leads waiting for a decision"
+                  : `Leads marked ${STATUS_LABELS[status]?.toLowerCase() ?? status.toLowerCase()}`}
+              href={`/admin/leads?filter.status=${status}`}
+            />
+          ))}
         </div>
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-          {data.charts.statusBreakdown.map((r) => (
-            <Link
-              key={r.status}
-              href={`/admin/leads?filter.status=${r.status}`}
-              className="block"
-            >
-              <Card className="cursor-pointer transition hover:shadow-md p-4">
-                <div className="flex items-center justify-between">
-                  <Badge label={STATUS_BADGE_MAP[r.status] ?? r.status} />
-                  <span className="text-2xl font-semibold text-[var(--color-ink)]">{r.count}</span>
-                </div>
-              </Card>
-            </Link>
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {data.charts.priorityBreakdown.map(({ priority, count }) => (
+            <KpiCard
+              key={priority}
+              title={PRIORITY_LABELS[priority] ?? priority}
+              count={count}
+              description={priority === "URGENT"
+                ? "Leads needing quick action"
+                : `${PRIORITY_LABELS[priority]} priority leads`}
+              href={`/admin/leads?filter.priority=${priority}`}
+            />
           ))}
         </div>
       </section>
 
-      {/* Admin Work Queue */}
       <section>
-        <h2 className="text-base font-semibold text-[var(--color-ink)]">Needs Attention</h2>
-        <p className="mb-4 mt-1 text-sm text-[var(--color-muted)]">Items that may need an admin review or follow-up.</p>
-        <Card className="p-0 overflow-hidden">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)] bg-slate-50/80">
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Item</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Count</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Description</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <WorkQueueRow
-                label="Leads Awaiting Assignment"
-                count={i.unassigned}
-                description="Not yet assigned to a salesperson"
-                href="/admin/leads?filter.assignedUserId=unassigned"
-              />
-              <WorkQueueRow
-                label="Failed Connector Syncs"
-                count={i.recentFailedSyncs}
-                description="Sync runs that failed in the last 24h"
-                href={i.recentFailedSyncs > 0 ? "/admin/connectors" : undefined}
-              />
-              <WorkQueueRow
-                label="Parser Requests"
-                count={data.pending.parserRequests}
-                description="Incoming data awaiting parser mapping"
-                href={data.pending.parserRequests > 0 ? "/admin/providers" : undefined}
-              />
-              <WorkQueueRow
-                label="Unmatched Emails"
-                count={data.pending.unmatchedEmails}
-                description="Emails not linked to any lead"
-                href={data.pending.unmatchedEmails > 0 ? "/admin/providers" : undefined}
-              />
-              <WorkQueueRow
-                label="Unhealthy Connectors"
-                count={i.unhealthyConnectors}
-                description="Connectors with non-healthy status"
-                href={i.unhealthyConnectors > 0 ? "/admin/connectors" : undefined}
-              />
-              <WorkQueueRow
-                label="Inactive Users"
-                count={i.inactiveUsers}
-                description="User accounts currently disabled"
-                href={i.inactiveUsers > 0 ? "/admin/users" : undefined}
-              />
-            </tbody>
-          </table>
-        </Card>
+        <SectionHeading title="Lead Assignments and Follow-ups" description="Assignment and follow-up counts for the whole CRM." />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <KpiCard title="Assigned Leads" count={data.workload.assigned} description="Leads assigned to a salesperson" href="/admin/leads" />
+          <KpiCard title="Unassigned Leads" count={data.workload.unassigned} description="Leads waiting for assignment" href="/admin/leads?filter.assignedUserId=unassigned" />
+          <KpiCard title="Salespeople" count={data.workload.activeSalesUsers} description="Active sales accounts" href="/admin/users" />
+          <KpiCard title="Pending Follow-ups" count={data.workload.pendingFollowUps} description="Follow-ups not completed" href="/admin/leads" />
+          <KpiCard title="Overdue Follow-ups" count={data.workload.overdueFollowUps} description="Follow-ups past their due time" href="/admin/leads" />
+        </div>
       </section>
 
-      {/* Connector Health */}
       <section>
-        <div className="mb-1 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-[var(--color-ink)]">Sync Health</h2>
-          {data.connectorHealth.length > 0 && (
-            <Link href="/admin/connectors" className="text-xs font-medium text-[var(--color-brand)] hover:underline">View All</Link>
-          )}
+        <SectionHeading title="Sales Activity Today" description="Activity for today across the CRM. Worked Leads counts different leads; the other cards count records." />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <KpiCard title="Leads Worked" count={data.activity.workedLeads} description="Different leads contacted today" />
+          <KpiCard title="Calls" count={data.activity.callsLogged} description="Calls recorded today" />
+          <KpiCard title="WhatsApp" count={data.activity.whatsappLogged} description="WhatsApp activity recorded today" />
+          <KpiCard title="Responses" count={data.activity.responseEntries} description="Calls answered or WhatsApp replies" />
         </div>
-        <p className="mb-4 text-sm text-[var(--color-muted)]">Whether lead sources are ready to retrieve new records.</p>
+      </section>
+
+      <section>
+        <SectionHeading title="Salesperson Performance" description="Lead ownership and activity for each active salesperson today." />
+        <DataTable
+          rows={data.salespersonPerformance}
+          columns={SALESPERFORMANCE_COLUMNS}
+          rowKey={(row) => row.userId}
+          emptyTitle="No active salespeople"
+          emptyDescription="Active sales accounts will appear here."
+        />
+      </section>
+
+      <section>
+        <SectionHeading
+          title="Connectors and Recent Syncs"
+          description="Connector status and the latest sync attempts."
+          href="/admin/connectors"
+          linkLabel="View Connectors"
+        />
         {data.connectorHealth.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {data.connectorHealth.map((c) => (
-              <Link key={c.id} href="/admin/connectors" className="block">
-                <Card className="cursor-pointer transition hover:shadow-md p-4">
-                  <div className="flex items-center justify-between">
+          <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.connectorHealth.map((connector) => (
+              <Link key={connector.id} href="/admin/connectors" className="block">
+                <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-xs transition hover:shadow-md">
+                  <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-[var(--color-ink)]">{c.name}</p>
-                      <p className="text-xs text-[var(--color-muted)]">{c.type}</p>
+                      <p className="text-sm font-semibold text-[var(--color-ink)]">{connector.name}</p>
+                      <p className="text-xs text-[var(--color-muted)]">{connector.type}</p>
                     </div>
-                    <HealthBadge status={c.healthStatus} />
+                    <Badge label={healthLabel(connector.healthStatus)} toneKey={connector.healthStatus} />
                   </div>
                   <p className="mt-2 text-xs text-[var(--color-muted)]">
-                    {c.isRunning ? "Running" : c.enabled ? "Enabled" : "Disabled"}
+                    {connector.isRunning ? "Running" : connector.enabled ? "Enabled" : "Disabled"}
+                    {` · ${connector.status}`}
                   </p>
-                </Card>
+                </div>
               </Link>
             ))}
           </div>
         ) : (
-          <CardEmptyState description="No connectors configured." />
+          <div className="mb-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)]">
+            <CardEmptyState description="No connectors configured." />
+          </div>
         )}
+        <h3 className="mb-3 text-sm font-semibold text-[var(--color-ink)]">Latest Syncs</h3>
+        <DataTable
+          rows={data.recentSyncs}
+          columns={recentSyncColumns}
+          rowKey={(row) => row.id}
+          emptyTitle="No recent syncs"
+          emptyDescription="Connector sync attempts will appear here."
+        />
       </section>
 
-      {/* Recent Activity */}
       <section>
-        <h2 className="mb-4 text-base font-semibold text-[var(--color-ink)]">Recent Activity</h2>
-        {data.recentActivity.length > 0 ? (
-          <Card className="p-0 overflow-hidden">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] bg-slate-50/80">
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Time</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Actor</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Activity</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Lead</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.recentActivity.map((a) => (
-                  <tr key={a.id} className="border-b border-[var(--color-border)] transition hover:bg-slate-50/50 last:border-b-0">
-                    <td className="px-4 py-3 text-xs text-[var(--color-muted)] whitespace-nowrap">{formatTimeAgo(a.createdAt, hydrated ? undefined : "UTC", hydrated ? undefined : data.renderedAt)}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-[var(--color-ink)]">{a.actorName}</td>
-                    <td className="px-4 py-3 text-sm text-[var(--color-ink)]">{a.message}</td>
-                    <td className="px-4 py-3 text-sm text-[var(--color-muted)]">{a.leadName}{a.leadNumber ? ` (#${a.leadNumber})` : ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        ) : (
-          <CardEmptyState description="No recent activity." />
-        )}
+        <SectionHeading title="Recent Activity" description="The latest changes made to leads." />
+        <DataTable
+          rows={data.recentActivity}
+          columns={recentActivityColumns}
+          rowKey={(row) => row.id}
+          emptyTitle="No recent activity"
+          emptyDescription="CRM activity will appear here as users work with leads."
+        />
       </section>
-
-      {/* Recent Syncs */}
-      <section>
-        <h2 className="text-base font-semibold text-[var(--color-ink)]">Recent Syncs</h2>
-        <p className="mb-4 mt-1 text-sm text-[var(--color-muted)]">The latest attempts to retrieve leads from connected sources.</p>
-        {data.recentSyncs.length > 0 ? (
-          <Card className="p-0 overflow-hidden">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] bg-slate-50/80">
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Connector</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Status</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Records Received</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Leads Added</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Started</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.recentSyncs.map((s) => (
-                  <tr key={s.id} className="border-b border-[var(--color-border)] transition hover:bg-slate-50/50 last:border-b-0">
-                    <td className="px-4 py-3 text-sm font-medium text-[var(--color-ink)]">{s.connectorName}</td>
-                    <td className="px-4 py-3"><Badge label={s.status} /></td>
-                    <td className="px-4 py-3 text-sm text-[var(--color-ink)]">{s.recordsSeen}</td>
-                    <td className="px-4 py-3 text-sm text-[var(--color-ink)]">{s.recordsCreated}</td>
-                    <td className="px-4 py-3 text-xs text-[var(--color-muted)] whitespace-nowrap">{formatDateTime(s.startedAt, "-", hydrated ? undefined : "UTC")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        ) : (
-          <CardEmptyState description="No recent syncs." />
-        )}
-      </section>
-
     </div>
-  );
-}
-
-function InsightCard({
-  title,
-  count,
-  description,
-  href,
-  highlight,
-}: {
-  title: string;
-  count: number;
-  description: string;
-  href?: string;
-  highlight?: boolean;
-}) {
-  const inner = (
-    <Card className={`p-4 transition ${href ? "cursor-pointer hover:shadow-md" : ""} ${highlight ? "ring-1 ring-[var(--color-brand)]/20" : ""}`}>
-      <p className="text-sm font-semibold text-[var(--color-ink)]">{title}</p>
-      <p className="mt-2 text-3xl font-bold text-[var(--color-ink)]">{count}</p>
-      <p className="mt-1 text-xs text-[var(--color-muted)]">{description}</p>
-    </Card>
-  );
-  if (href) return <Link href={href} className="block">{inner}</Link>;
-  return inner;
-}
-
-function WorkQueueRow({
-  label,
-  count,
-  description,
-  href,
-}: {
-  label: string;
-  count: number;
-  description: string;
-  href?: string;
-}) {
-  const router = useRouter();
-  return (
-    <tr
-      onClick={() => href && router.push(href)}
-      className={`border-b border-[var(--color-border)] last:border-b-0 ${href ? "cursor-pointer transition hover:bg-slate-50/50" : ""}`}
-    >
-      <td className="px-4 py-3 text-sm font-medium text-[var(--color-ink)]">{label}</td>
-      <td className="px-4 py-3"><span className="text-lg font-semibold text-[var(--color-ink)]">{count}</span></td>
-      <td className="px-4 py-3 text-sm text-[var(--color-muted)]">{description}</td>
-      <td className="px-4 py-3">
-        {href ? (
-          <span className="text-xs font-medium text-[var(--color-brand)] hover:underline">Resolve &rarr;</span>
-        ) : (
-          <span className="text-xs text-[var(--color-muted)]">No action needed</span>
-        )}
-      </td>
-    </tr>
-  );
-}
-
-function HealthBadge({ status }: { status: string }) {
-  const tone = status === "HEALTHY"
-    ? "bg-emerald-50 text-emerald-700"
-    : status === "WARNING"
-      ? "bg-amber-50 text-amber-700"
-      : "bg-rose-50 text-rose-700";
-  const label = status === "HEALTHY" ? "Healthy" : status === "WARNING" ? "Needs attention" : "Unavailable";
-  return (
-    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${tone}`}>
-      {label}
-    </span>
   );
 }

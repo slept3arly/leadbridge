@@ -51,8 +51,7 @@ export function LogActivityModal({
   const [followUpTime, setFollowUpTime] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { onCloseRef } = useModalState(open);
-  onCloseRef.current = onClose;
+  const dialogRef = useModalState(open, onClose, !saving);
 
   useEffect(() => {
     if (open) {
@@ -105,21 +104,21 @@ export function LogActivityModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label="Log activity" className="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-xl border border-[var(--color-border)] max-h-[85vh] flex flex-col">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
+      <div ref={dialogRef} data-accessible-dialog role="dialog" aria-modal="true" aria-label="Log activity" tabIndex={-1} className="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-xl border border-[var(--color-border)] max-h-[85vh] flex flex-col">
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
           <h2 className="text-lg font-bold text-[var(--color-ink)]">Log Activity</h2>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--color-ink)]">Action</label>
-            <Select value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
+            <label htmlFor="activity-action" className="text-sm font-medium text-[var(--color-ink)]">Action</label>
+            <Select id="activity-action" data-autofocus value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
               {ACTION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--color-ink)]">Response</label>
-            <Select value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
+            <label htmlFor="activity-response" className="text-sm font-medium text-[var(--color-ink)]">Response</label>
+            <Select id="activity-response" value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
               <option value="">Select response</option>
               {responses.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
@@ -127,8 +126,8 @@ export function LogActivityModal({
 
           {interestVisible && (
             <div className="space-y-2">
-              <label className="text-sm font-medium text-[var(--color-ink)]">Interest</label>
-              <Select value={interest} onChange={(e) => setInterest(e.target.value)}>
+              <label htmlFor="activity-interest" className="text-sm font-medium text-[var(--color-ink)]">Interest</label>
+              <Select id="activity-interest" value={interest} onChange={(e) => setInterest(e.target.value)}>
                 <option value="">Select interest</option>
                 <option value="INTERESTED">Interested</option>
                 <option value="NOT_INTERESTED">Not Interested</option>
@@ -137,8 +136,8 @@ export function LogActivityModal({
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--color-ink)]">Notes</label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Add notes..." className="resize-none" />
+            <label htmlFor="activity-notes" className="text-sm font-medium text-[var(--color-ink)]">Notes</label>
+            <Textarea id="activity-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Add notes..." className="resize-none" />
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer">
@@ -149,12 +148,12 @@ export function LogActivityModal({
           {scheduleFollowUp && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-medium text-[var(--color-muted)]">Date</label>
-                <Input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} required />
+                <label htmlFor="activity-follow-up-date" className="text-xs font-medium text-[var(--color-muted)]">Date</label>
+                <Input id="activity-follow-up-date" type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} required />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-[var(--color-muted)]">Time</label>
-                <Input type="time" value={followUpTime} onChange={(e) => setFollowUpTime(e.target.value)} />
+                <label htmlFor="activity-follow-up-time" className="text-xs font-medium text-[var(--color-muted)]">Time</label>
+                <Input id="activity-follow-up-time" type="time" value={followUpTime} onChange={(e) => setFollowUpTime(e.target.value)} />
               </div>
             </div>
           )}

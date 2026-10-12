@@ -1,6 +1,3 @@
-import { Navbar } from "@/components/shared/navbar";
-import { ExportButton } from "@/components/shared/export-button";
-import { SignOutButton } from "@/components/shared/sign-out-button";
 import { ProvidersPageContent } from "@/components/providers/providers-page-content";
 import { providerService } from "@/services/provider.service";
 import { parserService } from "@/services/parser.service";
@@ -51,19 +48,5 @@ export default async function AdminProvidersPage() {
   }));
   const renderedAt = new Date().toISOString();
 
-  return (
-    <>
-      <Navbar
-        title="Providers"
-        showResync
-        actions={
-          <>
-            <ExportButton type="providers" iconOnly />
-            <SignOutButton />
-          </>
-        }
-      />
-      <ProvidersPageContent providers={serialized} parsers={serializedParsers} routingRules={serializedRules} renderedAt={renderedAt} />
-    </>
-  );
+  return <ProvidersPageContent providers={serialized} parsers={serializedParsers} routingRules={serializedRules} renderedAt={renderedAt} />;
 }

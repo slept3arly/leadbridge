@@ -8,12 +8,14 @@ import { userService } from "@/services/user.service";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
 import { settingsService } from "@/services/settings.service";
 import type { TableQueryState } from "@/hooks/use-table-query";
+import { requireSession } from "@/lib/session";
 
 export default async function AdminLeadsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const session = await requireSession("ADMIN");
   const resolvedSearchParams = await searchParams;
   const defaultPageSize = (await settingsService.get<number>("default_page_size")) ?? 25;
   const query = parseListQuery(toSearchParams(resolvedSearchParams), { defaultPageSize });
@@ -55,8 +57,13 @@ export default async function AdminLeadsPage({
     status: l.status,
     priority: l.priority,
     category: l.category,
-    createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
+    nextFollowUpAt: l.nextFollowUpAt?.toISOString() ?? null,
+    isArchived: l.isArchived,
+    lastActivity: l.lastActivity ? {
+      occurredAt: l.lastActivity.occurredAt.toISOString(),
+      entries: l.lastActivity.entries,
+    } : null,
     assignedUser: l.assignedUser ?? null,
     source: l.source ?? null,
   }));
@@ -64,7 +71,8 @@ export default async function AdminLeadsPage({
   return (
     <>
       <Navbar
-        title="Lead Management"
+        title="All Leads"
+        subtitle="Administrator view"
         showResync
         actions={
           <>
@@ -79,6 +87,7 @@ export default async function AdminLeadsPage({
         pagination={result.pagination}
         leadSources={leadSources}
         assignableUsers={assignableUsers}
+        currentUserId={session.user.id}
       />
     </>
   );

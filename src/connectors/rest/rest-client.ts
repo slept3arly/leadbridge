@@ -1,5 +1,8 @@
 import type { RestConnectorConfig, RestDocument, PaginationStrategy, RestMethod } from "./rest-types";
 import { classifyRestError, RestRateLimitError, RestServerError, RestTimeoutError, RestNetworkError } from "./rest-errors";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { MAX_REST_EXECUTION_MS, MAX_REST_PAGE_SIZE, MAX_REST_PAGES, MAX_REST_RECORDS, MAX_REST_REDIRECTS, MAX_REST_REQUEST_BODY_BYTES, MAX_REST_REQUEST_TIMEOUT_MS, MAX_REST_RESPONSE_BYTES, MAX_REST_TOTAL_RESPONSE_BYTES, RestSecurityError, parseAllowedOrigins, validateRestRedirectTarget, validateRestUrl } from "./rest-security";
 
 interface FetchOptions {
   url: string;
@@ -9,30 +12,68 @@ interface FetchOptions {
   timeoutMs: number;
 }
 
-async function fetchWithTimeout(options: FetchOptions): Promise<{ status: number; headers: Record<string, string>; body: string }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs);
-
-  try {
-    const response = await fetch(options.url, {
+async function fetchWithTimeout(options: FetchOptions, previousOrigin?: string, redirects = 0, trustedOrigins?: Set<string>, deadlineAt = Date.now() + MAX_REST_EXECUTION_MS): Promise<{ status: number; headers: Record<string, string>; body: string; url: string }> {
+  if (options.body && Buffer.byteLength(options.body) > MAX_REST_REQUEST_BODY_BYTES) throw new RestSecurityError("REST request body exceeded the configured safety limit.");
+  if (Date.now() >= deadlineAt) throw new RestTimeoutError();
+  const allowedOrigins = trustedOrigins ?? parseAllowedOrigins();
+  const validated = await validateRestUrl(options.url, { allowedOrigins, previousOrigin });
+  const url = validated.url;
+  const timeoutMs = Math.max(1, Math.min(options.timeoutMs, MAX_REST_REQUEST_TIMEOUT_MS, deadlineAt - Date.now()));
+  const request = url.protocol === "https:" ? httpsRequest : httpRequest;
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    const req = request(url, {
       method: options.method,
       headers: options.headers,
-      body: options.body,
-      signal: controller.signal,
+      timeout: timeoutMs,
+      lookup: (_hostname, _opts, callback) => callback(null, validated.addresses[0].address, validated.addresses[0].family),
+    }, (res) => {
+      const contentLength = Number(res.headers["content-length"] ?? 0);
+      if (Number.isFinite(contentLength) && contentLength > MAX_REST_RESPONSE_BYTES) {
+        req.destroy(new RestSecurityError("REST response exceeded the configured safety limit."));
+        res.resume();
+        return;
+      }
+      const status = res.statusCode ?? 0;
+      if ([301, 302, 303, 307, 308].includes(status) && res.headers.location) {
+        res.resume();
+        if (redirects >= MAX_REST_REDIRECTS) return reject(new RestSecurityError("REST redirect limit exceeded."));
+        let destination: URL;
+        try { destination = validateRestRedirectTarget(res.headers.location, url, allowedOrigins); }
+        catch (error) { reject(error); return; }
+        const nextMethod = status === 303 || ((status === 301 || status === 302) && options.method === "POST") ? "GET" : options.method;
+        const nextHeaders = { ...options.headers };
+        let nextBody = nextMethod === "GET" ? undefined : options.body;
+        if (destination.origin !== url.origin) {
+          for (const key of Object.keys(nextHeaders)) if (!["accept", "content-type"].includes(key.toLowerCase())) delete nextHeaders[key];
+          nextBody = undefined;
+        }
+        void fetchWithTimeout({ ...options, url: destination.href, method: nextMethod, headers: nextHeaders, body: nextBody }, url.origin, redirects + 1, allowedOrigins, deadlineAt).then(resolve, reject);
+        return;
+      }
+      res.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > MAX_REST_RESPONSE_BYTES) {
+          req.destroy(new RestSecurityError("REST response exceeded the configured safety limit."));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      res.on("end", () => {
+        const headers: Record<string, string> = {};
+        for (const [key, value] of Object.entries(res.headers)) if (value !== undefined) headers[key.toLowerCase()] = Array.isArray(value) ? value.join(",") : value;
+        resolve({ status, headers, body: Buffer.concat(chunks).toString("utf8"), url: url.href });
+      });
+      res.on("error", reject);
     });
-
-    const body = await response.text();
-    const responseHeaders: Record<string, string> = {};
-    response.headers.forEach((value, key) => { responseHeaders[key.toLowerCase()] = value; });
-
-    return {
-      status: response.status,
-      headers: responseHeaders,
-      body,
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+    const hardTimeout = setTimeout(() => req.destroy(new RestTimeoutError()), timeoutMs);
+    req.on("close", () => clearTimeout(hardTimeout));
+    req.on("timeout", () => req.destroy(new RestTimeoutError()));
+    req.on("error", reject);
+    if (options.body && options.method !== "GET") req.write(options.body);
+    req.end();
+  });
 }
 
 function applyAuth(headers: Record<string, string>, config: RestConnectorConfig): Record<string, string> {
@@ -115,7 +156,7 @@ function getPageParams(
   config: RestConnectorConfig,
 ): { url?: string; params?: Record<string, string> } {
   const pc = config.pagination;
-  const size = pc.pageSize ?? 50;
+  const size = Math.min(pc.pageSize ?? 50, 500);
 
   switch (strategy) {
     case "PAGE_NUMBER":
@@ -175,10 +216,6 @@ function describeJsonType(value: unknown): string {
   return typeof value;
 }
 
-function toRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
 function extractArray(body: unknown, path: string): Record<string, unknown>[] {
   if (!path.trim()) {
     return Array.isArray(body) ? (body as Record<string, unknown>[]) : [];
@@ -232,42 +269,49 @@ export class RestClient {
   }> {
     const allRecords: Record<string, unknown>[] = [];
     const allDocuments: RestDocument[] = [];
-    const maxPages = this.config.pagination.maxPages ?? 50;
+    const startedAt = Date.now();
+    const trustedOrigins = parseAllowedOrigins();
+    trustedOrigins.add(new URL(this.config.baseUrl).origin);
+    const maxPages = Math.min(this.config.pagination.maxPages ?? 50, MAX_REST_PAGES);
 
     let page = 1;
     let cursor: string | null = null;
     let nextUrl: string | null = null;
     let token: string | null = null;
-    const retryCount = this.config.retryCount ?? 3;
-    const rateLimitDelay = this.config.rateLimitDelayMs ?? 200;
+    let totalResponseBytes = 0;
+    const retryCount = Math.max(1, Math.min(this.config.retryCount ?? 3, 3));
+    const rateLimitDelay = Math.min(this.config.rateLimitDelayMs ?? 200, 10_000);
 
     while (page <= maxPages) {
+      if (Date.now() - startedAt > MAX_REST_EXECUTION_MS) throw new RestTimeoutError();
       const pageParams = getPageParams(this.config.pagination.strategy, page, cursor, nextUrl, token, this.config);
       const baseUrl = buildUrl(this.config.baseUrl, this.config.endpoint);
-      const url = addApiKeyQueryParam(
-        pageParams.url ?? `${baseUrl}${buildQueryString(this.config, pageParams.params)}`,
-        this.config,
-      );
+      const requestUrl = pageParams.url ? new URL(pageParams.url, allDocuments.at(-1)?.url ?? this.config.baseUrl).href : `${baseUrl}${buildQueryString(this.config, pageParams.params)}`;
+      const sameOrigin = new URL(requestUrl).origin === new URL(this.config.baseUrl).origin;
+      const url = sameOrigin ? addApiKeyQueryParam(requestUrl, this.config) : requestUrl;
 
       let lastError: Error | undefined;
-      let responseData: { status: number; headers: Record<string, string>; body: string } | undefined;
+      let responseData: { status: number; headers: Record<string, string>; body: string; url: string } | undefined;
 
       for (let attempt = 1; attempt <= retryCount; attempt++) {
         try {
-          const headers = applyAuth(
+          let headers = applyAuth(
             { "content-type": "application/json", accept: "application/json", ...this.config.headers },
             this.config,
           );
+          if (!sameOrigin) headers = Object.fromEntries(Object.entries(headers).filter(([key]) => ["accept", "content-type"].includes(key.toLowerCase())));
 
           const startTime = Date.now();
           responseData = await fetchWithTimeout({
             url,
             method: this.config.method,
             headers,
-            body: this.config.method !== "GET" ? this.config.body : undefined,
-            timeoutMs: this.config.timeout ?? 30000,
-          });
+            body: sameOrigin && this.config.method !== "GET" ? this.config.body : undefined,
+            timeoutMs: Math.min(this.config.timeout ?? 30000, MAX_REST_REQUEST_TIMEOUT_MS),
+          }, undefined, 0, trustedOrigins, startedAt + MAX_REST_EXECUTION_MS);
           const durationMs = Date.now() - startTime;
+          totalResponseBytes += Buffer.byteLength(responseData.body);
+          if (totalResponseBytes > MAX_REST_TOTAL_RESPONSE_BYTES) throw new RestSecurityError("REST total response limit exceeded.");
 
           const parsedBody = this.tryParseJson(responseData.body);
           const records = extractArray(parsedBody, this.config.leadArrayPath);
@@ -281,11 +325,10 @@ export class RestClient {
           });
 
           const document: RestDocument = {
-            url: maskSensitiveUrl(url),
+            url: maskSensitiveUrl(responseData.url),
             method: this.config.method,
             statusCode: responseData.status,
             headers: this.maskSensitiveHeaders(responseData.headers),
-            responseBody: responseData.body,
             receivedAt: new Date().toISOString(),
             providerMetadata: {
               connectorType: "rest",
@@ -297,12 +340,13 @@ export class RestClient {
               attempt,
               durationMs,
             },
-            rawPayload: toRecord(parsedBody),
           };
           allDocuments.push(document);
 
           if (responseData.status >= 200 && responseData.status < 300) {
             allRecords.push(...records);
+            if (records.length > MAX_REST_PAGE_SIZE) throw new RestSecurityError("REST page contained too many records.");
+            if (allRecords.length > MAX_REST_RECORDS) throw new RestSecurityError("REST record limit exceeded.");
 
             cursor = extractPaginationValue(parsedBody, this.config.pagination.cursorPath);
             nextUrl = extractPaginationValue(parsedBody, this.config.pagination.nextUrlPath);
@@ -321,9 +365,10 @@ export class RestClient {
           }
 
           if (responseData.status === 429 && attempt < retryCount) {
-            const retryAfter = responseData.headers["retry-after"]
+            const retryAfterValue = responseData.headers["retry-after"]
               ? parseInt(responseData.headers["retry-after"], 10) * 1000
               : rateLimitDelay * attempt;
+            const retryAfter = Number.isFinite(retryAfterValue) ? Math.min(10_000, Math.max(0, retryAfterValue)) : rateLimitDelay;
             logger.info("Rate limited, waiting", { retryAfterMs: retryAfter, attempt });
             await delay(retryAfter);
             continue;
@@ -355,6 +400,11 @@ export class RestClient {
       }
 
       if (!cursor && !nextUrl && !token) break;
+      if (page === maxPages) throw new RestSecurityError("REST pagination page limit reached before completion.");
+      if (this.config.pagination.strategy === "NEXT_URL" && nextUrl) {
+        // Validate pagination before entering a retry loop or issuing the next request.
+        await validateRestUrl(new URL(nextUrl, responseData?.url ?? this.config.baseUrl), { allowedOrigins: trustedOrigins, previousOrigin: new URL(responseData?.url ?? this.config.baseUrl).origin });
+      }
       page++;
     }
 
@@ -380,7 +430,7 @@ export class RestClient {
         method: this.config.method,
         headers,
         body: this.config.method !== "GET" ? this.config.body : undefined,
-        timeoutMs: this.config.timeout ?? 30000,
+        timeoutMs: Math.min(this.config.timeout ?? 30000, MAX_REST_REQUEST_TIMEOUT_MS),
       });
 
       const parsedBody = this.tryParseJson(response.body);

@@ -15,6 +15,9 @@ import type { NormalizedLead } from "@/types/lead";
 import { LeadService, type LeadInput } from "@/services/lead.service";
 import { activityEventService } from "@/services/activity-event.service";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
+import type { ExecutionFence } from "@/services/execution-fence";
+import { withExecutionFence } from "@/services/execution-fence";
 
 
 export interface RuntimeOptions {
@@ -24,6 +27,8 @@ export interface RuntimeOptions {
   retryPolicy?: RetryPolicy;
   syncHistory?: SyncHistory;
   routingEngine?: RoutingEngine;
+  assertExecutionOwnership?: () => Promise<void>;
+  executionFence?: ExecutionFence;
 }
 
 export class ConnectorRuntime {
@@ -34,15 +39,19 @@ export class ConnectorRuntime {
   private readonly syncHistory: SyncHistory;
   private readonly routingEngine: RoutingEngine;
   private readonly leadService: LeadService;
+  private readonly assertExecutionOwnership?: () => Promise<void>;
+  private readonly executionFence?: ExecutionFence;
 
   constructor(options: RuntimeOptions) {
     this.connectorExecutor = new ConnectorExecutor(options.connectorRegistry);
     this.parserRuntime = new ParserRuntime(options.parserRegistry);
     this.normalizer = new LeadNormalizer();
     this.retryPolicy = options.retryPolicy ?? new RetryPolicy();
-    this.syncHistory = options.syncHistory ?? new SyncHistory();
     this.routingEngine = options.routingEngine ?? new RoutingEngine();
     this.leadService = options.leadService ?? new LeadService();
+    this.assertExecutionOwnership = options.assertExecutionOwnership;
+    this.executionFence = options.executionFence;
+    this.syncHistory = options.syncHistory ?? new SyncHistory(this.executionFence);
   }
 
   async execute(
@@ -74,6 +83,7 @@ export class ConnectorRuntime {
         }
 
         const payloads = await this.connectorExecutor.execute(context);
+        await this.assertExecutionOwnership?.();
 
         if (payloads.length === 0) {
           return createSkippedResult("No payloads returned by connector", {
@@ -114,29 +124,47 @@ export class ConnectorRuntime {
       });
 
       const meta = result.result.metadata as Record<string, unknown>;
+      await this.assertExecutionOwnership?.();
       await this.syncHistory.recordCompletion(syncRunId, connectorId, result.result, meta.breakdown as SyncBreakdown | undefined);
       return result.result;
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message : "Unknown runtime error";
+        error instanceof Error ? error.name : "Unknown runtime error";
       const result = createFailedResult(
-        error instanceof Error ? error : new Error(errorMessage),
+        new Error(errorMessage),
         {
           durationMs: Date.now() - startedAt,
           metadata: { connectorId, executionId: context.executionId },
         },
       );
+      const gmailFailureDetails = error instanceof Error && error.name === "GmailMessageFetchError" && "details" in error
+        ? (error as Error & { details?: { failureCount?: number; failedMessageIds?: unknown } }).details
+        : undefined;
 
       context.logger.error("Execution failed", {
         executionId: context.executionId,
         connectorId,
-        error: errorMessage,
+        errorType: errorMessage,
+        ...(gmailFailureDetails
+          ? {
+              failedMessageCount: gmailFailureDetails.failureCount,
+              failedMessageIds: Array.isArray(gmailFailureDetails.failedMessageIds)
+                ? gmailFailureDetails.failedMessageIds.filter((id): id is string => typeof id === "string")
+                : [],
+            }
+          : {}),
         durationMs: Date.now() - startedAt,
       });
 
-      await this.syncHistory.recordCompletion(syncRunId, connectorId, result);
+      if (!this.assertExecutionOwnership || await this.isExecutionOwned()) {
+        await this.syncHistory.recordCompletion(syncRunId, connectorId, result);
+      }
       return result;
     }
+  }
+
+  private async isExecutionOwned(): Promise<boolean> {
+    try { await this.assertExecutionOwnership?.(); return true; } catch { return false; }
   }
 
   private async processPayloads(
@@ -156,6 +184,7 @@ export class ConnectorRuntime {
 
     for (const payload of payloads) {
       try {
+        await this.assertExecutionOwnership?.();
         const routing = await this.resolveRouting(payload, context);
 
         if (!routing.match) {
@@ -166,7 +195,7 @@ export class ConnectorRuntime {
             });
           } else {
             context.logger.warn("No routing rule matched and no sender info available", {
-              payloadPreview: JSON.stringify(payload).slice(0, 200),
+              connectorId: context.connectorId,
             });
           }
           continue;
@@ -177,7 +206,7 @@ export class ConnectorRuntime {
         if (!parserResolution) {
           breakdown.parserFailures++;
           context.logger.warn("No parser resolved for payload, skipping", {
-            payloadPreview: JSON.stringify(payload).slice(0, 200),
+            connectorId: context.connectorId,
           });
           continue;
         }
@@ -188,8 +217,7 @@ export class ConnectorRuntime {
         if (warnings.length > 0) {
           breakdown.warnings += warnings.length;
           context.logger.warn("Normalization warnings", {
-            warnings,
-            leadName: lead.name,
+            warningCount: warnings.length,
           });
         }
 
@@ -216,13 +244,13 @@ export class ConnectorRuntime {
 
         let createResult;
         try {
-          createResult = await this.leadService.create(leadInput, actor);
+          await this.assertExecutionOwnership?.();
+          createResult = await this.leadService.create(leadInput, actor, this.executionFence);
         } catch (error) {
+          if (error instanceof Error && error.name === "ExecutionLockError") throw error;
           breakdown.validationFailures++;
           context.logger.error("Lead creation failed", {
-            leadName: enrichedLead.name,
-            email: enrichedLead.email,
-            error: error instanceof Error ? error.message : String(error),
+            errorType: error instanceof Error ? error.name : "UnknownError",
           });
           continue;
         }
@@ -230,15 +258,15 @@ export class ConnectorRuntime {
         if (createResult.status === "skipped") {
           breakdown.duplicatesSkipped++;
           context.logger.info("Duplicate lead skipped during import", {
-            leadName: enrichedLead.name,
-            email: enrichedLead.email,
+            connectorId: context.connectorId,
           });
           continue;
         }
 
         const created = createResult.lead;
+        await this.assertExecutionOwnership?.();
 
-        await activityEventService.createEvent({
+        const recordImportEvent = (tx?: Prisma.TransactionClient) => activityEventService.createEvent({
           leadId: created.id,
           type: "SYSTEM",
           actorId: actor.id,
@@ -252,14 +280,16 @@ export class ConnectorRuntime {
               routingRuleId: match?.ruleId,
             },
           }],
-        });
+        }, tx);
+        if (this.executionFence) await withExecutionFence(this.executionFence, recordImportEvent);
+        else await recordImportEvent();
 
         createdLeads.push(created);
       } catch (error) {
         breakdown.connectorFailures++;
         context.logger.error("Failed to process payload", {
-          error: error instanceof Error ? error.message : String(error),
-          payloadPreview: JSON.stringify(payload).slice(0, 500),
+          errorType: error instanceof Error ? error.name : "UnknownError",
+          connectorId: context.connectorId,
         });
       }
     }
@@ -274,7 +304,7 @@ export class ConnectorRuntime {
     const hints = payload._routing;
     if (!hints) return { match: null };
 
-    return this.routingEngine.route(hints, payload, context.connectorId);
+    return this.routingEngine.route(hints, payload, context.connectorId, this.executionFence);
   }
 
   private async resolveParser(

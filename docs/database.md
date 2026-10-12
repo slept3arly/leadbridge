@@ -224,9 +224,9 @@ Total: 43 `@@index` declarations + 2 `@@unique` declarations + 12 field-level `@
 ## Soft Delete Strategy
 
 - **User:** `isDeleted` boolean + `deletedAt` timestamp
-- **Lead:** `isDeleted` boolean + `deletedAt` timestamp + `deletedById` FK
+- Leads support archival (`isArchived`) but application-level lead deletion is permanent.
 - Queries filter on `isDeleted = false` by default
-- Hard delete available for leads via `DELETE /api/leads/[id]` (requires `DELETE_LEAD` permission)
+- `DELETE /api/leads/[id]` requires `DELETE_LEAD` permission and hard-deletes the lead. Schema `onDelete: Cascade` removes its `ActivityEvent` (and `ActivityEntry`), `Note`, `FollowUp`, and `Attachment` records. Recovery depends on a verified database backup/restore process; no in-app undelete exists.
 
 ## Migrations
 

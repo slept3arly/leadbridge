@@ -37,7 +37,7 @@
 | `/api/leads` | POST | `CREATE_LEAD` permission | Create lead manually |
 | `/api/leads/[id]` | GET | Any authenticated | Get lead details |
 | `/api/leads/[id]` | PATCH | Any authenticated | Update lead fields |
-| `/api/leads/[id]` | DELETE | `DELETE_LEAD` permission | Soft-delete lead |
+| `/api/leads/[id]` | DELETE | `DELETE_LEAD` permission | Permanently delete lead and cascade-deleted dependent records |
 | `/api/leads/[id]/assign` | POST | ADMIN | Assign lead to sales user |
 | `/api/leads/[id]/activities` | GET | Any authenticated | Get lead activity timeline |
 | `/api/leads/[id]/notes` | GET | Any authenticated | List lead notes |

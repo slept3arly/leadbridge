@@ -1,0 +1,2 @@
+ALTER TABLE "Connector"
+ADD COLUMN "lockGeneration" BIGINT NOT NULL DEFAULT 0;

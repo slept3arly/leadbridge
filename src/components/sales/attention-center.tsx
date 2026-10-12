@@ -8,6 +8,7 @@ import { AttentionCard } from "@/components/sales/attention-card";
 import { KpiCard } from "@/components/shared/kpi-card";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type {
   PendingFollowUpItem,
   TodayFollowUpItem,
@@ -46,6 +47,8 @@ export function AttentionCenter({
   initialSection,
 }: AttentionCenterProps & { initialSection?: SectionId }) {
   const [activeSection, setActiveSection] = useState<SectionId | undefined>(initialSection);
+  const [deleteLeadId, setDeleteLeadId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const router = useRouter();
 
   const handleArchive = useCallback(async (leadId: string) => {
@@ -58,16 +61,24 @@ export function AttentionCenter({
     }
   }, [router]);
 
-  const handleDelete = useCallback(async (leadId: string) => {
-    if (!confirm("Delete this lead permanently?")) return;
+  const handleDelete = useCallback((leadId: string) => {
+    setDeleteLeadId(leadId);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteLeadId) return;
+    setDeleting(true);
     try {
-      await axios.delete(`/api/leads/${leadId}`);
+      await axios.delete(`/api/leads/${deleteLeadId}`);
       toast.success("Lead deleted");
+      setDeleteLeadId(null);
       router.refresh();
     } catch {
       toast.error("Failed to delete lead.");
+    } finally {
+      setDeleting(false);
     }
-  }, [router]);
+  }, [deleteLeadId, router]);
 
   const handleDetails = useCallback((leadId: string) => {
     router.push(`/sales/my-leads?leadId=${leadId}`);
@@ -289,6 +300,15 @@ export function AttentionCenter({
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={!!deleteLeadId}
+        title="Delete this lead?"
+        description="This permanently deletes the lead and its CRM record."
+        confirmLabel="Delete lead"
+        isLoading={deleting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleteLeadId(null)}
+      />
     </div>
   );
 }

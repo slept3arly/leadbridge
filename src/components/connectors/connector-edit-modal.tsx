@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { Badge } from "@/components/ui/badge";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
+import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 import { toast } from "sonner";
 import type { SafeConnectorConfiguration, SerializedConnector } from "@/app/(dashboard)/admin/connectors/page";
 
@@ -237,6 +238,7 @@ export function ConnectorEditModal({
   const [enabled, setEnabled] = useState(false);
   const [scheduleType, setScheduleType] = useState("MANUAL");
   const [restConfig, setRestConfig] = useState<RestConfig>(EMPTY_CONFIG);
+  const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose: !pending });
 
   const isRest = type === "rest";
 
@@ -263,15 +265,6 @@ export function ConnectorEditModal({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [open, connector]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
 
   const updateConfig = (field: keyof RestConfig, value: string) => {
     setRestConfig((prev) => ({ ...prev, [field]: value }));
@@ -326,33 +319,32 @@ export function ConnectorEditModal({
   const visibleTabs = tabs.filter((t) => t.id !== "configuration" || isRest);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={pending ? undefined : onClose} />
 
-      <div
-        className="relative z-10 mt-6 mb-6 w-[90%] max-w-4xl flex flex-col bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] overflow-hidden"
-        style={{ height: "88vh", maxHeight: "88vh" }}
-      >
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-4">
-          <h2 className="text-lg font-semibold text-[var(--color-ink)]">
+      <div ref={dialogRef} data-accessible-dialog tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="connector-dialog-title" className="relative z-10 flex max-h-[calc(100dvh-1.5rem)] min-h-0 w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--color-border)] px-5 py-4 sm:px-6">
+          <h2 id="connector-dialog-title" className="text-lg font-semibold text-[var(--color-ink)]">
             {isEdit ? "Edit Connector" : "Create Connector"}
           </h2>
           <button
             type="button"
             onClick={onClose}
+            disabled={pending}
+            aria-label="Close dialog"
             className="rounded-xl p-2 text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)] transition"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
 
-        <div className="flex border-b border-[var(--color-border)] bg-white">
+        <div className="flex shrink-0 overflow-x-auto border-b border-[var(--color-border)] bg-white">
           {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`px-5 py-2.5 text-sm font-semibold transition border-b-2 ${
+              className={`shrink-0 px-5 py-2.5 text-sm font-semibold transition border-b-2 ${
                 activeTab === tab.id
                   ? "border-[var(--color-brand)] text-[var(--color-brand)]"
                   : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-ink)]"
@@ -363,8 +355,8 @@ export function ConnectorEditModal({
           ))}
         </div>
 
-        <div className="overflow-y-auto p-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <form id="connector-form" onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
+          <div className="space-y-6">
             {activeTab === "general" && (
               <div className="space-y-5">
                 <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
@@ -727,7 +719,7 @@ export function ConnectorEditModal({
                 <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] pt-4">
                   Runtime Metadata
                 </h3>
-                <div className="rounded-xl bg-slate-50 px-4 py-3 font-mono text-xs text-[var(--color-ink)] whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                <div className="rounded-xl bg-slate-50 px-4 py-3 font-mono text-xs text-[var(--color-ink)] whitespace-pre-wrap break-words">
                   {Object.keys(runtimeMeta).length > 0
                     ? JSON.stringify(runtimeMeta, null, 2)
                     : "No runtime metadata available."}
@@ -745,15 +737,11 @@ export function ConnectorEditModal({
               <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>
             )}
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
-                Cancel
-              </Button>
-              <Button type="submit" isLoading={pending}>
-                {pending ? "Saving..." : isEdit ? "Save Changes" : "Create Connector"}
-              </Button>
-            </div>
-          </form>
+          </div>
+        </form>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-[var(--color-border)] bg-white px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>Cancel</Button>
+          <Button type="submit" form="connector-form" isLoading={pending}>{pending ? "Saving..." : isEdit ? "Save Changes" : "Create Connector"}</Button>
         </div>
       </div>
     </div>

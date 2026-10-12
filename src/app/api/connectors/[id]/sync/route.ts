@@ -8,6 +8,7 @@ import { executionLock } from "@/services/execution-lock.service";
 import { connectorHealthService } from "@/services/connector-health.service";
 import { randomUUID } from "crypto";
 import { invalidateAdminDashboard } from "@/lib/cache-tags";
+import { withExecutionFence, type ExecutionFence } from "@/services/execution-fence";
 
 export const POST = withApiAuthorization("ADMIN", async (_request, context, session) => {
   const params = context as { params: Promise<{ id: string }> | { id: string } };
@@ -28,10 +29,12 @@ export const POST = withApiAuthorization("ADMIN", async (_request, context, sess
   if (!connector) return apiError("Connector not found.", 404);
 
   const executionId = randomUUID();
-  const acquired = await executionLock.acquire(connector.id, executionId);
-  if (!acquired) {
+  const generation = await executionLock.acquire(connector.id, executionId);
+  if (generation === null) {
     return apiError("Connector is already running. Wait for the current execution to complete.", 409);
   }
+  const heartbeat = executionLock.startHeartbeat(connector.id, executionId, generation);
+  const fence: ExecutionFence = { connectorId: connector.id, executionId, generation };
 
   try {
     const config = (connector.configuration as Record<string, unknown>) ?? {};
@@ -52,6 +55,8 @@ export const POST = withApiAuthorization("ADMIN", async (_request, context, sess
     const runtime = new ConnectorRuntime({
       connectorRegistry: registry,
       parserRegistry: parserRegistryAdapter,
+      assertExecutionOwnership: heartbeat.assertOwned,
+      executionFence: fence,
     });
 
     const actor = { id: session.user.id, role: session.user.role as "ADMIN" | "SALES" };
@@ -64,12 +69,14 @@ export const POST = withApiAuthorization("ADMIN", async (_request, context, sess
         configuration: config,
       },
     );
+    await heartbeat.assertOwned();
 
     await connectorHealthService.recordCompletion(
       connector.id,
       result.status,
       result.durationMs,
       result.errors[0]?.message,
+      fence,
     );
 
     const updatedMeta = {
@@ -81,14 +88,12 @@ export const POST = withApiAuthorization("ADMIN", async (_request, context, sess
       lastSyncWarningCount: result.warnings.length,
       lastSyncErrorCount: result.errors.length,
     };
-    await prisma.connector.update({
-      where: { id: connector.id },
-      data: { runtimeMetadata: updatedMeta as object },
-    });
+    await withExecutionFence(fence, (tx) => tx.connector.update({ where: { id: connector.id }, data: { runtimeMetadata: updatedMeta as object } }));
     invalidateAdminDashboard();
 
     return NextResponse.json({ data: result });
   } finally {
-    await executionLock.release(connector.id, executionId);
+    heartbeat.stop();
+    await executionLock.release(connector.id, executionId, generation);
   }
 });

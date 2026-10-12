@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { salesFollowUpLeadScope } from "@/services/follow-up-policy";
 import { startOfTodayUTC, endOfTodayUTC } from "@/lib/utils";
 
 export type PendingFollowUpItem = {
@@ -71,6 +72,7 @@ export class AttentionService {
           { assignedUserId: userId },
           { createdById: userId },
         ],
+        ...salesFollowUpLeadScope(userId),
       },
       orderBy: { dueDate: "asc" },
       take: 50,
@@ -113,6 +115,7 @@ export class AttentionService {
           { assignedUserId: userId },
           { createdById: userId },
         ],
+        ...salesFollowUpLeadScope(userId),
       },
       orderBy: { dueDate: "asc" },
       take: 50,

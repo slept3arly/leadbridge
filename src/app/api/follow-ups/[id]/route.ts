@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
-import { followUpSchema } from "@/lib/validation";
+import { followUpUpdateSchema } from "@/lib/validation";
 import { followUpService } from "@/services/follow-up.service";
 import { invalidateAfterMutation } from "@/lib/cache-tags";
 
@@ -8,7 +8,7 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
   const { id } = await context.params;
   let body: unknown;
   try { body = await request.json(); } catch { return apiError("Invalid JSON body.", 400); }
-  const parsed = followUpSchema.partial().safeParse(body);
+  const parsed = followUpUpdateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }

@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { RawPayload } from "./runtime-types";
+import type { ExecutionFence } from "@/services/execution-fence";
+import { withExecutionFence } from "@/services/execution-fence";
 
 export interface RoutingHints {
   recipientGmailAccount?: string;
@@ -25,6 +27,7 @@ export class RoutingEngine {
     hints: RoutingHints,
     payload?: RawPayload,
     connectorId?: string,
+    executionFence?: ExecutionFence,
   ): Promise<RoutingResult> {
     const rules = await prisma.routingRule.findMany({
       where: { active: true },
@@ -57,7 +60,9 @@ export class RoutingEngine {
     }
 
     if (payload && hints.senderEmail) {
-      const unmatchedId = await this.recordUnmatched(hints, payload, connectorId);
+      const unmatchedId = executionFence
+        ? await withExecutionFence(executionFence, (tx) => this.recordUnmatched(hints, payload, connectorId, tx))
+        : await this.recordUnmatched(hints, payload, connectorId);
       return { match: null, unmatchedId };
     }
 
@@ -68,6 +73,7 @@ export class RoutingEngine {
     hints: RoutingHints,
     payload: RawPayload,
     connectorId?: string,
+    db: Pick<typeof prisma, "unmatchedEmail"> = prisma,
   ): Promise<string> {
     const rawPreview = [
       hints.subject,
@@ -78,7 +84,7 @@ export class RoutingEngine {
       .join("\n")
       .slice(0, 500);
 
-    const record = await prisma.unmatchedEmail.create({
+    const record = await db.unmatchedEmail.create({
       data: {
         senderEmail: hints.senderEmail ?? "",
         subject: hints.subject ?? null,

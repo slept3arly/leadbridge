@@ -1,6 +1,7 @@
 import { google, type gmail_v1 } from "googleapis";
 import type { GmailCredentials, GmailRawMessage, GmailMessageHeaders, GmailAttachment } from "./gmail-types";
 import { classifyGmailError } from "./gmail-errors";
+import { requireCompleteMessageBatch } from "./gmail-batch";
 
 const MAX_RESULTS = 50;
 const BATCH_SIZE = 10;
@@ -202,12 +203,7 @@ export class GmailClient {
       const results = await Promise.allSettled(
         batch.map((id) => this.fetchMessage(id)),
       );
-
-      for (const result of results) {
-        if (result.status === "fulfilled" && result.value) {
-          messages.push(result.value);
-        }
-      }
+      messages.push(...requireCompleteMessageBatch(batch, results as PromiseSettledResult<GmailRawMessage>[]));
 
       if (i + BATCH_SIZE < ids.length) {
         await delay(RATE_LIMIT_DELAY_MS);
@@ -217,8 +213,7 @@ export class GmailClient {
     return messages;
   }
 
-  private async fetchMessage(id: string): Promise<GmailRawMessage | null> {
-    try {
+  private async fetchMessage(id: string): Promise<GmailRawMessage> {
       const res = await this.withRetry(() =>
         this.gmail.users.messages.get({
           userId: "me",
@@ -248,9 +243,6 @@ export class GmailClient {
         attachments,
         raw: data as Record<string, unknown>,
       };
-    } catch {
-      return null;
-    }
   }
 
   private async withRetry<T>(

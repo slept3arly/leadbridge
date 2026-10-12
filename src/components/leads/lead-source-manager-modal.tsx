@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
 import { X, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 
 export type SourceItem = {
   id: string;
@@ -28,7 +30,9 @@ export function LeadSourceManagerModal({
   const [newName, setNewName] = useState("");
   const [pending, setPending] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SourceItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose: !pending && !deletingId });
 
   useEffect(() => {
     setSourceList(sources);
@@ -38,12 +42,7 @@ export function LeadSourceManagerModal({
     if (!open) return;
     setNewName("");
     setError(null);
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  }, [open]);
 
   const handleAddSource = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,8 +80,6 @@ export function LeadSourceManagerModal({
   };
 
   const handleDeleteSource = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to remove the lead source "${name}"?`)) return;
-
     setDeletingId(id);
     setError(null);
 
@@ -95,6 +92,7 @@ export function LeadSourceManagerModal({
       toast.error("Failed to remove lead source.");
     } finally {
       setDeletingId(null);
+      setDeleteTarget(null);
     }
   };
 
@@ -102,18 +100,22 @@ export function LeadSourceManagerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={pending || deletingId ? undefined : onClose} />
 
-      <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] p-6 space-y-5">
+      <div ref={dialogRef} data-accessible-dialog role="dialog" aria-modal="true" aria-labelledby="lead-source-title" tabIndex={-1} className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] p-6 space-y-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-[var(--color-ink)]">Lead Sources</h2>
-          <button
+          <h2 id="lead-source-title" className="text-lg font-semibold text-[var(--color-ink)]">Lead Sources</h2>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={onClose}
-            className="rounded-xl p-1.5 text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)] transition"
+            aria-label="Close lead sources"
+            disabled={pending || !!deletingId}
+            className="h-8 w-8 p-1.5"
           >
             <X size={18} />
-          </button>
+          </Button>
         </div>
 
         {/* Existing Lead Sources List */}
@@ -131,7 +133,7 @@ export function LeadSourceManagerModal({
                 <span className="font-medium text-[var(--color-ink)]">{src.name}</span>
                 <button
                   type="button"
-                  onClick={() => handleDeleteSource(src.id, src.name)}
+                  onClick={() => setDeleteTarget(src)}
                   disabled={deletingId === src.id}
                   className="rounded-lg p-1 text-[var(--color-muted)] hover:bg-red-50 hover:text-red-600 transition"
                   title="Remove lead source"
@@ -150,6 +152,7 @@ export function LeadSourceManagerModal({
           <FormField label="Add Lead Source" htmlFor="new-source-name">
             <Input
               id="new-source-name"
+              data-autofocus
               placeholder="e.g. Google Ads, Referral, WhatsApp"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -164,15 +167,24 @@ export function LeadSourceManagerModal({
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={pending || !!deletingId}>
               Done
             </Button>
-            <Button type="submit" isLoading={pending}>
+            <Button type="submit" variant="black" isLoading={pending}>
               Add
             </Button>
           </div>
         </form>
       </div>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Remove this lead source?"
+        description={`Leads using “${deleteTarget?.name ?? "this source"}” may no longer show its name.`}
+        confirmLabel="Remove source"
+        isLoading={!!deletingId}
+        onConfirm={() => { if (deleteTarget) void handleDeleteSource(deleteTarget.id, deleteTarget.name); }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

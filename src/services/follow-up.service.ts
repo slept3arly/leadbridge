@@ -1,11 +1,24 @@
-import type { FollowUpPriority, FollowUpStatus, UserRole } from "@/generated/prisma/client";
+import type { FollowUpPriority, UserRole } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ServiceError } from "@/lib/service-errors";
 import { activityEventService } from "@/services/activity-event.service";
+import { resolveFollowUpAssignee, salesFollowUpLeadScope } from "@/services/follow-up-policy";
 
 type Actor = { id: string; role: UserRole };
 
 export class FollowUpService {
+  private async assertAssignee(assignedUserId: string | null | undefined, actor: Actor) {
+    const resolved = resolveFollowUpAssignee(actor, assignedUserId);
+    if (actor.role === "SALES") return resolved;
+    if (assignedUserId) {
+      const user = await prisma.user.findFirst({
+        where: { id: assignedUserId, role: "SALES", active: true, isDeleted: false },
+        select: { id: true },
+      });
+      if (!user) throw new ServiceError("Follow-ups can be assigned only to active sales users.", 400);
+    }
+    return resolved;
+  }
   private async assertLeadAccess(leadId: string, actor: Actor) {
     const lead = await prisma.lead.findFirst({
       where: { id: leadId, isDeleted: false, ...(actor.role === "SALES" ? { assignedUserId: actor.id } : {}) },
@@ -58,7 +71,7 @@ export class FollowUpService {
       where: {
         status: "PENDING",
         ...(actor.role === "SALES"
-          ? { OR: [{ assignedUserId: actor.id }, { createdById: actor.id }] }
+          ? { OR: [{ assignedUserId: actor.id }, { createdById: actor.id }], ...salesFollowUpLeadScope(actor.id) }
           : {}),
       },
       orderBy: { dueDate: "asc" },
@@ -83,6 +96,7 @@ export class FollowUpService {
   }, actor: Actor, client?: Pick<typeof prisma, "followUp" | "lead" | "activityEvent" | "activityEntry" | "$transaction">, recordLifecycleEvent = true) {
     const db = client ?? prisma;
     await this.assertLeadAccess(data.leadId, actor);
+    const assignedUserId = await this.assertAssignee(data.assignedUserId, actor);
 
     const followUp = await db.followUp.create({
       data: {
@@ -92,7 +106,7 @@ export class FollowUpService {
         dueTime: data.dueTime ?? null,
         priority: (data.priority as FollowUpPriority) ?? "MEDIUM",
         status: "PENDING",
-        assignedUserId: data.assignedUserId ?? actor.id,
+        assignedUserId,
         leadId: data.leadId,
         createdById: actor.id,
       },
@@ -188,6 +202,9 @@ export class FollowUpService {
     });
     if (!followUp) throw new ServiceError("Follow-up not found.", 404);
     await this.assertLeadAccess(followUp.leadId, actor);
+    const assignedUserId = data.assignedUserId === undefined
+      ? undefined
+      : await this.assertAssignee(data.assignedUserId, actor);
 
     if (data.status !== undefined && data.status !== followUp.status) {
       throw new ServiceError(
@@ -216,7 +233,7 @@ export class FollowUpService {
             ...(combinedDueDate !== undefined ? { dueDate: combinedDueDate } : {}),
             ...(data.dueTime !== undefined ? { dueTime: data.dueTime } : {}),
             ...(data.priority !== undefined ? { priority: data.priority as FollowUpPriority } : {}),
-            ...(data.assignedUserId !== undefined ? { assignedUserId: data.assignedUserId } : {}),
+            ...(assignedUserId !== undefined ? { assignedUserId } : {}),
           },
           include: {
             assignedUser: { select: { id: true, name: true } },
@@ -236,7 +253,7 @@ export class FollowUpService {
         ...(combinedDueDate !== undefined ? { dueDate: combinedDueDate } : {}),
         ...(data.dueTime !== undefined ? { dueTime: data.dueTime } : {}),
         ...(data.priority !== undefined ? { priority: data.priority as FollowUpPriority } : {}),
-        ...(data.assignedUserId !== undefined ? { assignedUserId: data.assignedUserId } : {}),
+        ...(assignedUserId !== undefined ? { assignedUserId } : {}),
       },
       include: {
         assignedUser: { select: { id: true, name: true } },

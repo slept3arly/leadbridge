@@ -115,7 +115,6 @@ export class GmailConnector implements IConnector {
     const profile = await client.getProfile();
 
     context.logger.info("Gmail connector authenticated", {
-      emailAddress: profile.emailAddress,
       environmentKey,
     });
 

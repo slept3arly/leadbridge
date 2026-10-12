@@ -3,13 +3,17 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { CheckCircle2, Edit3, Link2, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { Edit3, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 
 type Provider = {
   id: string;
@@ -122,6 +126,9 @@ export function RoutingRulesManager({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<RoutingRuleForm>(EMPTY_FORM);
+  const [deleteRule, setDeleteRule] = useState<RoutingRule | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletingRule, setDeletingRule] = useState(false);
 
   useEffect(() => {
     setItems(rules);
@@ -204,6 +211,7 @@ export function RoutingRulesManager({
     setEditingRuleId(null);
     setError(null);
   };
+  const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose: close, canClose: !pending });
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -256,15 +264,20 @@ export function RoutingRulesManager({
     }
   };
 
-  const remove = async (rule: RoutingRule) => {
-    if (!confirm(`Delete routing rule "${rule.name}"? This cannot be undone.`)) return;
+  const remove = async () => {
+    if (!deleteRule) return;
+    setDeletingRule(true);
     try {
-      await axios.delete(`/api/providers/routing-rules/${rule.id}`);
-      setItems((prev) => prev.filter((entry) => entry.id !== rule.id));
+      await axios.delete(`/api/providers/routing-rules/${deleteRule.id}`);
+      setItems((prev) => prev.filter((entry) => entry.id !== deleteRule.id));
       toast.success("Routing rule deleted");
+      setDeleteRule(null);
+      setDeleteError(null);
       router.refresh();
     } catch {
-      toast.error("Failed to delete routing rule");
+      setDeleteError("Failed to delete routing rule. Please try again.");
+    } finally {
+      setDeletingRule(false);
     }
   };
 
@@ -301,7 +314,8 @@ export function RoutingRulesManager({
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-[var(--color-border)]">
-            <table className="min-w-full divide-y divide-[var(--color-border)] text-left text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-full divide-y divide-[var(--color-border)] text-left text-sm">
               <thead className="bg-slate-50/80">
                 <tr>
                   <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Rule</th>
@@ -313,7 +327,7 @@ export function RoutingRulesManager({
                   <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--color-border)] bg-white">
+              <tbody className="divide-y divide-[var(--color-border)] bg-[var(--color-panel)]">
                 {items.map((rule) => (
                   <tr key={rule.id} className="align-top">
                     <td className="px-4 py-4">
@@ -330,22 +344,14 @@ export function RoutingRulesManager({
                     <td className="px-4 py-4">
                       <p className="text-xs text-[var(--color-muted)] leading-5">{describeConditions(rule)}</p>
                     </td>
-                    <td className="px-4 py-4">
-                      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-[var(--color-ink)]">
-                        {rule.priority}
-                      </span>
+                    <td className="px-3 py-3">
+                      <Badge label={String(rule.priority)} toneKey="MEDIUM" />
                     </td>
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-3">
                       <div className="flex flex-col gap-1.5">
-                        <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${rule.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                          {rule.active ? <CheckCircle2 size={12} /> : <X size={12} />}
-                          {rule.active ? "Active" : "Inactive"}
-                        </span>
+                        <Badge label={rule.active ? "Active" : "Inactive"} toneKey={rule.active ? "Active" : "Inactive"} />
                         {rule.connector ? (
-                          <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-                            <Link2 size={12} />
-                            {rule.connector.name}
-                          </span>
+                          <Badge label={rule.connector.name} toneKey="SALES" className="max-w-40 truncate" />
                         ) : null}
                       </div>
                     </td>
@@ -359,7 +365,7 @@ export function RoutingRulesManager({
                           <RefreshCw size={14} />
                           {rule.active ? "Disable" : "Enable"}
                         </Button>
-                        <Button variant="danger" size="sm" onClick={() => remove(rule)}>
+                          <Button variant="danger" size="sm" onClick={() => { setDeleteError(null); setDeleteRule(rule); }}>
                           <Trash2 size={14} />
                           Delete
                         </Button>
@@ -369,6 +375,7 @@ export function RoutingRulesManager({
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -379,29 +386,29 @@ export function RoutingRulesManager({
 
       {error ? (
         <CardFooter className="border-t-0 pt-0">
-          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+          <ErrorState message={error} />
         </CardFooter>
       ) : null}
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden">
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={close} />
-          <div className="relative z-10 mt-6 mb-6 w-[92%] max-w-3xl overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={pending ? undefined : close} />
+          <div ref={dialogRef} data-accessible-dialog tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="routing-dialog-title" className="relative z-10 flex max-h-[calc(100dvh-1.5rem)] min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
+            <div className="flex shrink-0 items-center justify-between border-b border-[var(--color-border)] px-5 py-4 sm:px-6">
               <div>
-                <h3 className="text-lg font-semibold text-[var(--color-ink)]">
+                <h3 id="routing-dialog-title" className="text-lg font-semibold text-[var(--color-ink)]">
                   {editingRuleId ? "Edit Routing Rule" : "Create Routing Rule"}
                 </h3>
                 <p className="text-sm text-[var(--color-muted)]">
                   Link a provider to a parser and narrow the match conditions if needed.
                 </p>
               </div>
-              <button type="button" onClick={close} className="rounded-xl p-2 text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)]">
+              <button type="button" onClick={close} disabled={pending} aria-label="Close dialog" className="rounded-xl p-2 text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)]">
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={save} className="max-h-[80vh] overflow-y-auto p-6">
+            <form id="routing-rule-form" onSubmit={save} className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
               <div className="grid grid-cols-2 gap-4">
                 <label className="col-span-2 space-y-2">
                   <span className="text-sm font-medium text-[var(--color-ink)]">Rule Name</span>
@@ -505,14 +512,24 @@ export function RoutingRulesManager({
 
               {error ? <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
-              <div className="mt-6 flex items-center justify-end gap-3">
-                <Button type="button" variant="secondary" onClick={close} disabled={pending}>Cancel</Button>
-                <Button type="submit" isLoading={pending}>{editingRuleId ? "Save Rule" : "Create Rule"}</Button>
-              </div>
             </form>
+            <div className="flex shrink-0 justify-end gap-3 border-t border-[var(--color-border)] bg-white px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
+              <Button type="button" variant="secondary" onClick={close} disabled={pending}>Cancel</Button>
+              <Button type="submit" form="routing-rule-form" isLoading={pending}>{editingRuleId ? "Save Rule" : "Create Rule"}</Button>
+            </div>
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={!!deleteRule}
+        title="Delete this routing rule?"
+        description={`The rule “${deleteRule?.name ?? ""}” will be permanently deleted.`}
+        confirmLabel="Delete rule"
+        isLoading={deletingRule}
+        error={deleteError}
+        onConfirm={remove}
+        onCancel={() => { if (!deletingRule) { setDeleteRule(null); setDeleteError(null); } }}
+      />
     </Card>
   );
 }

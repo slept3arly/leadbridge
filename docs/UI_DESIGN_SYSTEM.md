@@ -1,7 +1,7 @@
 # LeadBridge UI Design System
 
 > **Status:** Canonical — Implementation Contract
-> **Last verified:** 2026-09-20
+> **Last verified:** 2026-10-09
 > **Source of truth:** Current Sales UI (post Major Sales UI Overhaul)
 
 ---
@@ -138,8 +138,8 @@ Observed in the current Sales UI:
 | Cards | `rounded-2xl` | Card, EmptyState, DataTable container |
 | Modals/Dialogs | `rounded-2xl` | ConfirmDialog, LeadDetailsModal, all modals |
 | Inputs | `rounded-md` | Input |
-| Selects | `rounded-xl` | Select |
-| Textareas | `rounded-xl` | Textarea |
+| Selects | `rounded-md` | Select |
+| Textareas | `rounded-md` | Textarea |
 | Buttons | `rounded-md` | Button |
 | Icon buttons | `rounded-xl` | IconActionButton |
 | Badges (default) | `rounded-full` | Badge |
@@ -200,7 +200,7 @@ Observed in the current Sales UI:
 | FormField | `form-field.tsx` | CANONICAL | Label + children + error + helper text. |
 | Badge | `badge.tsx` | CANONICAL | 30+ tone colors. 3 shape variants. |
 | Pagination | `pagination.tsx` | CANONICAL | Page X of Y with ellipsis. |
-| ConfirmDialog | `confirm-dialog.tsx` | CANONICAL | Destructive/default variants. Scroll lock. Escape. |
+| ConfirmDialog | `confirm-dialog.tsx` | CANONICAL | Destructive/default variants. Scroll lock, focus entry/trap/restore, Escape. |
 | FilterChip | `filter-chip.tsx` | CANONICAL | Removable pill with X. |
 | SegmentedControl | `segmented-control.tsx` | CANONICAL | Tab-like control with optional counts. |
 | EmptyState | `empty-state.tsx` | CANONICAL | Dashed border, centered text. |
@@ -270,6 +270,7 @@ Observed in the current Sales UI:
 | useTableQuery | `use-table-query.ts` | URL-synced table state. Debounced search. |
 | useLeadDetails | `use-lead-details.ts` | Fetches lead detail data. |
 | useHydrated | `use-hydrated.ts` | SSR-safe hydration check. |
+| useAccessibleDialog | `use-accessible-dialog.ts` | Scroll lock, focus entry/trap/restore, Escape, and nested dialog handling. |
 
 ---
 
@@ -457,9 +458,11 @@ All modals follow this structure:
 
 ### Modal Behavior
 
-- Body scroll lock when open (with scrollbar width compensation)
-- Escape key closes
-- Click overlay closes (unless loading)
+- Hook-managed dialogs lock body scrolling (with scrollbar width compensation), move focus into the dialog, keep Tab and Shift+Tab inside, and restore focus to the opener
+- Escape closes the topmost hook-managed dialog unless the current action is pending
+- Click overlay closes (unless loading) in workflows that allow backdrop dismissal
+- Dialog content uses `role="dialog"` or `role="alertdialog"`, `aria-modal="true"`, and an accessible name
+- Use `useAccessibleDialog` for the Admin Users/Leads forms and Sales lead/activity dialogs; `ConfirmDialog` uses it internally
 - Loading state: spinner in center or `isLoading` on submit button
 - Error: inline red alert box (`rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700`)
 
@@ -478,20 +481,20 @@ All modals follow this structure:
 
 | Value | Label | Badge Color |
 |-------|-------|-------------|
-| NEW | New | `bg-blue-100 text-blue-800` |
-| CONVERTED | Converted | `bg-green-100 text-green-800` |
-| LOST | Lost | `bg-rose-100 text-rose-800` |
-| SPAM | Spam | `bg-red-50 text-red-400` |
-| ON_HOLD | On Hold | `bg-amber-100 text-amber-800` |
+| NEW | New | `--color-brand` tint |
+| CONVERTED | Converted | `--color-success` tint |
+| LOST | Lost | `--color-danger` tint |
+| SPAM | Spam | `--color-danger` tint |
+| ON_HOLD | On Hold | `--color-warning` tint with `--color-ink` text |
 
 ### Lead Priority
 
 | Value | Label | Badge Color |
 |-------|-------|-------------|
-| LOW | Low | `bg-sky-100 text-sky-700` |
-| MEDIUM | Medium | `bg-slate-100 text-slate-700` |
-| HIGH | High | `bg-orange-100 text-orange-800` |
-| URGENT | Urgent | `bg-red-100 text-red-800` |
+| LOW | Low | `--color-brand` tint |
+| MEDIUM | Medium | `--color-surface-raised` and `--color-muted` |
+| HIGH | High | `--color-warning` tint with `--color-ink` text |
+| URGENT | Urgent | `--color-danger` tint |
 
 ### Lead Categories (17 total)
 
@@ -501,15 +504,15 @@ All defined in `src/components/ui/badge.tsx` tones map and `src/lib/lead-constan
 
 | Value | Badge Color |
 |-------|-------------|
-| ADMIN | `bg-slate-900 text-white` |
-| SALES | `bg-blue-100 text-blue-800` |
+| ADMIN | `--color-ink` with white text |
+| SALES | `--color-brand` tint |
 
 ### User Status
 
 | Value | Badge Color |
 |-------|-------------|
-| Active | `bg-emerald-50 text-emerald-700` |
-| Inactive | `bg-rose-50 text-rose-700` |
+| Active | `--color-success` tint |
+| Inactive | `--color-danger` tint |
 
 ### Overdue Indicators
 
@@ -693,19 +696,14 @@ The following MUST remain visually consistent between Sales and Admin:
 
 | Issue | Category | Severity | Location |
 |-------|----------|----------|----------|
-| Select uses `rounded-xl` but Input uses `rounded-md` | Inconsistent pattern | cosmetic | `select.tsx` vs `input.tsx` |
 | Two pagination implementations (inline in SalesTableControls vs Pagination component) | Component duplication | cosmetic | `sales-table-controls.tsx` vs `pagination.tsx` |
 | LeadFilters superseded by SalesTableControls but still exists | Legacy implementation | cosmetic | `lead-filters.tsx` |
 | BlueprintBackground exists but is unused/legacy | Legacy implementation | cosmetic | `blueprint-background.tsx` |
-| Some modals use `variant="black"` for submit, others use `variant="primary"` | Inconsistent pattern | cosmetic | Various modals |
 | `useModalState` hook is defined inside `lead-details-modal.tsx` instead of `src/hooks/` | Inconsistent pattern | cosmetic | `lead-details-modal.tsx` |
 | Inline tables in dashboard don't use DataTable component | Component duplication | cosmetic | `sales-dashboard-client.tsx` |
-| Admin HealthBadge is a local component not using Badge | Component duplication | cosmetic | `admin-dashboard-client.tsx` |
-| Admin InsightCard duplicates KpiCard pattern | Component duplication | cosmetic | `admin-dashboard-client.tsx` |
-| SignOutButton and ResyncButton use raw `<button>` instead of Button component | Inconsistent pattern | cosmetic | `sign-out-button.tsx`, `resync-button.tsx` |
-| ExportButton uses raw `<button>` instead of Button component | Inconsistent pattern | cosmetic | `export-button.tsx` |
-| `confirm()` browser dialog used in attention-center.tsx for delete | Accessibility | accessibility | `attention-center.tsx` |
-| No focus trap in LeadDetailsModal (only in BottomNavigationMenu) | Accessibility | accessibility | `lead-details-modal.tsx` |
+| Admin dashboard health indicators and metrics now reuse shared Badge and KpiCard | Resolved | — | `admin-dashboard-client.tsx` |
+| Native `confirm()` remains in routing rules and connector delete flows | Out of scope for this UI pass | follow-up | `routing-rules-manager.tsx`, `connectors-page-content.tsx` |
+| Focus behavior is standardized in the Admin lead/user forms, lead source manager, confirmation dialog, Sales lead details, and activity dialogs; other modal implementations still need review | Accessibility | follow-up | Other modal components |
 | Table horizontal scroll not tested on mobile | Responsive | responsive | DataTable |
 
 ---
@@ -718,14 +716,17 @@ When overhauling Sales and Admin UIs, follow these rules:
 2. **Do not install new UI libraries.** Extend existing components.
 3. **Do not create parallel component hierarchies.** Reuse `src/components/ui/` and `src/components/shared/`.
 4. **Admin must reuse Sales components.** Shared components like DataTable, Card, Button, Badge, etc. are NOT Sales-specific.
-5. **Fix inconsistencies documented in Section 17** as part of the overhaul.
-6. **Standardize modal submit buttons** — decide between `black` and `primary` and apply consistently.
-7. **Extract `useModalState` to `src/hooks/`** for reuse.
+5. **Fix remaining inconsistencies documented in Section 17** as scope allows.
+6. **Use `black` for modal form submissions** and `primary` for page-level primary actions.
+7. **Keep focus and scroll behavior in `useAccessibleDialog`**; avoid per-modal implementations.
 8. **Replace inline dashboard tables with DataTable** where possible.
-9. **Replace raw `<button>` in SignOutButton, ResyncButton, ExportButton** with Button component.
-10. **Add focus trapping to all modals**, not just BottomNavigationMenu.
-11. **Replace `confirm()` dialogs** with ConfirmDialog component.
-12. **Test all new views on mobile** — ensure tables scroll horizontally, grids collapse properly.
-13. **Every new page must include**: Navbar, loading state, empty state, error handling.
-14. **Every new data table must include**: search, sort, pagination, filters, empty state, loading skeleton.
-15. **Every destructive action must include**: ConfirmDialog with descriptive title and description.
+9. **Review remaining modal implementations for focus behavior** as they are changed.
+10. **Replace native `confirm()` dialogs** with ConfirmDialog when changing the associated workflow.
+11. **Test all new views on mobile** — ensure tables scroll horizontally, grids collapse properly.
+12. **Every new page must include**: Navbar, loading state, empty state, error handling.
+13. **Every new data table must include**: search, sort, pagination, filters, empty state, loading skeleton.
+14. **Every destructive action must include**: ConfirmDialog with descriptive title and description.
+
+### UI Library Decision
+
+The app uses hand-built primitives in `src/components/ui/`, styled with Tailwind CSS v4 and the tokens above. `package.json` contains no shadcn/ui, Radix, or equivalent component-library dependency. The current primitives meet this phase's needs, so no UI library was added.

@@ -459,6 +459,7 @@ model Connector {
   isRunning           Boolean               @default(false)
   lockedAt            DateTime?
   lockedBy            String?
+  lockGeneration      BigInt                @default(0)
   sourceId            String?
   source              LeadSource?           @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   parserId            String?

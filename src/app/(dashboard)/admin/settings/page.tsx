@@ -7,6 +7,7 @@ export default function AdminSettingsPage() {
     <>
       <Navbar
         title="Settings"
+        subtitle="System-wide configuration"
         actions={
           <>
             <SignOutButton />

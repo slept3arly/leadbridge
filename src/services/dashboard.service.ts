@@ -2,45 +2,63 @@ import { prisma } from "@/lib/prisma";
 import { startOfTodayUTC, endOfTodayUTC } from "@/lib/utils";
 import { reportService } from "./report.service";
 import { attentionService } from "./attention.service";
+import { salesFollowUpLeadScope } from "@/services/follow-up-policy";
 
 export class DashboardService {
   async admin() {
     const today = startOfTodayUTC();
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
+    const todayEnd = endOfTodayUTC();
     const now = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
 
     const [
       totalLeads,
-      activeLeads,
       newToday,
-      won,
-      lost,
+      convertedLeads,
       unassigned,
       statusBreakdown,
-      leadSources,
+      priorityBreakdown,
+      activeSalesUsers,
+      assignedLeadGroups,
+      pendingFollowUps,
+      overdueFollowUps,
+      activityEntriesToday,
       connectorHealth,
       recentActivity,
       recentSyncs,
-      pendingParserRequests,
-      unmatchedCount,
-      bySalesperson,
-      inactiveConnectors,
-      recentFailedSyncs,
-      duplicateEmails,
-      inactiveUsers,
     ] = await Promise.all([
       prisma.lead.count({ where: { isDeleted: false } }),
-      prisma.lead.count({ where: { isDeleted: false, status: { in: ["NEW", "ON_HOLD"] } } }),
       prisma.lead.count({ where: { createdAt: { gte: today }, isDeleted: false } }),
       prisma.lead.count({ where: { status: "CONVERTED", isDeleted: false } }),
-      prisma.lead.count({ where: { status: "LOST", isDeleted: false } }),
       prisma.lead.count({ where: { assignedUserId: null, isDeleted: false } }),
       reportService.statusBreakdown(),
-      reportService.leadSources({ from: thirtyDaysAgo, to: now }),
+      prisma.lead.groupBy({ by: ["priority"], where: { isDeleted: false }, _count: { id: true } }),
+      prisma.user.findMany({
+        where: { role: "SALES", active: true, isDeleted: false },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.lead.groupBy({
+        by: ["assignedUserId"],
+        where: { isDeleted: false, assignedUserId: { not: null } },
+        _count: { id: true },
+      }),
+      prisma.followUp.count({ where: { status: "PENDING" } }),
+      prisma.followUp.count({ where: { status: "PENDING", dueDate: { lt: now } } }),
+      prisma.activityEntry.findMany({
+        where: {
+          OR: [
+            { type: "CALL", action: "CALL" },
+            { type: "WHATSAPP", action: "WHATSAPP" },
+          ],
+          event: { occurredAt: { gte: today, lte: todayEnd } },
+        },
+        select: {
+          type: true,
+          action: true,
+          response: true,
+          event: { select: { leadId: true, actorId: true } },
+        },
+      }),
       prisma.connector.findMany({ select: { id: true, name: true, type: true, healthStatus: true, status: true, isRunning: true, enabled: true } }),
       prisma.activityEvent.findMany({
         orderBy: { occurredAt: "desc" },
@@ -52,44 +70,79 @@ export class DashboardService {
         },
       }),
       prisma.connectorSyncRun.findMany({ orderBy: { startedAt: "desc" }, take: 5, include: { connector: { select: { id: true, name: true } } } }),
-      prisma.parserRequest.count({ where: { status: "OPEN" } }),
-      prisma.unmatchedEmail.count({ where: { status: "UNMATCHED" } }),
-      prisma.lead.groupBy({ by: ["assignedUserId"], where: { isDeleted: false, assignedUserId: { not: null } }, _count: { id: true } }),
-      prisma.connector.count({ where: { enabled: false } }),
-      prisma.connectorSyncRun.count({ where: { status: "ERROR", startedAt: { gte: yesterday } } }),
-      prisma.lead.groupBy({ by: ["email"], where: { email: { not: null }, isDeleted: false }, _count: { id: true }, having: { id: { _count: { gt: 1 } } } }),
-      prisma.user.count({ where: { active: false } }),
     ]);
 
-    const salesUserIds = bySalesperson.map((r) => r.assignedUserId!).filter(Boolean);
-    const salesUsers = salesUserIds.length > 0
-      ? await prisma.user.findMany({ where: { id: { in: salesUserIds } }, select: { id: true, name: true } })
-      : [];
+    const salespersonActivity = new Map(activeSalesUsers.map((user) => [user.id, {
+      workedLeadIds: new Set<string>(),
+      calls: 0,
+      whatsapp: 0,
+      responses: 0,
+    }]));
+    let callsLogged = 0;
+    let whatsappLogged = 0;
+    let responseEntries = 0;
+    const allWorkedLeadIds = new Set<string>();
 
-    const yesterdayNew = await prisma.lead.count({ where: { createdAt: { gte: yesterday, lt: today }, isDeleted: false } });
-    const trend = newToday - yesterdayNew;
+    for (const entry of activityEntriesToday) {
+      const isCall = entry.type === "CALL" && entry.action === "CALL";
+      const isWhatsApp = entry.type === "WHATSAPP" && entry.action === "WHATSAPP";
+      const isResponse = (isCall && entry.response === "PICKED_UP")
+        || (isWhatsApp && entry.response === "REPLIED");
 
+      allWorkedLeadIds.add(entry.event.leadId);
+      if (isCall) callsLogged += 1;
+      if (isWhatsApp) whatsappLogged += 1;
+      if (isResponse) responseEntries += 1;
+
+      const actorStats = entry.event.actorId ? salespersonActivity.get(entry.event.actorId) : undefined;
+      if (!actorStats) continue;
+      actorStats.workedLeadIds.add(entry.event.leadId);
+      if (isCall) actorStats.calls += 1;
+      if (isWhatsApp) actorStats.whatsapp += 1;
+      if (isResponse) actorStats.responses += 1;
+    }
+    const workedLeads = allWorkedLeadIds.size;
+
+    const assignedLeadCounts = new Map(
+      assignedLeadGroups.map(({ assignedUserId, _count }) => [assignedUserId, _count.id]),
+    );
     return {
       cards: {
         totalLeads,
-        activeLeads,
         newToday,
-        won,
-        lost,
+        convertedLeads,
         unassigned,
       },
       charts: {
-        statusBreakdown,
-        leadSources: {
-          byProvider: leadSources.byProvider,
-          byConnector: leadSources.byConnector,
-        },
-        salespersonLoad: bySalesperson.map((r) => ({
-          userId: r.assignedUserId,
-          userName: salesUsers.find((u) => u.id === r.assignedUserId)?.name ?? "Unknown",
-          leadCount: r._count.id,
+        statusBreakdown: ["NEW", "ON_HOLD", "CONVERTED", "LOST", "SPAM"].map((status) => ({
+          status,
+          count: statusBreakdown.find((item) => item.status === status)?.count ?? 0,
+        })),
+        priorityBreakdown: ["URGENT", "HIGH", "MEDIUM", "LOW"].map((priority) => ({
+          priority,
+          count: priorityBreakdown.find((item) => item.priority === priority)?._count.id ?? 0,
         })),
       },
+      workload: {
+        assigned: totalLeads - unassigned,
+        unassigned,
+        activeSalesUsers: activeSalesUsers.length,
+        pendingFollowUps,
+        overdueFollowUps,
+      },
+      activity: { workedLeads, callsLogged, whatsappLogged, responseEntries },
+      salespersonPerformance: activeSalesUsers.map((user) => {
+        const activity = salespersonActivity.get(user.id)!;
+        return {
+          userId: user.id,
+          name: user.name,
+          assignedLeads: assignedLeadCounts.get(user.id) ?? 0,
+          workedToday: activity.workedLeadIds.size,
+          calls: activity.calls,
+          whatsapp: activity.whatsapp,
+          responses: activity.responses,
+        };
+      }),
       connectorHealth: connectorHealth.map((c) => ({
         id: c.id,
         name: c.name,
@@ -118,20 +171,6 @@ export class DashboardService {
         startedAt: s.startedAt.toISOString(),
         completedAt: s.completedAt?.toISOString() ?? null,
       })),
-      pending: {
-        parserRequests: pendingParserRequests,
-        unmatchedEmails: unmatchedCount,
-      },
-      insights: {
-        newToday,
-        trend,
-        unassigned,
-        inactiveConnectors,
-        recentFailedSyncs,
-        duplicateEmails: duplicateEmails.length,
-        inactiveUsers,
-        unhealthyConnectors: connectorHealth.filter((c) => c.healthStatus !== "HEALTHY").length,
-      },
     };
   }
 
@@ -186,6 +225,7 @@ export class DashboardService {
           status: "PENDING",
           dueDate: { not: null, gte: startOfToday },
           OR: [{ assignedUserId: userId }, { createdById: userId }],
+          ...salesFollowUpLeadScope(userId),
         },
         orderBy: { dueDate: "asc" },
         take: 5,
@@ -215,6 +255,7 @@ export class DashboardService {
           status: "PENDING",
           dueDate: { not: null, gte: startOfToday, lte: endOfWeek },
           OR: [{ assignedUserId: userId }, { createdById: userId }],
+          ...salesFollowUpLeadScope(userId),
         },
       }),
       prisma.lead.count({
