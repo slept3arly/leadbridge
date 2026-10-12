@@ -318,11 +318,11 @@ Other connector observations:
 
 ## Documentation/code discrepancies
 
-1. `docs/04_ADMINISTRATION_AND_OPERATIONS.md:51` says lead deletion is soft and retained. Current `LeadService.remove()` hard deletes and schema cascades related CRM history. This is the most material mismatch.
+1. `docs/archive/04_ADMINISTRATION_AND_OPERATIONS.md:51` says lead deletion is soft and retained. Current `LeadService.remove()` hard deletes and schema cascades related CRM history. This is the most material mismatch.
 2. `docs/authentication.md` and `docs/architecture.md` name `src/middleware.ts`; current implementation is `src/proxy.ts`. The current proxy only checks cookie presence; server layouts/API wrappers validate authoritative sessions.
 3. `docs/development.md:125-129` describes empty audit/mock/sync/cancel directories. The current inventory has no `audit-logs` API route and does have the current `/api/follow-ups/[id]/complete` handler. Treat the existing graph/report as stale, not authoritative.
 4. `docs/integrations.md` describes retry and health tracking but does not disclose that individual Gmail `fetchMessage` errors are swallowed or that the lock has no lease/recovery.
-5. Documentation recommends an external cron and backups (`docs/development.md:109-119`, `docs/04_ADMINISTRATION_AND_OPERATIONS.md:210-238`); no executable repository configuration or runtime verification establishes that these are deployed.
+5. Documentation recommends an external cron and backups (`docs/development.md:109-119`, `docs/archive/04_ADMINISTRATION_AND_OPERATIONS.md:210-238`); no executable repository configuration or runtime verification establishes that these are deployed.
 6. `docs/database.md` documents soft-delete fields/filters and `@@index([connectorId, sourceReferenceId])`; the live delete path bypasses soft deletion and the composite index duplicates the unique index.
 7. The existing graphify graph lists `src/app/api/audit-logs/route.ts`, absent from the current source. It was not used as evidence.
 

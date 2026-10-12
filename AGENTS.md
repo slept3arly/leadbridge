@@ -73,6 +73,10 @@ When changing implementation:
 3. Mark estimates as estimates
 4. Never document code that does not exist
 
+## Documentation Index
+
+Start at `docs/README.md` for the canonical guide map. Experimental analysis lives in `docs/experiments/`. Superseded documents are in `docs/archive/`.
+
 ## Key Files
 
 | Purpose | Path |
