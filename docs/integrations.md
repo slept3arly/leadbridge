@@ -59,9 +59,10 @@ factoryRegistry.set("rest", (config) => new RestConnector(config));
 - **Pagination:** PAGE_NUMBER, OFFSET, CURSOR, NEXT_URL, TOKEN
 - **Config:** `baseUrl`, `endpoint`, `method`, `headers`, `queryParams`, `body`, `auth`, `pagination`, `leadArrayPath`
 - **Timeout:** Configurable per-request (default 30s)
-- **Retries:** Configurable per-page retry with backoff
+- **Retries and pacing:** Configurable retries for retryable GET/PUT/DELETE failures, exponential backoff (capped at 10 seconds), and `Retry-After` for 429. `rateLimitDelayMs` also spaces successful paginated requests. POST/PATCH requests are not retried automatically because they may have side effects. Test Connection sends the configured method once, and paginated syncs send one request per page; use a read-safe endpoint for these methods. The runtime does not repeat the full REST import after the client exhausts retries.
+- **Pagination:** Page-number and offset strategies continue while a page is full; cursor, token, and next-URL strategies continue while a response supplies a continuation value. Empty pages stop pagination. Repeated cursor/token/URL values and reaching `maxPages` before completion fail the sync. A `leadArrayPath` is required unless the JSON response is itself an array.
 - **Destination policy:** HTTPS is required unless the exact origin is in `REST_CONNECTOR_ALLOWED_ORIGINS` (comma-separated origins); this allowlist also authorizes trusted private-network and HTTP destinations. DNS answers are checked and pinned per request. Redirect and `NEXT_URL` cross-origin destinations must be allowlisted; credentials are not forwarded cross-origin.
-- **Resource limits:** Requests are capped at 30 seconds, request bodies at 1 MiB, each response at 2 MiB (20 MiB total), pagination at 100 pages/500 records per page, total records at 25,000, retries at 3, and execution at 120 seconds. Reaching a page cap before the provider signals completion fails the sync.
+- **Resource limits:** Requests are capped at 30 seconds, request bodies at 1 MiB, each response at 2 MiB (20 MiB total), pagination at 100 pages/500 records per page, total records at 25,000, request attempts at 3, and execution at 120 seconds. Reaching a page cap before the provider signals completion fails the sync.
 
 ### Configuration
 
@@ -69,11 +70,11 @@ REST connector configuration is stored in `Connector.configuration` (JSON column
 
 1. **POST `/api/connectors`** -- accepts `configuration` in the request body for REST connectors, validated against `restConnectorConfigSchema`
 2. **PATCH `/api/connectors/[id]/settings`** -- accepts `configuration` for REST connectors (merges with existing config, retains secrets not provided in the update). Also accepts `enabled`, `scheduleType`, `scheduleConfig`, `resetHealth`, `sourceId`.
-3. **Connector Edit UI** (`src/components/connectors/connector-edit-modal.tsx`) -- has a "Configuration" tab for REST connectors that allows editing baseUrl, endpoint, method, headers, queryParams, body, auth, and pagination settings.
+3. **Connector Edit UI** (`src/components/connectors/connector-edit-modal.tsx`) -- the Admin creates/selects a provider, creates a REST connector, then configures base URL, endpoint, method, authentication, headers, query parameters, optional body, timeout/retry/rate-limit settings, response array path, and strategy-specific pagination settings. Save validates the configuration server-side. Configure an active routing rule to select the provider and parser for incoming REST records (connector-specific rules may scope by connector). Blank secret fields retain the saved value; changing auth type to NONE clears authentication. The explicit clear controls remove saved headers, query parameters, or body.
 
-Set `REST_CONNECTOR_ALLOWED_ORIGINS` in the server environment only for deliberate trusted HTTP or private-network integrations and cross-origin pagination. Entries are exact origins, including scheme and optional port; do not use a broad or user-controlled allowlist. Without this setting, public HTTPS endpoints on the configured base origin remain supported.
+Set `REST_CONNECTOR_ALLOWED_ORIGINS` in the server environment only for deliberate trusted HTTP or private-network integrations and cross-origin pagination. Entries are exact origins, including scheme and optional port; do not use a broad or user-controlled allowlist. Without this setting, public HTTPS endpoints on the configured base origin remain supported. For local development only, `REST_CONNECTOR_DEV_ALLOWED_ORIGINS` accepts the same comma-separated exact-origin format, but is ignored unless `NODE_ENV=development`; set it in the LeadBridge server environment and restart the server. It must never be used to authorize production destinations.
 
-Secrets (API key values, bearer tokens, basic auth passwords, custom header values) are sanitized in the UI -- shown as "configured" booleans rather than actual values. The UI sends the full config back to the API on save.
+Secrets (API key values, bearer tokens, basic auth passwords, custom header values) are sanitized in the UI -- shown as "configured" booleans rather than actual values. Blank secret fields retain saved credentials; entering a value rotates them. The UI sends the editable configuration to the API, and the settings route merges partial updates while preserving unspecified configuration.
 
 ## Parsers
 
@@ -159,7 +160,7 @@ Main orchestrator:
 
 ## Scheduler
 
-`POST /api/scheduler/trigger` discovers enabled connectors with `nextScheduledRun <= now` and executes them sequentially. Must be triggered by an external cron service (Vercel Cron, system crontab, etc.).
+`POST /api/scheduler/trigger` discovers enabled connectors with `nextScheduledRun <= now` and executes them sequentially as the system actor. Admin sessions can trigger due connectors or an individual connector. An external cron can trigger due connectors without an interactive session by sending `Authorization: Bearer <SCHEDULER_TRIGGER_SECRET>`; configure a long random `SCHEDULER_TRIGGER_SECRET` in the server environment and keep it private. Machine credentials cannot request a specific connector ID. Preset schedules and custom intervals (1–525,600 minutes) are advanced from completion time. No scheduler deployment or environment configuration is included in this repository.
 
 ## Parser Preview
 
@@ -167,4 +168,4 @@ Main orchestrator:
 
 ## Connector Test
 
-`POST /api/providers/connectors/test` accepts a `connectorId`, looks up the connector, and calls `GmailConnector.testConnection()` or `RestConnector.testConnection()`.
+`POST /api/providers/connectors/test` accepts a `connectorId`, looks up the connector, and calls `GmailConnector.testConnection()` or `RestConnector.testConnection()`. Configure a REST connector, save it, and use the Admin connector page's Test action to verify reachability, authentication, JSON response, and array extraction. Use Manual Sync to run the full parser/routing/lead-import pipeline; test-connection does not create leads. For a complete local walkthrough using the standalone fixture, see the [REST Connector Developer Testing Guide](./rest-connector-testing.md).

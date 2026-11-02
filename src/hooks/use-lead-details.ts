@@ -3,6 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 
+const inFlightLeadDetails = new Map<string, Promise<LeadDetails>>();
+
+function fetchLeadDetails(leadId: string): Promise<LeadDetails> {
+  const existing = inFlightLeadDetails.get(leadId);
+  if (existing) return existing;
+
+  const request = axios.get<LeadDetails>(`/api/leads/${leadId}/details`).then((response) => response.data);
+  inFlightLeadDetails.set(leadId, request);
+  const clearRequest = () => {
+    if (inFlightLeadDetails.get(leadId) === request) inFlightLeadDetails.delete(leadId);
+  };
+  request.then(clearRequest, clearRequest);
+  return request;
+}
+
 export type LeadDetail = {
   id: string;
   displayName: string;
@@ -88,11 +103,12 @@ export type LeadDetails = {
 
 export function useLeadDetails(leadId: string) {
   const [data, setData] = useState<LeadDetails | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadedLeadId, setLoadedLeadId] = useState<string | null>(null);
+  const loading = loadedLeadId !== leadId;
 
   const refresh = useCallback(async () => {
-    const res = await axios.get<LeadDetails>(`/api/leads/${leadId}/details`);
-    setData(res.data);
+    const details = await fetchLeadDetails(leadId);
+    setData(details);
   }, [leadId]);
 
   const patchData = useCallback((patch: Partial<LeadDetails> | ((prev: LeadDetails | null) => LeadDetails | null)) => {
@@ -105,22 +121,17 @@ export function useLeadDetails(leadId: string) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-
-    axios.get<LeadDetails>(`/api/leads/${leadId}/details`)
-      .then((res) => {
+    fetchLeadDetails(leadId)
+      .then((details) => {
         if (!cancelled) {
-          setData(res.data);
+          setData(details);
+          setLoadedLeadId(leadId);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setData(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
+          setLoadedLeadId(leadId);
         }
       });
 

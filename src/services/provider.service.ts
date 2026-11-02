@@ -76,19 +76,19 @@ export class ProviderService {
     });
   }
 
-  async create(data: ProviderInput, actorId: string) {
+  async create(data: ProviderInput) {
     const provider = await prisma.leadSource.create({ data: { ...data, sourceType: data.sourceType, description: data.description ?? null } });
     invalidateAdminDashboard();
     return provider;
   }
 
-  async update(id: string, data: Partial<ProviderInput>, actorId: string) {
+  async update(id: string, data: Partial<ProviderInput>) {
     const provider = await prisma.leadSource.update({ where: { id }, data: { ...data, description: data.description ?? undefined } });
     invalidateAdminDashboard();
     return provider;
   }
 
-  async delete(id: string, actorId: string) {
+  async delete(id: string) {
     const provider = await prisma.leadSource.findUnique({ where: { id }, select: { id: true, name: true } });
     if (!provider) throw new ServiceError("Provider not found.", 404);
     await prisma.leadSource.update({ where: { id }, data: { active: false, connectors: { set: [] } } });
@@ -96,7 +96,7 @@ export class ProviderService {
     return provider;
   }
 
-  async createRoutingRule(data: RoutingInput, actorId: string) {
+  async createRoutingRule(data: RoutingInput) {
     const rule = await prisma.routingRule.create({
       data: { ...data, priority: data.priority ?? 100, fallback: data.fallback ?? false, active: data.active ?? true },
       include: routingRuleInclude,
@@ -105,7 +105,7 @@ export class ProviderService {
     return rule;
   }
 
-  async updateRoutingRule(id: string, data: Partial<RoutingInput>, actorId: string) {
+  async updateRoutingRule(id: string, data: Partial<RoutingInput>) {
     const existing = await prisma.routingRule.findUnique({
       where: { id },
       select: { id: true, name: true, providerId: true, parserId: true, connectorId: true },
@@ -128,7 +128,7 @@ export class ProviderService {
     return rule;
   }
 
-  async deleteRoutingRule(id: string, actorId: string) {
+  async deleteRoutingRule(id: string) {
     const rule = await prisma.routingRule.findUnique({
       where: { id },
       select: { id: true, name: true, providerId: true, parserId: true },

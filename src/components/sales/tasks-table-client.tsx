@@ -27,7 +27,7 @@ type FollowUpRow = {
 export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }) {
   const router = useRouter();
   const hydrated = useHydrated();
-  const [rows, setRows] = useState(initialRows);
+  const [rows] = useState(initialRows);
 
   const [completeTarget, setCompleteTarget] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);

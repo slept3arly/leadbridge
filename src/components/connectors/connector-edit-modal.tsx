@@ -38,8 +38,14 @@ type RestConfig = {
   endpoint: string;
   method: string;
   headers: string;
+  headersConfigured: boolean;
+  clearHeaders: boolean;
   queryParams: string;
+  queryParamsConfigured: boolean;
+  clearQueryParams: boolean;
   body: string;
+  bodyConfigured: boolean;
+  clearBody: boolean;
   authType: string;
   apiKeyName: string;
   apiKeyValue: string;
@@ -61,6 +67,15 @@ type RestConfig = {
   paginationStrategy: string;
   pageSize: string;
   maxPages: string;
+  pageParam: string;
+  perPageParam: string;
+  offsetParam: string;
+  limitParam: string;
+  cursorParam: string;
+  cursorPath: string;
+  nextUrlPath: string;
+  tokenParam: string;
+  tokenPath: string;
 };
 
 const EMPTY_CONFIG: RestConfig = {
@@ -68,8 +83,14 @@ const EMPTY_CONFIG: RestConfig = {
   endpoint: "",
   method: "GET",
   headers: "",
+  headersConfigured: false,
+  clearHeaders: false,
   queryParams: "",
+  queryParamsConfigured: false,
+  clearQueryParams: false,
   body: "",
+  bodyConfigured: false,
+  clearBody: false,
   authType: "NONE",
   apiKeyName: "",
   apiKeyValue: "",
@@ -91,6 +112,15 @@ const EMPTY_CONFIG: RestConfig = {
   paginationStrategy: "PAGE_NUMBER",
   pageSize: "50",
   maxPages: "50",
+  pageParam: "page",
+  perPageParam: "per_page",
+  offsetParam: "offset",
+  limitParam: "limit",
+  cursorParam: "cursor",
+  cursorPath: "",
+  nextUrlPath: "",
+  tokenParam: "pageToken",
+  tokenPath: "",
 };
 
 function parseJsonLines(input: string): Record<string, string> {
@@ -141,8 +171,14 @@ export function normalizeRestConfig(configuration: SafeConnectorConfiguration | 
     endpoint: stringValue(config.endpoint),
     method: stringValue(config.method, "GET"),
     headers: "",
+    headersConfigured: config.headersConfigured === true,
+    clearHeaders: false,
     queryParams: "",
+    queryParamsConfigured: config.queryParamsConfigured === true,
+    clearQueryParams: false,
     body: "",
+    bodyConfigured: config.bodyConfigured === true,
+    clearBody: false,
     authType: stringValue(auth.type, "NONE"),
     apiKeyName: stringValue(apiKey.name),
     apiKeyValue: "",
@@ -164,6 +200,15 @@ export function normalizeRestConfig(configuration: SafeConnectorConfiguration | 
     paginationStrategy: stringValue(pagination.strategy, "PAGE_NUMBER"),
     pageSize: numberStringValue(pagination.pageSize, "50"),
     maxPages: numberStringValue(pagination.maxPages, "50"),
+    pageParam: stringValue(pagination.pageParam, "page"),
+    perPageParam: stringValue(pagination.perPageParam, "per_page"),
+    offsetParam: stringValue(pagination.offsetParam, "offset"),
+    limitParam: stringValue(pagination.limitParam, "limit"),
+    cursorParam: stringValue(pagination.cursorParam, "cursor"),
+    cursorPath: stringValue(pagination.cursorPath),
+    nextUrlPath: stringValue(pagination.nextUrlPath),
+    tokenParam: stringValue(pagination.tokenParam, "pageToken"),
+    tokenPath: stringValue(pagination.tokenPath),
   };
 }
 
@@ -189,6 +234,9 @@ export function buildConfiguration(c: RestConfig): Record<string, unknown> | nul
   };
   if (c.pageSize) pagination.pageSize = Number(c.pageSize);
   if (c.maxPages) pagination.maxPages = Number(c.maxPages);
+  for (const field of ["pageParam", "perPageParam", "offsetParam", "limitParam", "cursorParam", "cursorPath", "nextUrlPath", "tokenParam", "tokenPath"] as const) {
+    if (c[field]) pagination[field] = c[field];
+  }
 
   const config: Record<string, unknown> = {
     baseUrl: c.baseUrl,
@@ -198,18 +246,21 @@ export function buildConfiguration(c: RestConfig): Record<string, unknown> | nul
     pagination,
     leadArrayPath: c.leadArrayPath,
     timeout: Number(c.timeout) || 30000,
-    retryCount: Number(c.retryCount) || 3,
-    rateLimitDelayMs: Number(c.rateLimitDelayMs) || 200,
+    retryCount: Number.isFinite(Number(c.retryCount)) ? Number(c.retryCount) : 3,
+    rateLimitDelayMs: Number.isFinite(Number(c.rateLimitDelayMs)) ? Number(c.rateLimitDelayMs) : 200,
   };
 
   const headers = parseJsonLines(c.headers);
-  if (Object.keys(headers).length > 0) config.headers = headers;
+  if (c.clearHeaders) config.headers = {};
+  else if (Object.keys(headers).length > 0) config.headers = headers;
 
   const queryParams = parseJsonLines(c.queryParams);
-  if (Object.keys(queryParams).length > 0) config.queryParams = queryParams;
+  if (c.clearQueryParams) config.queryParams = {};
+  else if (Object.keys(queryParams).length > 0) config.queryParams = queryParams;
 
-  if (c.method !== "GET" && c.body) {
-    config.body = c.body;
+  if (c.method !== "GET") {
+    if (c.clearBody) config.body = "";
+    else if (c.body) config.body = c.body;
   }
 
   return config;
@@ -237,6 +288,7 @@ export function ConnectorEditModal({
   const [sourceId, setSourceId] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [scheduleType, setScheduleType] = useState("MANUAL");
+  const [scheduleIntervalMinutes, setScheduleIntervalMinutes] = useState("60");
   const [restConfig, setRestConfig] = useState<RestConfig>(EMPTY_CONFIG);
   const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose: !pending });
 
@@ -251,6 +303,7 @@ export function ConnectorEditModal({
         setSourceId(connector.sourceId ?? "");
         setEnabled(connector.enabled);
         setScheduleType(connector.scheduleType);
+        setScheduleIntervalMinutes(String(connector.scheduleIntervalMinutes ?? 60));
         setRestConfig(connector.type === "rest" ? normalizeRestConfig(connector.configuration) : EMPTY_CONFIG);
       } else {
         setName("");
@@ -258,6 +311,7 @@ export function ConnectorEditModal({
         setSourceId("");
         setEnabled(false);
         setScheduleType("MANUAL");
+        setScheduleIntervalMinutes("60");
         setRestConfig(EMPTY_CONFIG);
       }
       setActiveTab("general");
@@ -267,7 +321,13 @@ export function ConnectorEditModal({
   }, [open, connector]);
 
   const updateConfig = (field: keyof RestConfig, value: string) => {
-    setRestConfig((prev) => ({ ...prev, [field]: value }));
+    setRestConfig((prev) => ({
+      ...prev,
+      [field]: value,
+      ...(field === "headers" ? { clearHeaders: false } : {}),
+      ...(field === "queryParams" ? { clearQueryParams: false } : {}),
+      ...(field === "body" ? { clearBody: false } : {}),
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -284,6 +344,7 @@ export function ConnectorEditModal({
         await axios.patch(`/api/connectors/${connector!.id}/settings`, {
           enabled,
           scheduleType,
+          ...(scheduleType === "CUSTOM" ? { scheduleConfig: { intervalMinutes: Number(scheduleIntervalMinutes) } } : {}),
           sourceId: sourceId || null,
           ...(configuration ? { configuration } : {}),
         });
@@ -536,6 +597,7 @@ export function ConnectorEditModal({
                         rows={3}
                         placeholder="Leave blank to keep existing, or enter Content-Type: application/json"
                       />
+                      {restConfig.headersConfigured && <button type="button" className="text-xs text-[var(--color-muted)] underline" onClick={() => setRestConfig((prev) => ({ ...prev, headers: "", clearHeaders: true }))}>Clear saved headers</button>}
                     </FormField>
                     <FormField label="Query Parameters (key: value per line)" htmlFor="cfg-query-params" className="col-span-2">
                       <Textarea
@@ -545,6 +607,7 @@ export function ConnectorEditModal({
                         rows={3}
                         placeholder="Leave blank to keep existing, or enter status: active"
                       />
+                      {restConfig.queryParamsConfigured && <button type="button" className="text-xs text-[var(--color-muted)] underline" onClick={() => setRestConfig((prev) => ({ ...prev, queryParams: "", clearQueryParams: true }))}>Clear saved query parameters</button>}
                     </FormField>
                     {restConfig.method !== "GET" && (
                       <FormField label="Request Body" htmlFor="cfg-body" className="col-span-2">
@@ -553,9 +616,15 @@ export function ConnectorEditModal({
                           value={restConfig.body}
                           onChange={(e) => updateConfig("body", e.target.value)}
                           rows={4}
-                        placeholder="Leave blank to keep existing, or enter a request body"
+                          placeholder="Leave blank to keep existing, or enter a request body"
                         />
+                        {restConfig.bodyConfigured && <button type="button" className="text-xs text-[var(--color-muted)] underline" onClick={() => setRestConfig((prev) => ({ ...prev, body: "", clearBody: true }))}>Clear saved request body</button>}
                       </FormField>
+                    )}
+                    {["POST", "PATCH"].includes(restConfig.method) && (
+                      <p className="col-span-2 text-xs text-[var(--color-muted)]">
+                        Test and sync send the configured request. POST and PATCH are not retried automatically, but pagination sends a request per page; use only a read-safe endpoint.
+                      </p>
                     )}
                   </div>
                 </div>
@@ -618,6 +687,35 @@ export function ConnectorEditModal({
                       <Input id="cfg-max-pages" type="number" value={restConfig.maxPages} onChange={(e) => updateConfig("maxPages", e.target.value)} />
                     </FormField>
                   </div>
+                  {restConfig.paginationStrategy === "PAGE_NUMBER" && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField label="Page Parameter" htmlFor="cfg-page-param"><Input id="cfg-page-param" value={restConfig.pageParam} onChange={(e) => updateConfig("pageParam", e.target.value)} /></FormField>
+                      <FormField label="Page Size Parameter" htmlFor="cfg-per-page-param"><Input id="cfg-per-page-param" value={restConfig.perPageParam} onChange={(e) => updateConfig("perPageParam", e.target.value)} /></FormField>
+                    </div>
+                  )}
+                  {restConfig.paginationStrategy === "OFFSET" && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField label="Offset Parameter" htmlFor="cfg-offset-param"><Input id="cfg-offset-param" value={restConfig.offsetParam} onChange={(e) => updateConfig("offsetParam", e.target.value)} /></FormField>
+                      <FormField label="Limit Parameter" htmlFor="cfg-offset-limit-param"><Input id="cfg-offset-limit-param" value={restConfig.limitParam} onChange={(e) => updateConfig("limitParam", e.target.value)} /></FormField>
+                    </div>
+                  )}
+                  {restConfig.paginationStrategy === "CURSOR" && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField label="Cursor Parameter" htmlFor="cfg-cursor-param"><Input id="cfg-cursor-param" value={restConfig.cursorParam} onChange={(e) => updateConfig("cursorParam", e.target.value)} /></FormField>
+                      <FormField label="Cursor Response Path" htmlFor="cfg-cursor-path" required><Input id="cfg-cursor-path" value={restConfig.cursorPath} onChange={(e) => updateConfig("cursorPath", e.target.value)} placeholder="pagination.nextCursor" required /></FormField>
+                      <FormField label="Limit Parameter" htmlFor="cfg-cursor-limit-param"><Input id="cfg-cursor-limit-param" value={restConfig.limitParam} onChange={(e) => updateConfig("limitParam", e.target.value)} /></FormField>
+                    </div>
+                  )}
+                  {restConfig.paginationStrategy === "NEXT_URL" && (
+                    <FormField label="Next URL Response Path" htmlFor="cfg-next-url-path" required><Input id="cfg-next-url-path" value={restConfig.nextUrlPath} onChange={(e) => updateConfig("nextUrlPath", e.target.value)} placeholder="links.next" required /></FormField>
+                  )}
+                  {restConfig.paginationStrategy === "TOKEN" && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField label="Token Parameter" htmlFor="cfg-token-param"><Input id="cfg-token-param" value={restConfig.tokenParam} onChange={(e) => updateConfig("tokenParam", e.target.value)} /></FormField>
+                      <FormField label="Token Response Path" htmlFor="cfg-token-path" required><Input id="cfg-token-path" value={restConfig.tokenPath} onChange={(e) => updateConfig("tokenPath", e.target.value)} placeholder="nextPageToken" required /></FormField>
+                      <FormField label="Limit Parameter" htmlFor="cfg-token-limit-param"><Input id="cfg-token-limit-param" value={restConfig.limitParam} onChange={(e) => updateConfig("limitParam", e.target.value)} /></FormField>
+                    </div>
+                  )}
                 </div>
 
                 <p className="text-xs text-[var(--color-muted)]">
@@ -649,6 +747,11 @@ export function ConnectorEditModal({
                       ))}
                     </Select>
                   </FormField>
+                  {scheduleType === "CUSTOM" && (
+                    <FormField label="Interval (minutes)" htmlFor="connector-custom-interval" required>
+                      <Input id="connector-custom-interval" type="number" min={1} max={525600} value={scheduleIntervalMinutes} onChange={(e) => setScheduleIntervalMinutes(e.target.value)} required />
+                    </FormField>
+                  )}
                 </div>
                 {isEdit && (
                   <div className="grid grid-cols-2 gap-4">

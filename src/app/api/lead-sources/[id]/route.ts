@@ -3,7 +3,7 @@ import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { invalidateAdminDashboard } from "@/lib/cache-tags";
 
-export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>("ADMIN", async (_request, context, session) => {
+export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>("ADMIN", async (_request, context) => {
   const { id } = await context.params;
 
   try {

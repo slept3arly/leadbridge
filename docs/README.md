@@ -19,6 +19,12 @@
 | [development.md](./development.md) | Developer guide, conventions, setup, commands |
 | [IMPLEMENTATION_AUDIT.md](./IMPLEMENTATION_AUDIT.md) | File-by-file audit of Admin dashboard improvements with implementation plan |
 
+## Testing & Reference
+
+| Document | Purpose |
+|---|---|
+| [rest-connector-testing.md](./rest-connector-testing.md) | Canonical step-by-step local REST connector setup, mock API tests, and troubleshooting |
+
 ## Experimental / Reference
 
 These documents contain useful analysis and estimates but are **NOT** canonical implementation references:

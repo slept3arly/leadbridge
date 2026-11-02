@@ -10,9 +10,14 @@ function retainSecrets(
 ): Record<string, unknown> {
   if (!existing) return incoming;
 
-  const merged = { ...incoming };
-  for (const key of ["headers", "queryParams", "body"] as const) {
-    if (merged[key] === undefined && existing[key] !== undefined) merged[key] = existing[key];
+  const merged = { ...existing, ...incoming };
+  for (const key of ["headers", "queryParams"] as const) {
+    const incomingValues = incoming[key] as Record<string, unknown> | undefined;
+    const existingValues = existing[key] as Record<string, unknown> | undefined;
+    if (!incomingValues && existingValues) merged[key] = existingValues;
+    else if (incomingValues && existingValues && Object.keys(incomingValues).length > 0) {
+      merged[key] = { ...existingValues, ...incomingValues };
+    }
   }
 
   const existingPagination = existing.pagination as Record<string, unknown> | undefined;
@@ -84,7 +89,7 @@ export const PATCH = withApiAuthorization("ADMIN", async (request, context) => {
   const resolvedParams = await (typeof params.params === "object" && "then" in params.params ? params.params : Promise.resolve(params.params));
   const id = resolvedParams.id;
 
-  const connector = await prisma.connector.findUnique({ where: { id }, select: { id: true, type: true, configuration: true } });
+  const connector = await prisma.connector.findUnique({ where: { id }, select: { id: true, type: true, configuration: true, scheduleType: true, scheduleConfig: true } });
   if (!connector) return apiError("Connector not found.", 404);
 
   let body: Record<string, unknown>;
@@ -97,8 +102,30 @@ export const PATCH = withApiAuthorization("ADMIN", async (request, context) => {
   const updateData: Record<string, unknown> = {};
 
   if (body.enabled !== undefined) updateData.enabled = Boolean(body.enabled);
-  if (body.scheduleType !== undefined) updateData.scheduleType = body.scheduleType as string;
-  if (body.scheduleConfig !== undefined) updateData.scheduleConfig = body.scheduleConfig as object;
+  const allowedScheduleTypes = ["MANUAL", "EVERY_5_MIN", "EVERY_15_MIN", "EVERY_30_MIN", "HOURLY", "DAILY", "CUSTOM"];
+  const scheduleType = body.scheduleType === undefined ? connector.scheduleType : body.scheduleType;
+  const scheduleConfig = body.scheduleConfig === undefined ? connector.scheduleConfig : body.scheduleConfig;
+  if (body.scheduleType !== undefined && (typeof body.scheduleType !== "string" || !allowedScheduleTypes.includes(body.scheduleType))) {
+    return apiError("Invalid scheduleType.", 400);
+  }
+  if (body.scheduleConfig !== undefined && body.scheduleConfig !== null && (typeof body.scheduleConfig !== "object" || Array.isArray(body.scheduleConfig))) {
+    return apiError("scheduleConfig must be an object or null.", 400);
+  }
+  if (scheduleType === "CUSTOM") {
+    const intervalMinutes = scheduleConfig && typeof scheduleConfig === "object" && !Array.isArray(scheduleConfig)
+      ? (scheduleConfig as Record<string, unknown>).intervalMinutes
+      : undefined;
+    if (typeof intervalMinutes !== "number" || !Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 525600) {
+      return apiError("Custom schedules require intervalMinutes between 1 and 525600.", 400);
+    }
+  }
+  if (body.scheduleType !== undefined) updateData.scheduleType = body.scheduleType;
+  if (body.scheduleConfig && typeof body.scheduleConfig === "object") updateData.scheduleConfig = body.scheduleConfig as object;
+  const scheduleChanged = (body.scheduleType !== undefined && body.scheduleType !== connector.scheduleType)
+    || (body.scheduleConfig !== undefined && JSON.stringify(body.scheduleConfig) !== JSON.stringify(connector.scheduleConfig));
+  if (scheduleChanged) {
+    updateData.nextScheduledRun = scheduleType === "MANUAL" ? null : new Date();
+  }
 
   if (body.resetHealth) {
     updateData.consecutiveFailures = 0;

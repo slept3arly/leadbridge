@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 interface DateTimeDisplayProps {
   date: Date | string | null | undefined;
@@ -18,21 +18,12 @@ const defaultFormat: Intl.DateTimeFormatOptions = {
 };
 
 export function DateTimeDisplay({ date, format, fallback = "-", className }: DateTimeDisplayProps) {
-  const [formatted, setFormatted] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!date) {
-      setFormatted(null);
-      return;
-    }
-    setFormatted(
-      new Intl.DateTimeFormat("en-IN", format ?? defaultFormat).format(new Date(date))
-    );
-  }, [date, format]);
+  const hydrated = useHydrated();
 
   if (!date) return <span className={className}>{fallback}</span>;
 
-  if (!formatted) return <span className={className}>{fallback}</span>;
+  if (!hydrated) return <span className={className}>{fallback}</span>;
+  const formatted = new Intl.DateTimeFormat("en-IN", format ?? defaultFormat).format(new Date(date));
 
   return <time className={className} dateTime={new Date(date).toISOString()}>{formatted}</time>;
 }

@@ -6,7 +6,7 @@ export class ParserRequestService {
     return prisma.parserRequest.findMany({ orderBy: { requestedAt: "desc" }, include: { requestedBy: { select: { id: true, name: true, email: true } } } });
   }
 
-  async updateStatus(id: string, status: ParserRequestStatus, developerNotes: string | undefined, actorId: string) {
+  async updateStatus(id: string, status: ParserRequestStatus, developerNotes: string | undefined) {
     const request = await prisma.parserRequest.update({ where: { id }, data: { status, developerNotes } });
     return request;
   }

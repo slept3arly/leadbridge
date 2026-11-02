@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
@@ -64,10 +64,13 @@ export function LeadEditModal({
   const [category, setCategory] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [assignedUserId, setAssignedUserId] = useState("");
+  const [previousLead, setPreviousLead] = useState(lead);
+  const [previousOpen, setPreviousOpen] = useState(open);
   const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose: !pending });
 
-  useEffect(() => {
-    if (!open) return;
+  if (open && (!previousOpen || previousLead !== lead)) {
+    setPreviousOpen(open);
+    setPreviousLead(lead);
     if (lead) {
       setName(lead.name);
       setCompany(lead.company ?? "");
@@ -98,7 +101,9 @@ export function LeadEditModal({
       setAssignedUserId("");
     }
     setError(null);
-  }, [open, lead]);
+  } else if (previousOpen !== open) {
+    setPreviousOpen(open);
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,19 +52,6 @@ export function LogActivityModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useModalState(open, onClose, !saving);
-
-  useEffect(() => {
-    if (open) {
-      setAction("CALL");
-      setResponse("");
-      setInterest("");
-      setNotes("");
-      setScheduleFollowUp(false);
-      setFollowUpDate("");
-      setFollowUpTime("");
-      setError(null);
-    }
-  }, [open]);
 
   const responses = RESPONSE_OPTIONS[action] ?? [];
   const interestVisible = isResponded(response);

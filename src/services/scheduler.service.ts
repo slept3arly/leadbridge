@@ -6,30 +6,11 @@ import { executionLock } from "./execution-lock.service";
 import { connectorHealthService } from "./connector-health.service";
 import { randomUUID } from "crypto";
 import { withExecutionFence, type ExecutionFence } from "./execution-fence";
+import { computeNextScheduledRun, getScheduleIntervalMs, type ConnectorSchedule } from "@/lib/scheduler-schedule";
 
-type ScheduleType = "MANUAL" | "EVERY_5_MIN" | "EVERY_15_MIN" | "EVERY_30_MIN" | "HOURLY" | "DAILY" | "CUSTOM";
+type ScheduleType = ConnectorSchedule;
 
 const SYSTEM_ACTOR = { id: "system", role: "ADMIN" as const };
-
-const SCHEDULE_INTERVALS: Record<ScheduleType, number | null> = {
-  MANUAL: null,
-  EVERY_5_MIN: 5 * 60 * 1000,
-  EVERY_15_MIN: 15 * 60 * 1000,
-  EVERY_30_MIN: 30 * 60 * 1000,
-  HOURLY: 60 * 60 * 1000,
-  DAILY: 24 * 60 * 60 * 1000,
-  CUSTOM: null,
-};
-
-function computeNextRun(scheduleType: ScheduleType): Date | null {
-  if (scheduleType === "MANUAL") return null;
-  if (scheduleType === "CUSTOM") {
-    return null;
-  }
-  const interval = SCHEDULE_INTERVALS[scheduleType];
-  if (!interval) return null;
-  return new Date(Date.now() + interval);
-}
 
 function buildConnectorRegistry(config: Record<string, unknown>) {
   return {
@@ -92,6 +73,7 @@ export class ConnectorScheduler {
 
     const now = new Date();
     return connectors.filter((c) => {
+      if (c.scheduleType === "CUSTOM" && getScheduleIntervalMs("CUSTOM", c.scheduleConfig as Record<string, unknown> | null) === null) return false;
       if (!c.nextScheduledRun) return true;
       return c.nextScheduledRun <= now;
     }).map((c) => ({
@@ -170,7 +152,7 @@ export class ConnectorScheduler {
         fence,
       );
 
-      const nextRun = computeNextRun(connector.scheduleType);
+      const nextRun = computeNextScheduledRun(connector.scheduleType, connector.scheduleConfig);
       await withExecutionFence(fence, (tx) => tx.connector.update({
         where: { id: connector.id },
         data: {
@@ -209,7 +191,7 @@ export class ConnectorScheduler {
         fence,
       );
 
-      const nextRun = computeNextRun(connector.scheduleType);
+      const nextRun = computeNextScheduledRun(connector.scheduleType, connector.scheduleConfig);
       await withExecutionFence(fence, (tx) => tx.connector.update({
         where: { id: connector.id },
         data: {

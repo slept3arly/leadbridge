@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import axios from "axios";
 import { LeadHeader } from "@/components/sales/lead-header";
 import { LeadInfoSection } from "@/components/sales/lead-info-section";
@@ -13,7 +13,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
-import { useLeadDetails, type LeadDetail, type LeadFollowUp, type ActivityEventItem } from "@/hooks/use-lead-details";
+import { useLeadDetails, type LeadFollowUp, type ActivityEventItem } from "@/hooks/use-lead-details";
 import { CheckCircle2, RotateCcw, Trash2, Plus, Pencil } from "lucide-react";
 import { LogActivityModal } from "@/components/sales/log-activity-modal";
 import { LeadEditModal } from "@/components/leads/lead-edit-modal";
@@ -69,19 +69,6 @@ function ScheduleFollowUpModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useModalState(open, onClose, !saving);
-
-  useEffect(() => {
-    if (open) {
-      setDate("");
-      setTime("");
-      setLogActivity(false);
-      setAction("CALL");
-      setResponse("");
-      setInterest("");
-      setNotes("");
-      setError(null);
-    }
-  }, [open]);
 
   const responses = RESPONSE_OPTIONS[action] ?? [];
   const interestVisible = isResponded(response);
@@ -225,21 +212,6 @@ function CompleteFollowUpModal({
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useModalState(open, onClose, !saving);
 
-  useEffect(() => {
-    if (open) {
-      setNote("");
-      setLogActivity(false);
-      setAction("CALL");
-      setResponse("");
-      setInterest("");
-      setActivityNotes("");
-      setScheduleNext(false);
-      setNextDate("");
-      setNextTime("");
-      setError(null);
-    }
-  }, [open]);
-
   const responses = RESPONSE_OPTIONS[action] ?? [];
   const interestVisible = isResponded(response);
 
@@ -379,23 +351,11 @@ function RescheduleModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
+  const [date, setDate] = useState(() => followUp?.dueDate ? (() => { const d = new Date(followUp.dueDate!); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })() : "");
+  const [time, setTime] = useState(followUp?.dueTime ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useModalState(open, onClose, !saving);
-
-  useEffect(() => {
-    if (!open || !followUp) return;
-    if (followUp.dueDate) {
-      const d = new Date(followUp.dueDate);
-      setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
-    } else {
-      setDate("");
-    }
-    setTime(followUp.dueTime ?? "");
-    setError(null);
-  }, [open, followUp]);
 
   async function handleSave() {
     if (!date || !followUp) return;
@@ -462,24 +422,14 @@ function EditActivityModal({
   onClose: () => void;
   onSave: (id: string, data: { action: string; response: string; interest: string | null; notes: string | null }) => Promise<void>;
 }) {
-  const [action, setAction] = useState("CALL");
-  const [response, setResponse] = useState("");
-  const [interest, setInterest] = useState("");
-  const [notes, setNotes] = useState("");
+  const entry = activity?.entries.find((e) => e.action);
+  const [action, setAction] = useState<string>(entry?.action ?? "CALL");
+  const [response, setResponse] = useState(entry?.response ?? "");
+  const [interest, setInterest] = useState(entry?.interest ?? "");
+  const [notes, setNotes] = useState(entry?.message ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useModalState(open, onClose, !saving);
-
-  const entry = activity?.entries.find((e) => e.action);
-
-  useEffect(() => {
-    if (!open || !entry) return;
-    setAction(entry.action ?? "CALL");
-    setResponse(entry.response ?? "");
-    setInterest(entry.interest ?? "");
-    setNotes(entry.message ?? "");
-    setError(null);
-  }, [open, entry]);
 
   const interestVisible = isResponded(response);
   const canSubmit = response && (!interestVisible || interest);
@@ -705,7 +655,7 @@ export function LeadDetailsModal({
   const [activeTab, setActiveTab] = useState<LeftTab>("activity");
   const [saving, setSaving] = useState(false);
   const { data, loading: detailsLoading, refresh, patchData } = useLeadDetails(leadId);
-  const [leadDraft, setLeadDraft] = useState<LeadDetail | null>(null);
+  const leadDraft = data?.lead ?? null;
 
   const [logActivityOpen, setLogActivityOpen] = useState(false);
   const [scheduleFollowUpOpen, setScheduleFollowUpOpen] = useState(false);
@@ -726,15 +676,11 @@ export function LeadDetailsModal({
   const [deletingConfirm, setDeletingConfirm] = useState(false);
   const [deleteConfirmError, setDeleteConfirmError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setLeadDraft(data?.lead ?? null);
-  }, [data?.lead, leadId]);
-
   const dialogRef = useAccessibleDialog<HTMLDivElement>({ open: true, onClose, canClose: !saving });
 
   const handleFieldChange = useCallback((field: string, value: string) => {
-    setLeadDraft((prev) => prev ? { ...prev, [field]: value } : prev);
-  }, []);
+    patchData((prev) => prev?.lead ? { ...prev, lead: { ...prev.lead, [field]: value } } : prev);
+  }, [patchData]);
 
   const handleUpdate = useCallback(async () => {
     if (!leadDraft) return;
@@ -804,7 +750,7 @@ export function LeadDetailsModal({
     }
   }, [leadId, onClose, onUpdate]);
 
-  const handleCompleteFollowUp = useCallback(async (_result: { completedFollowUp: LeadFollowUp; nextFollowUp: LeadFollowUp | null }) => {
+  const handleCompleteFollowUp = useCallback(async () => {
     refresh();
   }, [refresh]);
 
@@ -967,6 +913,7 @@ export function LeadDetailsModal({
       </div>
 
       <LogActivityModal
+        key={`lead:${leadId}:log-activity:${logActivityOpen ? "open" : "closed"}`}
         open={logActivityOpen}
         leadId={leadId}
         onClose={() => setLogActivityOpen(false)}
@@ -974,6 +921,7 @@ export function LeadDetailsModal({
       />
 
       <ScheduleFollowUpModal
+        key={`lead:${leadId}:schedule-follow-up:${scheduleFollowUpOpen ? "open" : "closed"}`}
         open={scheduleFollowUpOpen}
         leadId={leadId}
         onClose={() => setScheduleFollowUpOpen(false)}
@@ -990,6 +938,7 @@ export function LeadDetailsModal({
       )}
 
       <EditActivityModal
+        key={`lead:${leadId}:edit-activity:${editActivity?.id ?? "none"}:${editActivity ? "open" : "closed"}`}
         open={!!editActivity}
         activity={editActivity}
         onClose={() => setEditActivity(null)}
@@ -997,6 +946,7 @@ export function LeadDetailsModal({
       />
 
       <RescheduleModal
+        key={`lead:${leadId}:reschedule-follow-up:${rescheduleFollowUp?.id ?? "none"}:${rescheduleFollowUp ? "open" : "closed"}`}
         open={!!rescheduleFollowUp}
         followUp={rescheduleFollowUp}
         onClose={() => setRescheduleFollowUp(null)}

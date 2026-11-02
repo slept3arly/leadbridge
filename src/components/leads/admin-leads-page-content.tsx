@@ -257,6 +257,7 @@ export function AdminLeadsPageContent({
       />
 
       <LeadSourceManagerModal
+        key={`${sourceModalOpen}:${leadSources.map((source) => `${source.id}:${source.name}`).join("|")}`}
         open={sourceModalOpen}
         onClose={() => setSourceModalOpen(false)}
         sources={leadSources}

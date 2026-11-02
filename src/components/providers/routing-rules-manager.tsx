@@ -131,10 +131,6 @@ export function RoutingRulesManager({
   const [deletingRule, setDeletingRule] = useState(false);
 
   useEffect(() => {
-    setItems(rules);
-  }, [rules]);
-
-  useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<RoutingRuleOpenDetail>).detail ?? {};
       const providerId = detail.providerId ?? providers[0]?.id ?? "";

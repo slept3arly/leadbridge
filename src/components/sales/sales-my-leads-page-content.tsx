@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog";
@@ -17,6 +17,7 @@ import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-c
 import { formatTimeAgo, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import type { TableQueryState } from "@/hooks/use-table-query";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 export type SalesLeadRow = {
   id: string;
@@ -69,13 +70,8 @@ function formatLastActivityEntry(entry: { type: string; action: string | null; r
 }
 
 function LastActivityCell({ lastActivity }: { lastActivity: SalesLeadRow["lastActivity"] }) {
-  const [display, setDisplay] = useState<{ lines: string[]; timeAgo: string } | null>(null);
-
-  useEffect(() => {
-    if (!lastActivity || lastActivity.entries.length === 0) {
-      setDisplay(null);
-      return;
-    }
+  const hydrated = useHydrated();
+  const display = !lastActivity || lastActivity.entries.length === 0 || !hydrated ? null : (() => {
     const sorted = [...lastActivity.entries].sort(
       (a, b) => (ENTRY_DISPLAY_ORDER[a.type] ?? 99) - (ENTRY_DISPLAY_ORDER[b.type] ?? 99),
     );
@@ -83,8 +79,8 @@ function LastActivityCell({ lastActivity }: { lastActivity: SalesLeadRow["lastAc
     const remaining = sorted.length - visible.length;
     const lines = visible.map(formatLastActivityEntry);
     if (remaining > 0) lines.push(`+${remaining} more`);
-    setDisplay({ lines, timeAgo: formatTimeAgo(lastActivity.occurredAt) });
-  }, [lastActivity]);
+    return { lines, timeAgo: formatTimeAgo(lastActivity.occurredAt) };
+  })();
 
   if (display === null) {
     return <span className="text-sm text-[var(--color-muted)]">No activity</span>;
@@ -101,13 +97,8 @@ function LastActivityCell({ lastActivity }: { lastActivity: SalesLeadRow["lastAc
 }
 
 function NextFollowUpCell({ nextFollowUpAt }: { nextFollowUpAt: Date | null }) {
-  const [display, setDisplay] = useState<{ dateLabel: string; urgencyLabel: string; isOverdue: boolean } | null>(null);
-
-  useEffect(() => {
-    if (!nextFollowUpAt) {
-      setDisplay(null);
-      return;
-    }
+  const hydrated = useHydrated();
+  const display = !nextFollowUpAt || !hydrated ? null : (() => {
     const now = new Date();
     const due = new Date(nextFollowUpAt);
     const isOverdue = due < now;
@@ -128,7 +119,7 @@ function NextFollowUpCell({ nextFollowUpAt }: { nextFollowUpAt: Date | null }) {
 
       const urgencyLabel = parts.length > 0 ? `Overdue · ${parts.join(" ")}` : "Overdue";
 
-      setDisplay({ dateLabel, urgencyLabel, isOverdue: true });
+      return { dateLabel, urgencyLabel, isOverdue: true };
     } else {
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
@@ -142,9 +133,9 @@ function NextFollowUpCell({ nextFollowUpAt }: { nextFollowUpAt: Date | null }) {
         dayLabel = `${due.getDate()} ${month}`;
       }
 
-      setDisplay({ dateLabel: dayLabel, urgencyLabel: "Pending", isOverdue: false });
+      return { dateLabel: dayLabel, urgencyLabel: "Pending", isOverdue: false };
     }
-  }, [nextFollowUpAt]);
+  })();
 
   if (!display) {
     return <span className="text-sm text-[var(--color-muted)]">-</span>;
@@ -238,7 +229,6 @@ export function SalesMyLeadsPageContent({
   }
 
   const startRow = pagination ? (pagination.page - 1) * pagination.pageSize + 1 : 1;
-  const endRow = pagination ? Math.min(pagination.page * pagination.pageSize, pagination.total) : leads.length;
 
   const columns: Column<SalesLeadRow>[] = [
     {

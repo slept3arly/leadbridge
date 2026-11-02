@@ -1,7 +1,8 @@
 import type { ExecutionContext, RawPayload, IConnector } from "@/runtime/runtime-types";
+import { createHash } from "node:crypto";
 import type { RestConnectorConfig, RestDocument, RestMethod } from "./rest-types";
 import { RestClient } from "./rest-client";
-import { classifyRestError, RestConfigurationError } from "./rest-errors";
+import { classifyRestError, RestConfigurationError, RestNonRetryableError, RestRetriesExhaustedError, RestNetworkError, RestRateLimitError, RestServerError, RestTimeoutError } from "./rest-errors";
 import { MAX_REST_PAGES, MAX_REST_PAGE_SIZE, MAX_REST_REQUEST_TIMEOUT_MS } from "./rest-security";
 
 const CONNECTOR_TYPE = "rest";
@@ -17,6 +18,14 @@ function validateConfig(config: unknown): RestConnectorConfig {
   }
   if (!c.endpoint || typeof c.endpoint !== "string") {
     throw new RestConfigurationError("REST connector requires an endpoint");
+  }
+  let baseUrl: URL;
+  try { baseUrl = new URL(c.baseUrl); } catch { throw new RestConfigurationError("REST connector baseUrl is invalid"); }
+  if (!["http:", "https:"].includes(baseUrl.protocol) || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) {
+    throw new RestConfigurationError("REST connector baseUrl must use HTTP(S) and cannot contain credentials, query parameters, or a fragment.");
+  }
+  if (/[?#]/.test(c.endpoint) || /^[a-z][a-z\d+.-]*:\/\//i.test(c.endpoint) || c.endpoint.startsWith("//")) {
+    throw new RestConfigurationError("REST connector endpoint must be a relative path without query parameters.");
   }
 
   return {
@@ -47,10 +56,14 @@ function buildRoutingHints(record: Record<string, unknown>): Record<string, unkn
   };
 }
 
-function toRawPayload(record: Record<string, unknown>, connectorId: string, sourceDocument?: RestDocument): RawPayload {
+function toRawPayload(input: unknown, connectorId: string, sourceDocument?: RestDocument): RawPayload {
+  const isRecord = typeof input === "object" && input !== null && !Array.isArray(input);
+  const record = isRecord ? input as Record<string, unknown> : {};
+  const recordHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
   return {
     _routing: buildRoutingHints(record),
-    _duplicateKey: String(record.id ?? record.ID ?? record.leadId ?? record.externalId ?? `${connectorId}-${JSON.stringify(record).length}`),
+    _rawPayload: isRecord ? record : { value: input },
+    _duplicateKey: String(record.id ?? record.ID ?? record.leadId ?? record.externalId ?? `${connectorId}-${recordHash}`),
     name: String(record.name ?? record.Name ?? record.company ?? record.Company ?? record.fullName ?? record.full_name ?? ""),
     company: String(record.company ?? record.Company ?? record.business ?? record.organization ?? ""),
     email: String(record.email ?? record.Email ?? record.emailAddress ?? record.email_address ?? ""),
@@ -100,6 +113,10 @@ export class RestConnector implements IConnector {
       const lastDocument = documents[documents.length - 1];
       return records.map((record) => toRawPayload(record, context.connectorId, lastDocument));
     } catch (error) {
+      if (error instanceof RestNetworkError || error instanceof RestRateLimitError || error instanceof RestServerError || error instanceof RestTimeoutError) {
+        if (["POST", "PATCH"].includes(this.config.method)) throw new RestNonRetryableError(error.name);
+        throw new RestRetriesExhaustedError(error.name);
+      }
       throw classifyRestError(error);
     }
   }

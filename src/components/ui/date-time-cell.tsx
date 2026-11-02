@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 const dateFormatter = new Intl.DateTimeFormat("en-IN", {
   day: "numeric", month: "short", year: "numeric",
@@ -16,26 +16,10 @@ export function DateTimeCell({
   overdue?: boolean;
   fallback?: string;
 }) {
-  const [display, setDisplay] = useState<{ date: string; time: string | null } | null>(null);
-  const [hasValue, setHasValue] = useState(false);
-
-  useEffect(() => {
-    if (!value) {
-      setHasValue(false);
-      setDisplay(null);
-      return;
-    }
-    setHasValue(true);
-    const raw = dateFormatter.format(new Date(value));
-    const parts = raw.split(",");
-    setDisplay({
-      date: parts[0],
-      time: parts[1]?.trim() ?? null,
-    });
-  }, [value]);
-
-  if (!hasValue) return <span className="text-xs text-[var(--color-muted)]">{fallback}</span>;
-  if (!display) return <span className="text-xs text-[var(--color-muted)]">{fallback}</span>;
+  const hydrated = useHydrated();
+  if (!value || !hydrated) return <span className="text-xs text-[var(--color-muted)]">{fallback}</span>;
+  const parts = dateFormatter.format(new Date(value)).split(",");
+  const display = { date: parts[0], time: parts[1]?.trim() ?? null };
 
   return (
     <div className="leading-tight whitespace-nowrap">

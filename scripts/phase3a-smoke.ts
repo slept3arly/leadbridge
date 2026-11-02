@@ -17,10 +17,10 @@ async function main() {
   await prisma.user.deleteMany({ where: { email: { startsWith: "phase3a-" } } });
   const suffix = randomUUID();
   const admin = await prisma.user.create({ data: { name: `Phase 3A Admin ${suffix}`, email: `phase3a-${suffix}@example.test`, role: UserRole.ADMIN } });
-  const provider = await providerService.create({ name: `Phase 3A Provider ${suffix}`, slug: `phase-3a-${suffix}`, sourceType: "SMOKE_TEST" }, admin.id);
+  const provider = await providerService.create({ name: `Phase 3A Provider ${suffix}`, slug: `phase-3a-${suffix}`, sourceType: "SMOKE_TEST" });
   const parser = await prisma.parser.create({ data: { name: `Phase 3A Parser ${suffix}`, type: "SMOKE_TEST", version: "1.0.0" } });
   const connector = await prisma.connector.create({ data: { name: `Phase 3A Connector ${suffix}`, type: "GMAIL", environmentKey: `SMOKE_${suffix}`, sourceId: provider.id, parserId: parser.id } });
-  await providerService.createRoutingRule({ name: `Phase 3A Rule ${suffix}`, senderDomain: "vendor.example", providerId: provider.id, parserId: parser.id }, admin.id);
+  await providerService.createRoutingRule({ name: `Phase 3A Rule ${suffix}`, senderDomain: "vendor.example", providerId: provider.id, parserId: parser.id });
   const routed = await providerService.route({ senderEmail: "inbox@vendor.example", subject: "New lead" });
   if (!routed || routed.providerId !== provider.id || routed.parserId !== parser.id) throw new Error("Routing rule selection failed");
   const unmatched = await prisma.unmatchedEmail.create({ data: { senderEmail: "unknown@example.test", subject: "Unknown lead", receivedAt: new Date(), rawPreview: "sample", connectorId: connector.id } });

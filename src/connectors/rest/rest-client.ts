@@ -1,5 +1,5 @@
 import type { RestConnectorConfig, RestDocument, PaginationStrategy, RestMethod } from "./rest-types";
-import { classifyRestError, RestRateLimitError, RestServerError, RestTimeoutError, RestNetworkError } from "./rest-errors";
+import { classifyRestError, RestRateLimitError, RestServerError, RestTimeoutError, RestNetworkError, RestInvalidJsonError, RestConfigurationError } from "./rest-errors";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { MAX_REST_EXECUTION_MS, MAX_REST_PAGE_SIZE, MAX_REST_PAGES, MAX_REST_RECORDS, MAX_REST_REDIRECTS, MAX_REST_REQUEST_BODY_BYTES, MAX_REST_REQUEST_TIMEOUT_MS, MAX_REST_RESPONSE_BYTES, MAX_REST_TOTAL_RESPONSE_BYTES, RestSecurityError, parseAllowedOrigins, validateRestRedirectTarget, validateRestUrl } from "./rest-security";
@@ -121,8 +121,9 @@ function buildQueryString(config: RestConnectorConfig, pageParams?: Record<strin
 
 function addApiKeyQueryParam(url: string, config: RestConnectorConfig): string {
   if (config.auth.type === "API_KEY" && config.auth.apiKey?.in === "query") {
-    const separator = url.includes("?") ? "&" : "?";
-    return `${url}${separator}${encodeURIComponent(config.auth.apiKey.name)}=${encodeURIComponent(config.auth.apiKey.value)}`;
+    const parsed = new URL(url);
+    parsed.searchParams.set(config.auth.apiKey.name, config.auth.apiKey.value);
+    return parsed.href;
   }
   return url;
 }
@@ -130,15 +131,21 @@ function addApiKeyQueryParam(url: string, config: RestConnectorConfig): string {
 function maskSensitiveUrl(value: string): string {
   try {
     const url = new URL(value);
-    for (const key of Array.from(url.searchParams.keys())) {
-      if (/(api[_-]?key|authorization|bearer|token|secret|password|client[_-]?secret|access[_-]?token|refresh[_-]?token)/i.test(key)) {
-        url.searchParams.set(key, "***masked***");
-      }
-    }
+    for (const key of Array.from(url.searchParams.keys())) url.searchParams.set(key, "***masked***");
     return url.toString();
   } catch {
-    return value.replace(/(api[_-]?key|authorization|bearer|token|secret|password|client[_-]?secret|access[_-]?token|refresh[_-]?token)=([^&\s]*)/gi, "$1=***masked***");
+    return value.replace(/([?&][^=&#]+)=([^&#\s]*)/g, "$1=***masked***");
   }
+}
+
+function getSafeTestConnectionError(error: unknown): string {
+  const classified = classifyRestError(error);
+  if (classified.name.startsWith("Rest")) {
+    const rawCode = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    const code = typeof rawCode === "string" && /^[A-Z0-9_]+$/.test(rawCode) ? ` (${rawCode})` : "";
+    return `${classified.message}${code}`;
+  }
+  return "REST connection failed.";
 }
 
 function buildUrl(baseUrl: string, endpoint: string): string {
@@ -175,7 +182,7 @@ function getPageParams(
       };
     case "CURSOR":
       if (cursor) {
-        return { params: { [pc.cursorParam ?? "cursor"]: cursor } };
+        return { params: { [pc.cursorParam ?? "cursor"]: cursor, [pc.limitParam ?? "limit"]: String(size) } };
       }
       return { params: { [pc.cursorParam ?? "cursor"]: "", [pc.limitParam ?? "limit"]: String(size) } };
     case "NEXT_URL":
@@ -185,7 +192,7 @@ function getPageParams(
       return {};
     case "TOKEN":
       if (token) {
-        return { params: { [pc.tokenParam ?? "pageToken"]: token } };
+        return { params: { [pc.tokenParam ?? "pageToken"]: token, [pc.limitParam ?? "limit"]: String(size) } };
       }
       return { params: { [pc.limitParam ?? "limit"]: String(size) } };
     default:
@@ -218,27 +225,54 @@ function describeJsonType(value: unknown): string {
 
 function extractArray(body: unknown, path: string): Record<string, unknown>[] {
   if (!path.trim()) {
-    return Array.isArray(body) ? (body as Record<string, unknown>[]) : [];
+    if (Array.isArray(body)) return body as Record<string, unknown>[];
+    throw new RestConfigurationError("REST response must be an array when Lead Array Path is empty.");
   }
 
   const parts = path.split(".").filter(Boolean);
-  if (parts.length === 0) {
-    return Array.isArray(body) ? (body as Record<string, unknown>[]) : [];
-  }
+  if (parts.length === 0) throw new RestConfigurationError("REST response array path is invalid.");
 
   let current: unknown = body;
   for (const part of parts) {
     if (current && typeof current === "object" && part in (current as Record<string, unknown>)) {
       current = (current as Record<string, unknown>)[part];
     } else {
-      return [];
+      throw new RestConfigurationError("REST response did not contain an array at the configured Lead Array Path.");
     }
   }
-  return Array.isArray(current) ? (current as Record<string, unknown>[]) : [];
+  if (!Array.isArray(current)) throw new RestConfigurationError("REST response did not contain an array at the configured Lead Array Path.");
+  return current as Record<string, unknown>[];
+}
+
+function parseResponseBody(body: string): unknown {
+  if (!body.trim()) return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new RestInvalidJsonError();
+  }
+}
+
+function retryDelay(rateLimitDelay: number, attempt: number): number {
+  return Math.min(10_000, rateLimitDelay * 2 ** (attempt - 1));
+}
+
+function getRetryAfterMs(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const seconds = Number(value);
+  const milliseconds = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
+  return Number.isFinite(milliseconds) ? Math.min(10_000, Math.max(0, milliseconds)) : fallback;
 }
 
 async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function delayWithinDeadline(ms: number, deadlineAt: number): Promise<void> {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) throw new RestTimeoutError();
+  await delay(Math.min(ms, remainingMs));
+  if (Date.now() >= deadlineAt) throw new RestTimeoutError();
 }
 
 export interface RestFetchResult {
@@ -253,7 +287,7 @@ export class RestClient {
   constructor(private readonly config: RestConnectorConfig) {}
 
   private maskSensitiveHeaders(headers: Record<string, string>): Record<string, string> {
-    const sensitiveKeys = ["authorization", "x-api-key", "api-key", "token", "secret"];
+    const sensitiveKeys = ["authorization", "cookie", "set-cookie", "api-key", "token", "secret", "password", "credential", "key"];
     const masked = { ...headers };
     for (const key of Object.keys(masked)) {
       if (sensitiveKeys.some((sk) => key.toLowerCase().includes(sk))) {
@@ -261,6 +295,27 @@ export class RestClient {
       }
     }
     return masked;
+  }
+
+  private hasNextPage(recordsOnPage: number, cursor: string | null, nextUrl: string | null, token: string | null): boolean {
+    if (recordsOnPage === 0) return false;
+    switch (this.config.pagination.strategy) {
+      case "PAGE_NUMBER":
+      case "OFFSET":
+        return recordsOnPage >= Math.min(this.config.pagination.pageSize ?? 50, MAX_REST_PAGE_SIZE);
+      case "CURSOR": return Boolean(cursor);
+      case "NEXT_URL": return Boolean(nextUrl);
+      case "TOKEN": return Boolean(token);
+    }
+  }
+
+  private continuationKey(cursor: string | null, nextUrl: string | null, token: string | null): string | null {
+    switch (this.config.pagination.strategy) {
+      case "CURSOR": return cursor ? `cursor:${cursor}` : null;
+      case "NEXT_URL": return nextUrl ? `url:${nextUrl}` : null;
+      case "TOKEN": return token ? `token:${token}` : null;
+      default: return null;
+    }
   }
 
   async fetchAll(logger: { info: (msg: string, meta?: Record<string, unknown>) => void; error: (msg: string, meta?: Record<string, unknown>) => void }): Promise<{
@@ -271,7 +326,6 @@ export class RestClient {
     const allDocuments: RestDocument[] = [];
     const startedAt = Date.now();
     const trustedOrigins = parseAllowedOrigins();
-    trustedOrigins.add(new URL(this.config.baseUrl).origin);
     const maxPages = Math.min(this.config.pagination.maxPages ?? 50, MAX_REST_PAGES);
 
     let page = 1;
@@ -279,8 +333,10 @@ export class RestClient {
     let nextUrl: string | null = null;
     let token: string | null = null;
     let totalResponseBytes = 0;
+    const seenContinuations = new Set<string>();
     const retryCount = Math.max(1, Math.min(this.config.retryCount ?? 3, 3));
     const rateLimitDelay = Math.min(this.config.rateLimitDelayMs ?? 200, 10_000);
+    const maxAttempts = this.config.method === "POST" || this.config.method === "PATCH" ? 1 : retryCount;
 
     while (page <= maxPages) {
       if (Date.now() - startedAt > MAX_REST_EXECUTION_MS) throw new RestTimeoutError();
@@ -292,8 +348,9 @@ export class RestClient {
 
       let lastError: Error | undefined;
       let responseData: { status: number; headers: Record<string, string>; body: string; url: string } | undefined;
+      let recordsOnPage = 0;
 
-      for (let attempt = 1; attempt <= retryCount; attempt++) {
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
           let headers = applyAuth(
             { "content-type": "application/json", accept: "application/json", ...this.config.headers },
@@ -313,8 +370,24 @@ export class RestClient {
           totalResponseBytes += Buffer.byteLength(responseData.body);
           if (totalResponseBytes > MAX_REST_TOTAL_RESPONSE_BYTES) throw new RestSecurityError("REST total response limit exceeded.");
 
-          const parsedBody = this.tryParseJson(responseData.body);
-          const records = extractArray(parsedBody, this.config.leadArrayPath);
+          if (responseData.status < 200 || responseData.status >= 300) {
+            if (responseData.status === 429 && attempt < maxAttempts) {
+              const waitMs = getRetryAfterMs(responseData.headers["retry-after"], retryDelay(rateLimitDelay, attempt));
+              logger.info("Rate limited, waiting", { retryAfterMs: waitMs, attempt });
+              await delayWithinDeadline(waitMs, startedAt + MAX_REST_EXECUTION_MS);
+              continue;
+            }
+            if (responseData.status >= 500 && attempt < maxAttempts) {
+              const waitMs = retryDelay(rateLimitDelay, attempt);
+              logger.info("Server error, retrying", { statusCode: responseData.status, attempt, retryAfterMs: waitMs });
+              await delayWithinDeadline(waitMs, startedAt + MAX_REST_EXECUTION_MS);
+              continue;
+            }
+            throw classifyRestError(new Error(`HTTP ${responseData.status}`), responseData.status);
+          }
+          const parsedBody = parseResponseBody(responseData.body);
+          const records = responseData.body.trim() ? extractArray(parsedBody, this.config.leadArrayPath) : [];
+          recordsOnPage = records.length;
 
           logger.info("REST response parsed", {
             page,
@@ -343,50 +416,36 @@ export class RestClient {
           };
           allDocuments.push(document);
 
-          if (responseData.status >= 200 && responseData.status < 300) {
-            allRecords.push(...records);
-            if (records.length > MAX_REST_PAGE_SIZE) throw new RestSecurityError("REST page contained too many records.");
-            if (allRecords.length > MAX_REST_RECORDS) throw new RestSecurityError("REST record limit exceeded.");
+          allRecords.push(...records);
+          if (records.length > MAX_REST_PAGE_SIZE) throw new RestSecurityError("REST page contained too many records.");
+          if (allRecords.length > MAX_REST_RECORDS) throw new RestSecurityError("REST record limit exceeded.");
 
-            cursor = extractPaginationValue(parsedBody, this.config.pagination.cursorPath);
-            nextUrl = extractPaginationValue(parsedBody, this.config.pagination.nextUrlPath);
-            token = extractPaginationValue(parsedBody, this.config.pagination.tokenPath);
+          cursor = extractPaginationValue(parsedBody, this.config.pagination.cursorPath);
+          nextUrl = extractPaginationValue(parsedBody, this.config.pagination.nextUrlPath);
+          token = extractPaginationValue(parsedBody, this.config.pagination.tokenPath);
 
-            logger.info("REST page fetched", {
-              page,
-              statusCode: responseData.status,
-              recordsOnPage: records.length,
-              totalRecords: allRecords.length,
-              hasNextPage: !!(cursor || nextUrl || token),
-              durationMs,
-            });
+          const hasNextPage = this.hasNextPage(records.length, cursor, nextUrl, token);
+          logger.info("REST page fetched", {
+            page,
+            statusCode: responseData.status,
+            recordsOnPage: records.length,
+            totalRecords: allRecords.length,
+            hasNextPage,
+            durationMs,
+          });
 
-            break;
+          const continuation = hasNextPage ? this.continuationKey(cursor, nextUrl, token) : null;
+          if (continuation) {
+            if (seenContinuations.has(continuation)) throw new RestConfigurationError("REST pagination repeated a cursor or next-page value.");
+            seenContinuations.add(continuation);
           }
-
-          if (responseData.status === 429 && attempt < retryCount) {
-            const retryAfterValue = responseData.headers["retry-after"]
-              ? parseInt(responseData.headers["retry-after"], 10) * 1000
-              : rateLimitDelay * attempt;
-            const retryAfter = Number.isFinite(retryAfterValue) ? Math.min(10_000, Math.max(0, retryAfterValue)) : rateLimitDelay;
-            logger.info("Rate limited, waiting", { retryAfterMs: retryAfter, attempt });
-            await delay(retryAfter);
-            continue;
-          }
-
-          if (responseData.status >= 500 && attempt < retryCount) {
-            logger.info("Server error, retrying", { statusCode: responseData.status, attempt });
-            await delay(rateLimitDelay * attempt);
-            continue;
-          }
-
-          throw classifyRestError(new Error(`HTTP ${responseData.status}`), responseData.status);
+          break;
         } catch (error) {
-          lastError = error instanceof Error ? error : new Error(String(error));
+          lastError = classifyRestError(error);
           if (error instanceof RestRateLimitError || error instanceof RestServerError || error instanceof RestTimeoutError || error instanceof RestNetworkError) {
-            if (attempt < retryCount) {
+            if (attempt < maxAttempts) {
               logger.info("Retryable error, retrying", { errorType: lastError.name, attempt });
-              await delay(rateLimitDelay * attempt);
+              await delayWithinDeadline(retryDelay(rateLimitDelay, attempt), startedAt + MAX_REST_EXECUTION_MS);
               continue;
             }
           }
@@ -399,12 +458,13 @@ export class RestClient {
         throw lastError;
       }
 
-      if (!cursor && !nextUrl && !token) break;
+      if (!this.hasNextPage(recordsOnPage, cursor, nextUrl, token)) break;
       if (page === maxPages) throw new RestSecurityError("REST pagination page limit reached before completion.");
       if (this.config.pagination.strategy === "NEXT_URL" && nextUrl) {
         // Validate pagination before entering a retry loop or issuing the next request.
         await validateRestUrl(new URL(nextUrl, responseData?.url ?? this.config.baseUrl), { allowedOrigins: trustedOrigins, previousOrigin: new URL(responseData?.url ?? this.config.baseUrl).origin });
       }
+      if (rateLimitDelay > 0) await delayWithinDeadline(rateLimitDelay, startedAt + MAX_REST_EXECUTION_MS);
       page++;
     }
 
@@ -433,8 +493,8 @@ export class RestClient {
         timeoutMs: Math.min(this.config.timeout ?? 30000, MAX_REST_REQUEST_TIMEOUT_MS),
       });
 
-      const parsedBody = this.tryParseJson(response.body);
-      const records = extractArray(parsedBody, this.config.leadArrayPath);
+      const parsedBody = parseResponseBody(response.body);
+      const records = response.body.trim() ? extractArray(parsedBody, this.config.leadArrayPath) : [];
 
       return {
         success: response.status >= 200 && response.status < 300,
@@ -455,7 +515,7 @@ export class RestClient {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.name : "Connection failed",
+        error: getSafeTestConnectionError(error),
         details: {
           method: this.config.method,
           authType: this.config.auth.type,
@@ -464,11 +524,4 @@ export class RestClient {
     }
   }
 
-  private tryParseJson(body: string): unknown {
-    try {
-      return JSON.parse(body);
-    } catch {
-      return null;
-    }
-  }
 }

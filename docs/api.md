@@ -126,7 +126,7 @@
 
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/scheduler/trigger` | POST | ADMIN | Trigger due connectors |
+| `/api/scheduler/trigger` | POST | ADMIN session or `Authorization: Bearer <SCHEDULER_TRIGGER_SECRET>` | Trigger due connectors; only an Admin session can request a specific connector |
 
 ### Reports
 

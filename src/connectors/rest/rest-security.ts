@@ -94,9 +94,14 @@ export function validateRestRedirectTarget(location: string, currentUrl: URL, al
   return target;
 }
 
-export function parseAllowedOrigins(value = process.env.REST_CONNECTOR_ALLOWED_ORIGINS ?? ""): Set<string> {
+export function parseAllowedOrigins(
+  value = process.env.REST_CONNECTOR_ALLOWED_ORIGINS ?? "",
+  developmentValue = process.env.REST_CONNECTOR_DEV_ALLOWED_ORIGINS ?? "",
+  nodeEnv = process.env.NODE_ENV,
+): Set<string> {
   const origins = new Set<string>();
-  for (const raw of value.split(",").map((item) => item.trim()).filter(Boolean)) {
+  const values = nodeEnv === "development" ? `${value},${developmentValue}` : value;
+  for (const raw of values.split(",").map((item) => item.trim()).filter(Boolean)) {
     try {
       const url = new URL(raw);
       if (!(["https:", "http:"].includes(url.protocol)) || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {

@@ -49,6 +49,20 @@ export class RestNetworkError extends RetryableError {
   }
 }
 
+export class RestNonRetryableError extends ConnectorError {
+  constructor(causeType: string) {
+    super("REST request failed; automatic retry is disabled for this HTTP method.", { causeType });
+    this.name = "RestNonRetryableError";
+  }
+}
+
+export class RestRetriesExhaustedError extends ConnectorError {
+  constructor(causeType: string) {
+    super("REST request failed after the configured retry attempts.", { causeType });
+    this.name = "RestRetriesExhaustedError";
+  }
+}
+
 export class RestInvalidJsonError extends ConnectorError {
   constructor(details?: Record<string, unknown>) {
     super("REST API returned invalid JSON", details);
@@ -77,8 +91,8 @@ export function classifyRestError(error: unknown, statusCode?: number): Error {
 
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
-    if (msg.includes("timeout") || msg.includes("timed out")) return new RestTimeoutError();
-    if (msg.includes("econnrefused") || msg.includes("enotfound") || msg.includes("network") || msg.includes("dns")) return new RestNetworkError();
+    if (["econnrefused", "econnreset", "enotfound", "ehostunreach", "eai_again", "socket hang up", "network", "dns"].some((term) => msg.includes(term))) return new RestNetworkError();
+    if (msg.includes("etimedout") || msg.includes("timed out") || msg.includes("timeout")) return new RestTimeoutError();
     if (msg.includes("unauthorized") || msg.includes("invalid token")) return new RestAuthError();
     if (msg.includes("forbidden") || msg.includes("insufficient")) return new RestPermissionError();
     if (msg.includes("rate limit") || msg.includes("too many requests")) return new RestRateLimitError();

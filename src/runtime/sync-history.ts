@@ -62,7 +62,9 @@ export class SyncHistory {
         recordsSeen: result.rawPayloadCount,
         recordsCreated: result.leadCount,
         recordsUpdated: 0,
-        recordsSkipped: breakdown?.duplicatesSkipped ?? 0,
+        recordsSkipped: breakdown
+          ? breakdown.duplicatesSkipped + breakdown.routingFailures + breakdown.parserFailures + breakdown.validationFailures + breakdown.connectorFailures
+          : 0,
         errorMessage,
         metadata: {
           ...(result.metadata as object),

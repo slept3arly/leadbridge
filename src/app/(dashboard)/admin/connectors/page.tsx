@@ -17,6 +17,7 @@ export type SerializedConnector = {
   lastError: string | null;
   nextScheduledRun: string | null;
   scheduleType: string;
+  scheduleIntervalMinutes: number | null;
   isRunning: boolean;
   averageDurationMs: number | null;
   lastDurationMs: number | null;
@@ -46,6 +47,15 @@ export type SafeConnectorConfiguration = {
     strategy?: string;
     pageSize?: number;
     maxPages?: number;
+    pageParam?: string;
+    perPageParam?: string;
+    offsetParam?: string;
+    limitParam?: string;
+    cursorParam?: string;
+    cursorPath?: string;
+    nextUrlPath?: string;
+    tokenParam?: string;
+    tokenPath?: string;
   };
 };
 
@@ -68,6 +78,33 @@ function hasValue(value: unknown): boolean {
   return typeof value === "string" ? value.length > 0 : value != null;
 }
 
+function safeRestUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.username = "";
+    url.password = "";
+    for (const key of Array.from(url.searchParams.keys())) url.searchParams.set(key, "***masked***");
+    return url.href;
+  } catch {
+    return value.replace(/([?&][^=&#]+)=([^&#\s]*)/g, "$1=***masked***");
+  }
+}
+
+function safeRestEndpoint(value: string): string {
+  if (!/^[a-z][a-z\d+.-]*:\/\//i.test(value) && !value.startsWith("//")) {
+    return value.replace(/([?&][^=&#]+)=([^&#\s]*)/g, "$1=***masked***");
+  }
+  try {
+    const url = new URL(value, "https://leadbridge.invalid");
+    url.username = "";
+    url.password = "";
+    for (const key of Array.from(url.searchParams.keys())) url.searchParams.set(key, "***masked***");
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return value.replace(/([?&][^=&#]+)=([^&#\s]*)/g, "$1=***masked***");
+  }
+}
+
 function toSafeConfiguration(value: unknown): SafeConnectorConfiguration | null {
   const config = asRecord(value);
   if (Object.keys(config).length === 0) return null;
@@ -79,8 +116,8 @@ function toSafeConfiguration(value: unknown): SafeConnectorConfiguration | null 
   const pagination = asRecord(config.pagination);
 
   return {
-    ...(typeof config.baseUrl === "string" ? { baseUrl: config.baseUrl } : {}),
-    ...(typeof config.endpoint === "string" ? { endpoint: config.endpoint } : {}),
+    ...(typeof config.baseUrl === "string" ? { baseUrl: safeRestUrl(config.baseUrl) } : {}),
+    ...(typeof config.endpoint === "string" ? { endpoint: safeRestEndpoint(config.endpoint) } : {}),
     ...(typeof config.method === "string" ? { method: config.method } : {}),
     ...(typeof config.leadArrayPath === "string" ? { leadArrayPath: config.leadArrayPath } : {}),
     ...(typeof config.timeout === "number" ? { timeout: config.timeout } : {}),
@@ -117,6 +154,15 @@ function toSafeConfiguration(value: unknown): SafeConnectorConfiguration | null 
         ...(typeof pagination.strategy === "string" ? { strategy: pagination.strategy } : {}),
         ...(typeof pagination.pageSize === "number" ? { pageSize: pagination.pageSize } : {}),
         ...(typeof pagination.maxPages === "number" ? { maxPages: pagination.maxPages } : {}),
+        ...(typeof pagination.pageParam === "string" ? { pageParam: pagination.pageParam } : {}),
+        ...(typeof pagination.perPageParam === "string" ? { perPageParam: pagination.perPageParam } : {}),
+        ...(typeof pagination.offsetParam === "string" ? { offsetParam: pagination.offsetParam } : {}),
+        ...(typeof pagination.limitParam === "string" ? { limitParam: pagination.limitParam } : {}),
+        ...(typeof pagination.cursorParam === "string" ? { cursorParam: pagination.cursorParam } : {}),
+        ...(typeof pagination.cursorPath === "string" ? { cursorPath: pagination.cursorPath } : {}),
+        ...(typeof pagination.nextUrlPath === "string" ? { nextUrlPath: pagination.nextUrlPath } : {}),
+        ...(typeof pagination.tokenParam === "string" ? { tokenParam: pagination.tokenParam } : {}),
+        ...(typeof pagination.tokenPath === "string" ? { tokenPath: pagination.tokenPath } : {}),
       },
     } : {}),
   };
@@ -160,6 +206,7 @@ export default async function AdminConnectorsPage() {
         lastError: true,
         nextScheduledRun: true,
         scheduleType: true,
+        scheduleConfig: true,
         isRunning: true,
         averageDurationMs: true,
         lastDurationMs: true,
@@ -190,6 +237,12 @@ export default async function AdminConnectorsPage() {
     lastError: c.lastError,
     nextScheduledRun: c.nextScheduledRun?.toISOString() ?? null,
     scheduleType: c.scheduleType,
+    scheduleIntervalMinutes: (() => {
+      const value = c.scheduleConfig && typeof c.scheduleConfig === "object" && !Array.isArray(c.scheduleConfig)
+        ? (c.scheduleConfig as Record<string, unknown>).intervalMinutes
+        : undefined;
+      return typeof value === "number" ? value : null;
+    })(),
     isRunning: c.isRunning,
     averageDurationMs: c.averageDurationMs,
     lastDurationMs: c.lastDurationMs,

@@ -173,15 +173,36 @@ const paginationConfigSchema = z.object({
   tokenParam: z.string().optional(),
   tokenPath: z.string().optional(),
   maxPages: z.number().int().min(1).max(100).optional(),
+}).superRefine((config, context) => {
+  const requiredPath = config.strategy === "CURSOR" ? config.cursorPath
+    : config.strategy === "NEXT_URL" ? config.nextUrlPath
+    : config.strategy === "TOKEN" ? config.tokenPath
+    : undefined;
+  if (requiredPath !== undefined && requiredPath.trim()) return;
+  if (["CURSOR", "NEXT_URL", "TOKEN"].includes(config.strategy)) {
+    const path = config.strategy === "CURSOR" ? "cursorPath" : config.strategy === "NEXT_URL" ? "nextUrlPath" : "tokenPath";
+    context.addIssue({ code: "custom", path: [path], message: `${path} is required for ${config.strategy} pagination.` });
+  }
 }).optional();
 
 export const restConnectorConfigSchema = z.object({
-  baseUrl: z.string().url("Must be a valid URL"),
-  endpoint: z.string().min(1, "Endpoint is required"),
+  baseUrl: z.string().url("Must be a valid URL").superRefine((value, context) => {
+    let url: URL;
+    try { url = new URL(value); } catch { return; }
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+      context.addIssue({ code: "custom", message: "Base URL must use HTTP(S) and cannot contain credentials, query parameters, or a fragment." });
+    }
+  }),
+  endpoint: z.string().trim().min(1, "Endpoint is required").refine((value) => !/[?#]/.test(value) && !/^[a-z][a-z\d+.-]*:\/\//i.test(value) && !value.startsWith("//"), {
+    message: "Endpoint must be a relative path; configure query parameters separately.",
+  }),
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
   headers: z.record(z.string(), z.string()).optional(),
   queryParams: z.record(z.string(), z.string()).optional(),
-  body: z.string().max(1_048_576).optional(),
+  body: z.string().max(1_048_576).optional().refine((body) => {
+    if (!body?.trim()) return true;
+    try { JSON.parse(body); return true; } catch { return false; }
+  }, "Request body must contain valid JSON."),
   auth: restAuthConfigSchema.optional(),
   pagination: paginationConfigSchema,
   leadArrayPath: z.string().optional(),

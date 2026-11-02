@@ -225,6 +225,7 @@ export class ConnectorRuntime {
           {
             ...validatedLead,
             sourceReferenceId: validatedLead.sourceReferenceId ?? payload._duplicateKey,
+            rawPayload: validatedLead.rawPayload ?? (payload._rawPayload as Record<string, unknown> | undefined),
           },
           {
           sourceId: match?.providerId ?? context.providerId,
@@ -269,7 +270,7 @@ export class ConnectorRuntime {
         const recordImportEvent = (tx?: Prisma.TransactionClient) => activityEventService.createEvent({
           leadId: created.id,
           type: "SYSTEM",
-          actorId: actor.id,
+          actorId: actor.id === "system" ? null : actor.id,
           entries: [{
             type: "CREATED",
             message: `Lead imported via ${context.connectorType} connector`,

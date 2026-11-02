@@ -40,21 +40,20 @@ export function SyncHistoryModal({
   onClose: () => void;
 }) {
   const [runs, setRuns] = useState<SyncRun[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loadedRequest, setLoadedRequest] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const requestKey = connectorId ? `${connectorId}:${reloadKey}` : null;
+  const loading = requestKey !== null && loadedRequest !== requestKey;
   const dialogRef = useAccessibleDialog<HTMLDivElement>({ open: !!connectorId, onClose });
 
   useEffect(() => {
     if (!connectorId) return;
-    setLoading(true);
-    setError(null);
     axios
       .get(`/api/providers/sync-runs?connectorId=${connectorId}`)
-      .then((res) => setRuns(res.data.data ?? []))
-      .catch(() => { setRuns([]); setError("Could not load sync history."); })
-      .finally(() => setLoading(false));
-  }, [connectorId, reloadKey]);
+      .then((res) => { setRuns(res.data.data ?? []); setLoadedRequest(requestKey); })
+      .catch(() => { setRuns([]); setError("Could not load sync history."); setLoadedRequest(requestKey); });
+  }, [connectorId, reloadKey, requestKey]);
 
   if (!connectorId) return null;
 

@@ -386,7 +386,7 @@ export function ProvidersPageContent({
         </div>
       )}
 
-      <RoutingRulesManager providers={providers} parsers={parsers} rules={routingRules} />
+      <RoutingRulesManager key={JSON.stringify(routingRules)} providers={providers} parsers={parsers} rules={routingRules} />
 
       <ProviderEditModal
         open={modalOpen}

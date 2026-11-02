@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
@@ -33,16 +33,6 @@ export function LeadSourceManagerModal({
   const [deleteTarget, setDeleteTarget] = useState<SourceItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose: !pending && !deletingId });
-
-  useEffect(() => {
-    setSourceList(sources);
-  }, [sources]);
-
-  useEffect(() => {
-    if (!open) return;
-    setNewName("");
-    setError(null);
-  }, [open]);
 
   const handleAddSource = async (e: React.FormEvent) => {
     e.preventDefault();

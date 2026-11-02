@@ -21,7 +21,7 @@ export const GET = withApiAuthorization(undefined, async () => {
   }
 });
 
-export const POST = withApiAuthorization("ADMIN", async (request, _context, session) => {
+export const POST = withApiAuthorization("ADMIN", async (request) => {
   let body: unknown;
   try {
     body = await request.json();

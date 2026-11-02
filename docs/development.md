@@ -111,10 +111,11 @@ pnpm start
 The scheduler requires an external cron trigger:
 
 ```bash
-POST /api/scheduler/trigger
+curl -X POST "$LEADBRIDGE_URL/api/scheduler/trigger" \
+  -H "Authorization: Bearer $SCHEDULER_TRIGGER_SECRET"
 ```
 
-Configure Vercel Cron, system crontab, or GitHub Actions to call this endpoint at the desired interval.
+Set a long random `SCHEDULER_TRIGGER_SECRET` in the server environment and configure Vercel Cron, system crontab, or another trusted scheduler to send it as a bearer token. Keep the secret in the scheduler's secret store. Admins can also call the endpoint using their authenticated session.
 
 **Note:** The repository contains no cron configuration (no `vercel.json`, no GitHub Actions workflow, no system crontab). The scheduler endpoint exists but must be triggered externally.
 

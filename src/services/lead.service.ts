@@ -314,7 +314,7 @@ export class LeadService {
             status: status as LeadStatus,
             priority: (priority ?? "MEDIUM") as LeadPriority,
             category: (category ?? null) as LeadCategory | null,
-            createdById: actor.id,
+            createdById: actor.id === "system" ? null : actor.id,
             assignedUserId: assignedUserId ?? null,
             ...(customFields === null ? { customFields: Prisma.JsonNull } : customFields === undefined ? {} : { customFields: customFields as Prisma.InputJsonValue }),
             ...(rawPayload === null ? { rawPayload: Prisma.JsonNull } : rawPayload === undefined ? {} : { rawPayload: rawPayload as Prisma.InputJsonValue }),
@@ -324,7 +324,7 @@ export class LeadService {
         await activityEventService.createEvent({
           leadId: lead.id,
           type: "SYSTEM",
-          actorId: actor.id,
+          actorId: actor.id === "system" ? null : actor.id,
           entries: [
             {
               type: "CREATED",

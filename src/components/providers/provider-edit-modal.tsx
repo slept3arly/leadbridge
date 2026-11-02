@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
@@ -37,10 +37,13 @@ export function ProviderEditModal({
   const [sourceType, setSourceType] = useState("");
   const [description, setDescription] = useState("");
   const [active, setActive] = useState(true);
+  const [previousProvider, setPreviousProvider] = useState(provider);
+  const [previousOpen, setPreviousOpen] = useState(open);
   const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose: !pending });
 
-  useEffect(() => {
-    if (!open) return;
+  if (open && (!previousOpen || previousProvider !== provider)) {
+    setPreviousOpen(open);
+    setPreviousProvider(provider);
     if (provider) {
       setName(provider.name);
       setSlug(provider.slug);
@@ -55,7 +58,9 @@ export function ProviderEditModal({
       setActive(true);
     }
     setError(null);
-  }, [open, provider]);
+  } else if (previousOpen !== open) {
+    setPreviousOpen(open);
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
