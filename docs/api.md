@@ -1,7 +1,7 @@
 # LeadBridge API Reference
 
 > **Status:** Canonical
-> **Last verified:** 2026-09-17
+> **Last verified:** 2026-11-05
 > **Source of truth:** `src/app/api/`
 
 ## Overview
@@ -34,7 +34,7 @@
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
 | `/api/leads` | GET | Any authenticated | List leads with pagination, search, filters |
-| `/api/leads` | POST | `CREATE_LEAD` permission | Create lead manually |
+| `/api/leads` | POST | `CREATE_LEAD` permission | Create lead and optionally its initial interaction/follow-up atomically |
 | `/api/leads/[id]` | GET | Any authenticated | Get lead details |
 | `/api/leads/[id]` | PATCH | Any authenticated | Update lead fields |
 | `/api/leads/[id]` | DELETE | `DELETE_LEAD` permission | Permanently delete lead and cascade-deleted dependent records |
@@ -157,7 +157,9 @@
 
 All request bodies are validated with Zod schemas from `src/lib/validation.ts`:
 
-- `leadSchema` -- Lead create/update
+- `createLeadRequestSchema` -- Manual lead creation, including at least one of email or phone and optional initial activity
+- `leadSchema` -- Lead update fields
+- `interactionActivitySchema` -- Shared structured activity validation for standalone logging and lead creation
 - `followUpSchema` -- Follow-up create/update
 - `noteSchema` -- Note create/update
 - `userSchema` -- User create/update
@@ -168,6 +170,28 @@ All request bodies are validated with Zod schemas from `src/lib/validation.ts`:
 - `settingSchema` -- Settings update
 - `restConnectorConfigSchema` -- REST connector configuration
 - `unmatchedActionSchema` -- Unmatched email action
+
+### Manual lead creation payload
+
+`POST /api/leads` accepts the normal lead fields plus an optional `initialActivity` object. A valid request includes a Name and at least one of Email or Phone. Email is optional, whitespace is trimmed, and a non-empty value must be valid. Phone is optional, but a non-empty value must consist of exactly 10 digits. Empty or whitespace-only optional contact values normalize to null. The same email/phone shape validation is used by lead updates; the create-only at-least-one-contact rule does not prevent edits to existing contactless records. When provided, the activity requires an action (`CALL` or `WHATSAPP`), a compatible response, and Interest exactly when the response is `PICKED_UP` or `REPLIED`. Notes are optional. Follow-up scheduling is optional; when enabled, `followUpDate` is required and `followUpTime` is optional. Activity actor and follow-up assignee are derived from the authenticated session and existing follow-up policy; the payload cannot set either user ID.
+
+```json
+{
+  "name": "Example Lead",
+  "email": "lead@example.test",
+  "initialActivity": {
+    "action": "CALL",
+    "response": "PICKED_UP",
+    "interest": "INTERESTED",
+    "notes": "Requested a product catalogue.",
+    "scheduleFollowUp": true,
+    "followUpDate": "2026-12-01T10:00:00.000Z",
+    "followUpTime": "10:00"
+  }
+}
+```
+
+Lead, SYSTEM/CREATED event, optional INTERACTION event and entries, and optional follow-up are committed in one transaction. Requests without `initialActivity` remain valid. The standalone `POST /api/leads/[id]/activities` remains Sales-only.
 
 ## Error Handling
 

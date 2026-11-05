@@ -6,8 +6,10 @@ type FormFieldProps = {
   label?: string;
   htmlFor?: string;
   error?: string | null;
+  errorId?: string;
   helperText?: string;
   required?: boolean;
+  labelSuffix?: "Required" | "Optional";
   children: ReactNode;
   className?: string;
 };
@@ -16,8 +18,10 @@ export function FormField({
   label,
   htmlFor,
   error,
+  errorId,
   helperText,
   required,
+  labelSuffix,
   children,
   className,
 }: FormFieldProps) {
@@ -26,16 +30,20 @@ export function FormField({
       {label && (
         <Label htmlFor={htmlFor}>
           {label}
-          {required && (
+          {labelSuffix ? (
+            <span className="ml-1 text-xs font-normal text-[var(--color-muted)]">
+              {labelSuffix}
+            </span>
+          ) : required ? (
             <span className="ml-1 text-[var(--color-danger)]" aria-hidden="true">
               *
             </span>
-          )}
+          ) : null}
         </Label>
       )}
       {children}
       {error && (
-        <p className="text-xs text-[var(--color-danger)]" role="alert">
+        <p id={errorId} className="text-xs text-[var(--color-danger)]" role="alert">
           {error}
         </p>
       )}

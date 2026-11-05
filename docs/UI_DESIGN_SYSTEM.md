@@ -245,6 +245,7 @@ Observed in the current Sales UI:
 | LeadMetadataCard | `lead-metadata-card.tsx` | CANONICAL | Record information display. |
 | DailyHistory | `daily-history.tsx` | CANONICAL | Activity timeline by day. |
 | LogActivityModal | `log-activity-modal.tsx` | CANONICAL | Log call/whatsapp activity. |
+| ActivityFormFields | `activity-fields.tsx` | REUSABLE | Shared Call/WhatsApp and follow-up fields for standalone activity logging and initial lead activity. |
 | AttentionCenter | `attention-center.tsx` | CANONICAL | KPI cards + segmented filter + card grid. |
 | AttentionCard | `attention-card.tsx` | CANONICAL | Attention item card. |
 | TasksTableClient | `tasks-table-client.tsx` | CANONICAL | Follow-up tasks table. |
@@ -339,6 +340,7 @@ Observed in the current Sales UI:
 **Rules:**
 - Always wrap Input/Select/Textarea in FormField when a label is needed
 - Use `required` prop to show the red asterisk
+- Use `labelSuffix="Required"` or `labelSuffix="Optional"` when a form needs explicit text guidance beside labels
 - Error text appears below the input, helper text appears when no error
 
 ---

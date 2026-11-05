@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, withPermissionAuthorization, apiError, handleApiError } from "@/lib/api";
-import { leadSchema } from "@/lib/validation";
+import { createLeadRequestSchema } from "@/lib/validation";
 import { parseListQuery } from "@/lib/query-builder";
 import { leadService } from "@/services/lead.service";
 import { invalidateAfterMutation } from "@/lib/cache-tags";
@@ -14,7 +14,7 @@ export const GET = withApiAuthorization(undefined, async (request, _context, ses
 export const POST = withPermissionAuthorization(Permission.CREATE_LEAD, async (request, _context, session) => {
   let body: unknown;
   try { body = await request.json(); } catch { return apiError("Invalid JSON body.", 400); }
-  const parsed = leadSchema.safeParse(body);
+  const parsed = createLeadRequestSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });

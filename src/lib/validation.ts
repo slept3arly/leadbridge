@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { STATUS_VALUES, PRIORITY_VALUES, CATEGORY_VALUES } from "@/lib/lead-constants";
+import { getActivityResponseOptions, isSuccessfulActivityResponse } from "@/lib/activity-options";
 
 const optionalString = (max: number) =>
   z
@@ -9,6 +10,23 @@ const optionalString = (max: number) =>
     .optional()
     .nullable()
     .transform((value) => value || null);
+
+const normalizeOptionalString = (value: unknown) =>
+  typeof value === "string" ? value.trim() || null : value;
+
+export const leadEmailSchema = z.preprocess(
+  normalizeOptionalString,
+  z.email({ error: "Enter a valid email address." }).nullable().optional(),
+);
+
+export const leadPhoneSchema = z.preprocess(
+  (value) => typeof value === "string" && value.trim() === "" ? null : value,
+  z.union([
+    z.string().regex(/^\d{10}$/, "Enter exactly 10 digits using numbers only."),
+    z.null(),
+    z.undefined(),
+  ]),
+);
 
 export const loginSchema = z.object({
   email: z.email(),
@@ -44,8 +62,8 @@ export const noteSchema = z.object({
 export const leadSchema = z.object({
   name: z.string().min(2).max(120),
   company: optionalString(120),
-  email: z.email().optional().nullable().transform((value) => value || null),
-  phone: optionalString(30),
+  email: leadEmailSchema,
+  phone: leadPhoneSchema,
   alternatePhone: optionalString(30),
   address: optionalString(180),
   city: optionalString(80),
@@ -79,6 +97,38 @@ export const leadSchema = z.object({
   priority: leadPrioritySchema.optional(),
   category: leadCategorySchema.optional().nullable(),
   isArchived: z.boolean().optional(),
+});
+
+/** Structured interaction payload shared by standalone activity logging and lead creation. */
+export const interactionActivitySchema = z.object({
+  action: z.enum(["CALL", "WHATSAPP"]),
+  response: z.enum(["PICKED_UP", "NO_RESPONSE", "INVALID_NUMBER", "REPLIED"]),
+  interest: z.enum(["INTERESTED", "NOT_INTERESTED"]).nullable(),
+  notes: z.string().trim().max(10000).nullable(),
+  scheduleFollowUp: z.boolean().optional().default(false),
+  followUpDate: z.string().nullable().optional().refine((value) => !value || !Number.isNaN(new Date(value).getTime()), "Invalid follow-up date."),
+  followUpTime: z.string().max(10).nullable().optional(),
+}).superRefine((data, ctx) => {
+  const responseValid = getActivityResponseOptions(data.action).some((option) => option.value === data.response);
+  const interestValid = isSuccessfulActivityResponse(data.response) ? data.interest !== null : data.interest === null;
+
+  if (!responseValid) {
+    ctx.addIssue({ code: "custom", path: ["response"], message: "Response is not valid for this action." });
+  }
+  if (!interestValid) {
+    ctx.addIssue({ code: "custom", path: ["interest"], message: "Interest is required only for a successful response." });
+  }
+  if (data.scheduleFollowUp && !data.followUpDate) {
+    ctx.addIssue({ code: "custom", path: ["followUpDate"], message: "Follow-up date is required when scheduling a follow-up." });
+  }
+});
+
+export const createLeadRequestSchema = leadSchema.extend({
+  initialActivity: interactionActivitySchema.optional(),
+}).superRefine((data, ctx) => {
+  if (!data.email && !data.phone) {
+    ctx.addIssue({ code: "custom", path: ["email"], message: "Provide an email address or phone number." });
+  }
 });
 
 export const userSchema = z.object({

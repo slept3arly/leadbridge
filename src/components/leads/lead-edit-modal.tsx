@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -10,6 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
 import { LEAD_STATUSES, LEAD_PRIORITIES, LEAD_CATEGORIES } from "@/lib/lead-constants";
 import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
+import { ActivityFormFields } from "@/components/sales/activity-fields";
+import { createLeadRequestSchema, leadEmailSchema, leadPhoneSchema, leadSchema } from "@/lib/validation";
+import { isSuccessfulActivityResponse } from "@/lib/activity-options";
 
 export type LeadFormData = {
   id: string;
@@ -64,6 +68,19 @@ export function LeadEditModal({
   const [category, setCategory] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [assignedUserId, setAssignedUserId] = useState("");
+  const [contactError, setContactError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [initialActivityExpanded, setInitialActivityExpanded] = useState(false);
+  const [activityAction, setActivityAction] = useState("CALL");
+  const [activityResponse, setActivityResponse] = useState("");
+  const [activityInterest, setActivityInterest] = useState("");
+  const [activityNotes, setActivityNotes] = useState("");
+  const [scheduleFollowUp, setScheduleFollowUp] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [followUpTime, setFollowUpTime] = useState("");
+  const [activityErrors, setActivityErrors] = useState<{ response?: string; interest?: string; followUpDate?: string }>({});
   const [previousLead, setPreviousLead] = useState(lead);
   const [previousOpen, setPreviousOpen] = useState(open);
   const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose: !pending });
@@ -101,46 +118,108 @@ export function LeadEditModal({
       setAssignedUserId("");
     }
     setError(null);
+    setContactError(null);
+    setNameError(null);
+    setEmailError(null);
+    setPhoneError(null);
+    setInitialActivityExpanded(false);
+    setActivityAction("CALL");
+    setActivityResponse("");
+    setActivityInterest("");
+    setActivityNotes("");
+    setScheduleFollowUp(false);
+    setFollowUpDate("");
+    setFollowUpTime("");
+    setActivityErrors({});
   } else if (previousOpen !== open) {
     setPreviousOpen(open);
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setPending(true);
+    const initialActivity = initialActivityExpanded ? {
+      action: activityAction,
+      response: activityResponse,
+      interest: isSuccessfulActivityResponse(activityResponse) ? activityInterest || null : null,
+      notes: activityNotes.trim() || null,
+      scheduleFollowUp,
+      followUpDate: scheduleFollowUp && followUpDate
+        ? (() => {
+            const date = new Date(`${followUpDate}T${followUpTime || "00:00"}`);
+            return Number.isNaN(date.getTime()) ? null : date.toISOString();
+          })()
+        : null,
+      followUpTime: scheduleFollowUp ? followUpTime || null : null,
+    } : undefined;
+    const payload: Record<string, unknown> = {
+      name,
+      company: company || null,
+      email: email || null,
+      phone: phone || null,
+      city: city || null,
+      state: state || null,
+      product: product || null,
+      requirement: requirement || null,
+      status,
+      priority,
+      category: category || null,
+      sourceId: sourceId || null,
+    };
+
+    if (!isEdit && initialActivity) payload.initialActivity = initialActivity;
+    if (assignableUsers) payload.assignedUserId = assignedUserId || null;
+
+    const parsed = isEdit
+      ? leadSchema.partial().safeParse(payload)
+      : createLeadRequestSchema.safeParse(payload);
+
+    setNameError(null);
+    setEmailError(null);
+    setPhoneError(null);
+    setContactError(null);
+    setActivityErrors({});
     setError(null);
+    if (!parsed.success) {
+      const issues = parsed.error.issues;
+      const nameIssue = issues.find((issue) => issue.path[0] === "name");
+      const emailIssue = issues.find((issue) => issue.path[0] === "email");
+      const phoneIssue = issues.find((issue) => issue.path[0] === "phone");
+      setNameError(nameIssue?.message ?? null);
+      setEmailError(email.trim() ? emailIssue?.message ?? null : null);
+      setPhoneError(phoneIssue?.message ?? null);
+      if (!isEdit && !email.trim() && !phone.trim()) {
+        setContactError("Provide an email address or phone number.");
+      }
+      const activityIssue = issues.find((issue) => issue.path[0] === "initialActivity");
+      if (activityIssue) {
+        const field = activityIssue.path[1];
+        if (field === "response" || field === "interest" || field === "followUpDate") {
+          setActivityErrors({ [field]: activityIssue.message });
+        } else {
+          setError(activityIssue.message);
+        }
+      }
+      if (!nameIssue && !emailIssue && !phoneIssue && !activityIssue) {
+        setError(issues[0]?.message ?? "Review the highlighted fields.");
+      }
+      return;
+    }
+
+    setPending(true);
 
     try {
-      const payload: Record<string, unknown> = {
-        name,
-        company: company || null,
-        email: email || null,
-        phone: phone || null,
-        city: city || null,
-        state: state || null,
-        product: product || null,
-        requirement: requirement || null,
-        status,
-        priority,
-        category: category || null,
-        sourceId: sourceId || null,
-      };
-
-      if (assignableUsers) {
-        payload.assignedUserId = assignedUserId || null;
-      }
-
       if (isEdit) {
-        await axios.patch(`/api/leads/${lead.id}`, payload);
+        await axios.patch(`/api/leads/${lead.id}`, parsed.data);
       } else {
-        await axios.post("/api/leads", payload);
+        await axios.post("/api/leads", parsed.data);
       }
 
       onClose();
       router.refresh();
       if (onSaved) onSaved();
-    } catch {
-      setError(isEdit ? "Failed to update lead." : "Unable to create the lead right now.");
+    } catch (err) {
+      const message = axios.isAxiosError(err) ? err.response?.data?.error : undefined;
+      setError(typeof message === "string" ? message : (isEdit ? "Failed to update lead." : "Unable to create the lead right now."));
     } finally {
       setPending(false);
     }
@@ -182,14 +261,14 @@ export function LeadEditModal({
         </div>
 
         <div className="overflow-y-auto p-6 flex-1">
-          <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+          <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Basic Information</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField label="Name" htmlFor="lead-name" required className="col-span-2">
-                <Input id="lead-name" data-autofocus value={name} onChange={(e) => setName(e.target.value)} required />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Name" htmlFor="lead-name" labelSuffix="Required" error={nameError} errorId="lead-name-error">
+                  <Input id="lead-name" data-autofocus value={name} onChange={(e) => { setName(e.target.value); setNameError(e.target.value.trim().length >= 2 ? null : "Enter at least 2 characters."); }} required aria-invalid={!!nameError} aria-describedby={nameError ? "lead-name-error" : undefined} />
                 </FormField>
-                <FormField label="Company" htmlFor="lead-company">
+                <FormField label="Company" htmlFor="lead-company" labelSuffix="Optional">
                   <Input id="lead-company" value={company} onChange={(e) => setCompany(e.target.value)} />
                 </FormField>
               </div>
@@ -199,22 +278,22 @@ export function LeadEditModal({
 
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Classification &amp; Assignment</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField label="Status" htmlFor="lead-status">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Status" htmlFor="lead-status" labelSuffix="Optional">
                   <Select id="lead-status" value={status} onChange={(e) => setStatus(e.target.value)}>
                     {LEAD_STATUSES.map((s) => (
                       <option key={s.value} value={s.value}>{s.label}</option>
                     ))}
                   </Select>
                 </FormField>
-                <FormField label="Priority" htmlFor="lead-priority">
+                <FormField label="Priority" htmlFor="lead-priority" labelSuffix="Optional">
                   <Select id="lead-priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
                     {LEAD_PRIORITIES.map((p) => (
                       <option key={p.value} value={p.value}>{p.label}</option>
                     ))}
                   </Select>
                 </FormField>
-                <FormField label="Category" htmlFor="lead-category">
+                <FormField label="Category" htmlFor="lead-category" labelSuffix="Optional">
                   <Select id="lead-category" value={category} onChange={(e) => setCategory(e.target.value)}>
                     <option value="">None</option>
                     {LEAD_CATEGORIES.map((c) => (
@@ -222,7 +301,7 @@ export function LeadEditModal({
                     ))}
                   </Select>
                 </FormField>
-                <FormField label="Lead Source" htmlFor="lead-source">
+                <FormField label="Lead Source" htmlFor="lead-source" labelSuffix="Optional">
                   <Select id="lead-source" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
                     <option value="">None</option>
                     {leadSources?.map((s) => (
@@ -231,7 +310,7 @@ export function LeadEditModal({
                   </Select>
                 </FormField>
                 {assignableUsers && (
-                  <FormField label="Assigned To" htmlFor="lead-assigned" className="col-span-2">
+                  <FormField label="Assigned To" htmlFor="lead-assigned" labelSuffix="Optional" className="sm:col-span-2">
                     <Select id="lead-assigned" value={assignedUserId} onChange={(e) => setAssignedUserId(e.target.value)}>
                       <option value="">Unassigned</option>
                       {assignableUsers.map((u) => (
@@ -246,28 +325,78 @@ export function LeadEditModal({
             <hr className="border-[var(--color-border)]" />
 
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Contact &amp; Details</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField label="Email" htmlFor="lead-email">
-                  <Input id="lead-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Contact Details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Email" htmlFor="lead-email" labelSuffix="Optional" error={emailError} errorId="lead-email-error">
+                  <Input id="lead-email" type="email" value={email} autoComplete="email" onChange={(e) => { const value = e.target.value; const parsedEmail = leadEmailSchema.safeParse(value); setEmail(value); setEmailError(parsedEmail.success ? null : parsedEmail.error.issues[0]?.message ?? "Enter a valid email address."); if (parsedEmail.success && parsedEmail.data) setContactError(null); }} aria-invalid={!!emailError || !!contactError} aria-describedby={emailError ? "lead-email-error" : contactError ? "lead-contact-error" : undefined} />
                 </FormField>
-                <FormField label="Phone" htmlFor="lead-phone">
-                  <Input id="lead-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                <FormField label="Phone" htmlFor="lead-phone" labelSuffix="Optional" error={phoneError} errorId="lead-phone-error">
+                  <Input id="lead-phone" type="tel" inputMode="numeric" autoComplete="tel" value={phone} onChange={(e) => { const value = e.target.value; const parsedPhone = leadPhoneSchema.safeParse(value); setPhone(value); setPhoneError(parsedPhone.success ? null : parsedPhone.error.issues[0]?.message ?? "Enter exactly 10 digits using numbers only."); if (parsedPhone.success && parsedPhone.data) setContactError(null); }} aria-invalid={!!phoneError || !!contactError} aria-describedby={phoneError ? "lead-phone-error" : contactError ? "lead-contact-error" : undefined} />
                 </FormField>
-                <FormField label="City" htmlFor="lead-city">
+                {contactError && <p id="lead-contact-error" className="sm:col-span-2 -mt-2 text-xs text-[var(--color-danger)]" role="alert">{contactError}</p>}
+                <FormField label="City" htmlFor="lead-city" labelSuffix="Optional">
                   <Input id="lead-city" value={city} onChange={(e) => setCity(e.target.value)} />
                 </FormField>
-                <FormField label="State" htmlFor="lead-state">
+                <FormField label="State" htmlFor="lead-state" labelSuffix="Optional">
                   <Input id="lead-state" value={state} onChange={(e) => setState(e.target.value)} />
                 </FormField>
-                <FormField label="Product" htmlFor="lead-product">
+              </div>
+            </div>
+
+            <hr className="border-[var(--color-border)]" />
+
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Requirements</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Product" htmlFor="lead-product" labelSuffix="Optional">
                   <Input id="lead-product" value={product} onChange={(e) => setProduct(e.target.value)} />
                 </FormField>
-                <FormField label="Requirement" htmlFor="lead-requirement" className="col-span-2">
+                <FormField label="Requirement" htmlFor="lead-requirement" labelSuffix="Optional" className="col-span-full">
                   <Textarea id="lead-requirement" value={requirement} onChange={(e) => setRequirement(e.target.value)} rows={3} />
                 </FormField>
               </div>
             </div>
+
+            {!isEdit && (
+              <>
+                <hr className="border-[var(--color-border)]" />
+                <section className="rounded-xl border border-[var(--color-border)] bg-slate-50/70 p-4">
+                  <button
+                    type="button"
+                    aria-expanded={initialActivityExpanded}
+                    aria-controls="initial-activity-fields"
+                    onClick={() => setInitialActivityExpanded((expanded) => !expanded)}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <span className="text-sm font-semibold text-[var(--color-ink)]">Initial Activity — Optional</span>
+                    <ChevronDown size={18} className={`shrink-0 transition-transform ${initialActivityExpanded ? "rotate-180" : ""}`} aria-hidden="true" />
+                  </button>
+                  {initialActivityExpanded && (
+                    <div id="initial-activity-fields" className="mt-4 grid grid-cols-1 gap-4">
+                      <ActivityFormFields
+                        idPrefix="initial-activity"
+                        showFieldGuidance
+                        errors={activityErrors}
+                        action={activityAction}
+                        response={activityResponse}
+                        interest={activityInterest}
+                        notes={activityNotes}
+                        scheduleFollowUp={scheduleFollowUp}
+                        followUpDate={followUpDate}
+                        followUpTime={followUpTime}
+                        onActionChange={(value) => { setActivityAction(value); setActivityResponse(""); setActivityInterest(""); setActivityErrors({}); }}
+                        onResponseChange={(value) => { setActivityResponse(value); if (!isSuccessfulActivityResponse(value)) setActivityInterest(""); setActivityErrors({}); }}
+                        onInterestChange={(value) => { setActivityInterest(value); setActivityErrors((current) => ({ ...current, interest: undefined })); }}
+                        onNotesChange={setActivityNotes}
+                        onScheduleFollowUpChange={(value) => { setScheduleFollowUp(value); if (!value) { setFollowUpDate(""); setFollowUpTime(""); } }}
+                        onFollowUpDateChange={(value) => { setFollowUpDate(value); setActivityErrors((current) => ({ ...current, followUpDate: undefined })); }}
+                        onFollowUpTimeChange={setFollowUpTime}
+                      />
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
 
             {error ? (
               <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>

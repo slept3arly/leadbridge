@@ -1,7 +1,7 @@
 # LeadBridge Backend
 
 > **Status:** Canonical
-> **Last verified:** 2026-09-17
+> **Last verified:** 2026-11-05
 > **Source of truth:** `src/services/`, `src/lib/`, `src/runtime/`
 
 ## Service Layer
@@ -60,7 +60,7 @@ Search uses `ILIKE '%term%'` across 5 fields: `displayName`, `company`, `email`,
 
 ### Activity Recording
 
-Lead mutations create `ActivityEvent` + `ActivityEntry` records in the same transaction:
+Lead mutations create `ActivityEvent` + `ActivityEntry` records in the same transaction. Manual lead creation can include an optional structured initial interaction. `LeadService.create()` writes the lead and exactly one SYSTEM/CREATED event, then—when requested—creates a separate INTERACTION event. An optional follow-up is created through `FollowUpService.create()` using the same transaction client; its scheduled entry is linked to the interaction event, and follow-up denormalized lead fields are recalculated in that transaction.
 
 ```typescript
 await prisma.$transaction(async (tx) => {
@@ -73,6 +73,8 @@ await prisma.$transaction(async (tx) => {
   return lead;
 });
 ```
+
+The initial activity actor is always the authenticated caller. Follow-up assignment is not accepted from the create payload: the existing follow-up policy assigns Sales follow-ups to the Sales actor and Admin follow-ups to the Admin actor. The create API invalidates dashboard and attention caches only after the transaction commits. The standalone Sales Log Activity endpoint uses the same `interactionActivitySchema` and `ActivityFormFields` as the combined flow.
 
 ### Denormalized Field Maintenance
 

@@ -5,14 +5,17 @@ import { prisma } from "@/lib/prisma";
 import { startOfTodayUTC, endOfTodayUTC } from "@/lib/utils";
 import { containsSearch, dateRange, listResult, pagination, type ListQuery } from "@/lib/query-builder";
 import { ServiceError } from "@/lib/service-errors";
-import { leadSchema } from "@/lib/validation";
+import { interactionActivitySchema, leadSchema } from "@/lib/validation";
 import { activityEventService } from "@/services/activity-event.service";
 import { duplicateService } from "@/services/duplicate.service";
 import { can, Permission } from "@/lib/permissions";
 import type { ExecutionFence } from "@/services/execution-fence";
 import { assertExecutionFence } from "@/services/execution-fence";
+import { followUpService } from "@/services/follow-up.service";
 
 export type LeadInput = z.infer<typeof leadSchema>;
+type InitialActivityInput = z.infer<typeof interactionActivitySchema>;
+type CreateLeadInput = LeadInput & { initialActivity?: InitialActivityInput };
 type Actor = { id: string; role: UserRole; salesPrivilege?: SalesPrivilege | null };
 
 const leadListSelect = {
@@ -277,7 +280,7 @@ export class LeadService {
     return leads.map(toApiLead);
   }
 
-  async create(data: LeadInput, actor: Actor, executionFence?: ExecutionFence): Promise<CreateLeadResult> {
+  async create(data: CreateLeadInput, actor: Actor, executionFence?: ExecutionFence): Promise<CreateLeadResult> {
     if (!can(actor, Permission.CREATE_LEAD)) {
       throw new ServiceError("You do not have permission to create leads.", 403);
     }
@@ -303,7 +306,7 @@ export class LeadService {
     }
 
     const duplicates = await duplicateService.findPotentialDuplicates(data);
-    const { name, customFields, rawPayload, status, priority, category, ...rest } = data;
+    const { name, customFields, rawPayload, status, priority, category, initialActivity, ...rest } = data;
     return prisma.$transaction(async (tx) => {
       if (executionFence) await assertExecutionFence(tx, executionFence);
       try {
@@ -333,6 +336,41 @@ export class LeadService {
             },
           ],
         }, tx);
+
+        if (initialActivity) {
+          const entries: import("@/services/activity-event.service").ActivityEntryInput[] = [{
+            type: initialActivity.action,
+            action: initialActivity.action,
+            response: initialActivity.response,
+            interest: initialActivity.interest,
+            message: initialActivity.notes || `${initialActivity.action} - ${initialActivity.response.replaceAll("_", " ")}${initialActivity.interest ? ` (${initialActivity.interest.replaceAll("_", " ")})` : ""}`,
+            metadata: initialActivity.notes ? { notes: initialActivity.notes } : undefined,
+          }];
+
+          if (initialActivity.scheduleFollowUp && initialActivity.followUpDate) {
+            const followUp = await followUpService.create({
+              leadId: lead.id,
+              title: `${initialActivity.action === "CALL" ? "Call" : "WhatsApp"} follow-up`,
+              description: initialActivity.notes,
+              dueDate: initialActivity.followUpDate,
+              dueTime: initialActivity.followUpTime,
+            }, actor, tx, false);
+
+            entries.push({
+              type: "FOLLOW_UP_SCHEDULED",
+              followUpId: followUp.id,
+              message: "Follow-up scheduled",
+              metadata: { dueDate: initialActivity.followUpDate, dueTime: initialActivity.followUpTime ?? null },
+            });
+          }
+
+          await activityEventService.createEvent({
+            leadId: lead.id,
+            type: "INTERACTION",
+            actorId: actor.id,
+            entries,
+          }, tx);
+        }
         return { status: "created", lead: toApiLead(lead) };
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

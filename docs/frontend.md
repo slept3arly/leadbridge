@@ -1,7 +1,7 @@
 # LeadBridge Frontend
 
 > **Status:** Canonical
-> **Last verified:** 2026-10-09
+> **Last verified:** 2026-11-05
 > **Source of truth:** `src/app/`, `src/components/`, `src/hooks/`
 
 ## Rendering Model
@@ -31,6 +31,12 @@
 The Admin dashboard presents CRM-wide lead totals, status and priority breakdowns, assignment and pending follow-up workload, daily sales activity, salesperson performance, connector status and recent syncs, and recent activity. Its metric cards and tables reuse the shared `KpiCard`, `Badge`, and `DataTable` components.
 
 The Admin Leads page lists CRM-wide leads with URL-backed search, assignment, status, priority, source, archive, activity, follow-up, date, sort, and pagination filters. It reuses the Sales leads filter controls and shared compact table styling, with Admin assignment filters and quick links enabled. Rows open the shared lead details workflow for activity and follow-up management; create/edit, archive/restore, delete, and export use existing API routes and services. Archived leads are shown by selecting the archived filter, while the default list excludes them.
+
+## Create and Edit Leads
+
+Sales and Admin both use `src/components/leads/lead-edit-modal.tsx` (`LeadEditModal`). Labels identify fields as Required or Optional. Name is required; Email and Phone are individually optional, while at least one must be provided. Email is trimmed and checked for valid format. A supplied phone must contain exactly 10 digits; its input uses a numeric mobile keyboard and invalid characters or lengths remain visible with an inline error. Classification and contact fields use responsive two-column grids; Requirement spans the form width. Admin receives the optional Assigned User field through `assignableUsers`; Sales keeps the existing automatic self-assignment behavior.
+
+Create mode includes a collapsed **Initial Activity — Optional** section. Expanding it reuses `src/components/sales/activity-fields.tsx` for Call/WhatsApp action, action-specific response, conditional interest, notes, and optional follow-up date/time. Action changes reset response and interest. Disabling follow-up scheduling clears its date and time. The section is omitted from edit mode. Lead creation submits the optional interaction with the lead in one request; the modal retains entered values on failure and refreshes the route after success.
 
 ## Loading States (6)
 

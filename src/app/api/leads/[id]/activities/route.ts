@@ -4,17 +4,7 @@ import { activityEventService } from "@/services/activity-event.service";
 import { followUpService } from "@/services/follow-up.service";
 import { invalidateAfterMutation } from "@/lib/cache-tags";
 import { prisma } from "@/lib/prisma";
-import { z } from "zod";
-
-const structuredActivitySchema = z.object({
-  action: z.enum(["CALL", "WHATSAPP"]),
-  response: z.enum(["PICKED_UP", "NO_RESPONSE", "INVALID_NUMBER", "REPLIED"]),
-  interest: z.enum(["INTERESTED", "NOT_INTERESTED"]).nullable(),
-  notes: z.string().trim().max(10000).nullable(),
-  scheduleFollowUp: z.boolean().optional().default(false),
-  followUpDate: z.string().nullable().optional(),
-  followUpTime: z.string().max(10).nullable().optional(),
-});
+import { interactionActivitySchema } from "@/lib/validation";
 
 export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
   const { id } = await context.params;
@@ -37,21 +27,11 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(["
   let body: unknown;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 }); }
 
-  const parsed = structuredActivitySchema.safeParse(body);
+  const parsed = interactionActivitySchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
   const { id } = await context.params;
   const data = parsed.data;
-  const responseValid = data.action === "CALL"
-    ? ["PICKED_UP", "NO_RESPONSE", "INVALID_NUMBER"].includes(data.response)
-    : ["REPLIED", "NO_RESPONSE", "INVALID_NUMBER"].includes(data.response);
-  const interestValid = data.response === "PICKED_UP" || data.response === "REPLIED"
-    ? data.interest !== null
-    : data.interest === null;
-  if (!responseValid || !interestValid || (data.scheduleFollowUp && !data.followUpDate)) {
-    return NextResponse.json({ error: "Invalid structured activity combination." }, { status: 400 });
-  }
-
   const lead = await prisma.lead.findFirst({
     where: { id, isDeleted: false, assignedUserId: session.user.id },
     select: { id: true },

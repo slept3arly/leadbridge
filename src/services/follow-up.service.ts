@@ -19,8 +19,8 @@ export class FollowUpService {
     }
     return resolved;
   }
-  private async assertLeadAccess(leadId: string, actor: Actor) {
-    const lead = await prisma.lead.findFirst({
+  private async assertLeadAccess(leadId: string, actor: Actor, client: Pick<typeof prisma, "lead"> = prisma) {
+    const lead = await client.lead.findFirst({
       where: { id: leadId, isDeleted: false, ...(actor.role === "SALES" ? { assignedUserId: actor.id } : {}) },
       select: { id: true },
     });
@@ -95,7 +95,7 @@ export class FollowUpService {
     leadId: string;
   }, actor: Actor, client?: Pick<typeof prisma, "followUp" | "lead" | "activityEvent" | "activityEntry" | "$transaction">, recordLifecycleEvent = true) {
     const db = client ?? prisma;
-    await this.assertLeadAccess(data.leadId, actor);
+    await this.assertLeadAccess(data.leadId, actor, client ?? prisma);
     const assignedUserId = await this.assertAssignee(data.assignedUserId, actor);
 
     const followUp = await db.followUp.create({
