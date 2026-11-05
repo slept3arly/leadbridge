@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/activity-patch-validation.test.ts tests/lead-creation-validation.test.ts tests/note-scheduling-validation.test.ts tests/phase1-hardening.test.ts",
+    "test:integration": "node scripts/run-postgres-integration-tests.mjs",
     "db:generate": "pnpm exec prisma generate",
     "db:migrate": "pnpm exec prisma migrate dev",
     "db:push": "pnpm exec prisma db push",

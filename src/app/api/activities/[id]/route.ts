@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
+import { validateActivityOutcomePatch } from "@/lib/validation";
 import { z } from "zod";
 
 const updateActivitySchema = z.object({
@@ -21,7 +22,7 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
 
   const entry = await prisma.activityEntry.findUnique({
     where: { id },
-    select: { id: true, eventId: true, type: true, action: true, message: true },
+    select: { id: true, eventId: true, type: true, action: true, response: true, interest: true, message: true },
   });
   if (!entry) return apiError("Activity not found.", 404);
 
@@ -43,21 +44,18 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
 
   const data = parsed.data;
 
-  if (data.action && data.response) {
-    const responseValid = data.action === "CALL"
-      ? ["PICKED_UP", "NO_RESPONSE", "INVALID_NUMBER"].includes(data.response)
-      : ["REPLIED", "NO_RESPONSE", "INVALID_NUMBER"].includes(data.response);
-    if (!responseValid) {
-      return apiError("Invalid response for the selected action.", 400);
-    }
+  const outcomeValidation = validateActivityOutcomePatch({
+    action: entry.action ?? entry.type,
+    response: entry.response,
+    interest: entry.interest,
+  }, data);
+  if (outcomeValidation && !outcomeValidation.success) {
+    return NextResponse.json({ error: outcomeValidation.error.flatten() }, { status: 400 });
   }
 
-  if (data.response) {
-    const respondsToCustomer = data.response === "PICKED_UP" || data.response === "REPLIED";
-    if (!respondsToCustomer && data.interest !== undefined && data.interest !== null) {
-      return apiError("Interest cannot be set for this response type.", 400);
-    }
-  }
+  const resultingAction = data.action ?? entry.action ?? entry.type;
+  const resultingResponse = data.response ?? entry.response ?? "NO_RESPONSE";
+  const resultingInterest = data.interest !== undefined ? data.interest : entry.interest;
 
   const updateData: Record<string, unknown> = {};
   if (data.action !== undefined) updateData.action = data.action;
@@ -65,11 +63,9 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
   if (data.interest !== undefined) updateData.interest = data.interest;
 
   if (data.action || data.response || data.interest !== undefined || data.notes !== undefined) {
-    const action = data.action ?? entry.action ?? entry.type;
-    const response = data.response ?? "NO_RESPONSE";
-    const responseLabel = response.replaceAll("_", " ");
-    const interestLabel = data.interest ? ` (${data.interest.replaceAll("_", " ")})` : "";
-    updateData.message = data.notes || `${action} - ${responseLabel}${interestLabel}`;
+    const responseLabel = resultingResponse.replaceAll("_", " ");
+    const interestLabel = resultingInterest ? ` (${resultingInterest.replaceAll("_", " ")})` : "";
+    updateData.message = data.notes || `${resultingAction} - ${responseLabel}${interestLabel}`;
   }
 
   try {

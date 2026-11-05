@@ -104,14 +104,11 @@ The initial activity actor is always the authenticated caller. Follow-up assignm
 | `lead-constants.ts` | Status/priority/category value constants |
 | `audit-export-params.ts` | Dead code -- exports empty object, related to removed AuditLog feature |
 
-## Middleware
+## Request Proxy and Authorization
 
-Single middleware at `src/middleware.ts`:
+`src/proxy.ts` exports Next.js `proxy()` and matches `/login`, `/admin/:path*`, and `/sales/:path*`. It checks for the Better Auth session cookie to redirect page requests without one from `/admin/*` and `/sales/*` to `/login`, and redirects requests with a cookie away from `/login` to `/`. This proxy check supports navigation flow; cookie presence alone does not authenticate or authorize a request.
 
-- Checks for `better-auth.session_token` cookie
-- Redirects unauthenticated users from `/admin/*` and `/sales/*` to `/login`
-- Redirects authenticated users away from `/login` to `/`
-- Matcher: `/login`, `/admin/:path*`, `/sales/:path*`
+Dashboard layouts use `requireSession(role)` from `src/lib/session.ts` to validate the server session and role. API route handlers use the authorization wrappers in `src/lib/api.ts` to validate sessions and enforce roles or permissions. These server-side checks are the authoritative access controls.
 
 ## Background Jobs
 

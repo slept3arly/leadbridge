@@ -32,6 +32,8 @@ pnpm dev
 | `pnpm start` | Start production server |
 | `pnpm lint` | Run ESLint |
 | `pnpm typecheck` | Run TypeScript compiler checks |
+| `pnpm test` | Run database-independent Node.js tests |
+| `pnpm test:integration` | Run PostgreSQL integration tests; requires `LEADBRIDGE_TEST_DATABASE_URL` |
 | `pnpm db:generate` | Generate Prisma Client |
 | `pnpm db:migrate` | Run Prisma migrations |
 | `pnpm db:push` | Push schema changes without migration |
@@ -49,6 +51,7 @@ pnpm dev
 | `ADMIN_EMAIL` | Yes | Initial admin email (seed) |
 | `ADMIN_PASSWORD` | Yes | Initial admin password (seed) |
 | `LOG_LEVEL` | No | Pino log level (default: `info`) |
+| `LEADBRIDGE_TEST_DATABASE_URL` | Integration tests | Connection URL for an isolated PostgreSQL test database; database name must contain `test` |
 | `GMAIL_<KEY>_CLIENT_ID` | Conditional | Gmail OAuth credentials |
 | `GMAIL_<KEY>_CLIENT_SECRET` | Conditional | Gmail OAuth credentials |
 | `GMAIL_<KEY>_REFRESH_TOKEN` | Conditional | Gmail OAuth credentials |
@@ -87,14 +90,31 @@ pnpm dev
 
 ## Testing
 
-No formal test framework is configured. Manual testing via:
+Tests use Node's built-in test runner through the existing `tsx` dependency. Ordinary tests do not connect to a database:
 
-1. **Parser preview:** `POST /api/parsers/preview`
-2. **Connector test:** `POST /api/providers/connectors/test`
-3. **Manual sync:** `POST /api/connectors/[id]/sync`
-4. **Type checking:** `pnpm typecheck`
-5. **Linting:** `pnpm lint`
-6. **Smoke scripts:** `scripts/phase2-smoke.ts`, `scripts/phase3a-smoke.ts`
+```bash
+pnpm test
+```
+
+PostgreSQL integration tests are run separately. They require `LEADBRIDGE_TEST_DATABASE_URL`; the integration command fails if it is missing, malformed, non-PostgreSQL, or names a database without `test` in its name. The integration tests also retain their own database-name safeguards.
+
+Provision a **dedicated isolated PostgreSQL test database**, apply the repository migrations to it, and set `LEADBRIDGE_TEST_DATABASE_URL` to its connection URL before running:
+
+```bash
+pnpm test:integration
+```
+
+The integration test files set `DATABASE_URL` from `LEADBRIDGE_TEST_DATABASE_URL` before initializing Prisma. Never point this variable at a development or production database. The suite creates uniquely named fixtures and cleans them up when tests finish.
+
+Routine development verification:
+
+```bash
+pnpm test
+pnpm typecheck
+pnpm lint
+```
+
+Before release, also run `pnpm build` and run `pnpm test:integration` when the isolated test database is available.
 
 ## Production Deployment
 
@@ -129,10 +149,8 @@ These are verified implementation gaps, not architecture decisions:
 
 3. **Empty barrel files:** `src/hooks/index.ts` and `src/jobs/index.ts` export nothing. Consider removing or populating.
 
-4. **No automated test framework:** No jest, vitest, or other test runner configured. No test files exist. Smoke scripts (`scripts/phase2-smoke.ts`, `scripts/phase3a-smoke.ts`) are manual integration tests.
+4. **No CI/CD:** No GitHub Actions, GitLab CI, or other pipeline configuration.
 
-5. **No CI/CD:** No GitHub Actions, GitLab CI, or other pipeline configuration.
+5. **Redundant database index:** `@@index([connectorId, sourceReferenceId])` on Lead is redundant with `@@unique([connectorId, sourceReferenceId])`. The unique constraint already provides the index.
 
-6. **Redundant database index:** `@@index([connectorId, sourceReferenceId])` on Lead is redundant with `@@unique([connectorId, sourceReferenceId])`. The unique constraint already provides the index.
-
-7. **No Vercel Cron configuration:** Scheduler endpoint exists but no cron trigger is configured in the repository. `.vercel` is gitignored but no `vercel.json` exists.
+6. **No Vercel Cron configuration:** Scheduler endpoint exists but no cron trigger is configured in the repository. `.vercel` is gitignored but no `vercel.json` exists.

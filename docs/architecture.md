@@ -28,13 +28,13 @@ LeadBridge is a single-tenant, single-organization CRM built as a monolithic Nex
 ```text
 Browser
   ↓
-src/middleware.ts (cookie check, redirect unauthenticated)
+src/proxy.ts (cookie-presence redirects for page UX)
   ↓
 Next.js App Router
   ↓
 Server Components (page.tsx) or Route Handlers (api/.../route.ts)
   ↓
-src/lib/session.ts (requireSession / withApiAuthorization)
+Dashboard layouts: requireSession(role); API handlers: withApiAuthorization / withPermissionAuthorization
   ↓
 src/services/*.service.ts (business logic, Prisma queries)
   ↓
@@ -71,10 +71,10 @@ src/services/connector-health.service.ts (update health metrics)
 
 | Layer | Path | Responsibility |
 |---|---|---|
-| Middleware | `src/middleware.ts` | Cookie-based auth check, route protection |
+| Request proxy | `src/proxy.ts` | Cookie-presence redirects for page UX; not an authentication or authorization boundary |
 | Pages (Server Components) | `src/app/(dashboard)/` | Server-rendered pages, data fetching |
 | Route Handlers | `src/app/api/` | HTTP API endpoints |
-| Session/Auth | `src/lib/session.ts`, `src/lib/api.ts` | Authorization guards, permission checks |
+| Session/Auth | `src/lib/session.ts`, `src/lib/api.ts` | Authoritative session, role, and permission checks in server layouts and API handlers |
 | Validation | `src/lib/validation.ts` | Zod schemas for request validation |
 | Domain Services | `src/services/` | Business logic, Prisma queries, transactions |
 | Connector Runtime | `src/runtime/` | Connector execution, routing, parsing, normalization |

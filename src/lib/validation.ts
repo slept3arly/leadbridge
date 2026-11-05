@@ -59,6 +59,30 @@ export const noteSchema = z.object({
   followUpTime: z.string().optional().nullable(),
 });
 
+const normalizedNoteFollowUpDateSchema = z.preprocess(
+  (value) => typeof value === "string" ? value.trim() || null : value,
+  z.union([
+    z.iso.date({ error: "Enter a valid follow-up date." })
+      .transform((date) => new Date(`${date}T00:00:00.000Z`)),
+    z.iso.datetime({ offset: true, error: "Enter a valid follow-up date." })
+      .transform((date) => new Date(date)),
+    z.null(),
+    z.undefined(),
+  ], { error: "Enter a valid follow-up date." }),
+);
+
+export const createNoteSchema = noteSchema.extend({
+  followUpDate: normalizedNoteFollowUpDateSchema,
+}).superRefine((data, ctx) => {
+  if (data.scheduleFollowUp && !data.followUpDate) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["followUpDate"],
+      message: "Follow-up date is required when scheduling a follow-up.",
+    });
+  }
+});
+
 export const leadSchema = z.object({
   name: z.string().min(2).max(120),
   company: optionalString(120),
@@ -122,6 +146,31 @@ export const interactionActivitySchema = z.object({
     ctx.addIssue({ code: "custom", path: ["followUpDate"], message: "Follow-up date is required when scheduling a follow-up." });
   }
 });
+
+type ActivityOutcomePatch = {
+  action?: unknown;
+  response?: unknown;
+  interest?: unknown;
+};
+
+/** Validate an interaction PATCH against its complete resulting outcome state. */
+export function validateActivityOutcomePatch(
+  stored: { action: unknown; response: unknown; interest: unknown },
+  patch: ActivityOutcomePatch,
+) {
+  const changesOutcome = patch.action !== undefined || patch.response !== undefined || patch.interest !== undefined;
+  if (!changesOutcome) return null;
+
+  return interactionActivitySchema.safeParse({
+    action: patch.action ?? stored.action,
+    response: patch.response ?? stored.response,
+    interest: patch.interest !== undefined ? patch.interest : stored.interest,
+    notes: null,
+    scheduleFollowUp: false,
+    followUpDate: null,
+    followUpTime: null,
+  });
+}
 
 export const createLeadRequestSchema = leadSchema.extend({
   initialActivity: interactionActivitySchema.optional(),

@@ -65,7 +65,7 @@ The codebase has a strong foundation. Most of the work is convergence, not rebui
 | Gap | Impact | Notes |
 |-----|--------|-------|
 | No shared `DashboardLayout` component | Minor duplication in `page.tsx` files | Each page wraps `<Navbar>` + children independently — acceptable pattern |
-| Admin has no `requireSession("ADMIN")` guard | Security concern | `admin/page.tsx` does not call `requireSession()` — relies on middleware alone |
+| Admin route has no `requireSession("ADMIN")` guard | Resolved in current implementation | `src/app/(dashboard)/admin/layout.tsx` calls `requireSession("ADMIN")`; `src/proxy.ts` only performs cookie-presence redirects |
 | `InsightCard` href logic is complex | Could be simplified with KpiCard | KpiCard already supports `href`; the `highlight` ring logic is the only addition |
 
 ---
@@ -92,7 +92,7 @@ The codebase has a strong foundation. Most of the work is convergence, not rebui
 - Remove `KpiStat` function definition (lines 35-41)
 - Import `KpiCard` from `@/components/shared/kpi-card`
 - Replace `<KpiStat>` usages with `<KpiCard>` — pass `title`, `count`, `description`, `href`
-- Add `requireSession("ADMIN")` for server-side authorization guard
+- The Admin layout already applies `requireSession("ADMIN")`; no page-level guard change is needed
 - Update grid to match Sales dashboard pattern (KpiCard has hover state, link behavior)
 
 **Data mapping:**
@@ -170,7 +170,7 @@ The codebase has a strong foundation. Most of the work is convergence, not rebui
 
 ### 3.4 `src/app/(dashboard)/sales/page.tsx`
 
-**Goal:** Add `requireSession("ADMIN")` guard pattern check — no changes needed here (already uses `requireSession("SALES")`).
+**Goal:** Confirm the Sales dashboard continues to use its `requireSession("SALES")` layout guard.
 
 **No changes needed.** The Sales dashboard is the reference implementation.
 
@@ -193,7 +193,6 @@ The codebase has a strong foundation. Most of the work is convergence, not rebui
 | Priority | Task | Rationale |
 |----------|------|-----------|
 | **P0** | Add Badge tones (HEALTHY, WARNING, etc.) | Prerequisite for HealthBadge replacement |
-| **P0** | Add `requireSession("ADMIN")` to admin page | Security: server-side auth guard |
 | **P1** | Replace Admin `KpiStat` → `KpiCard` | Highest visibility fix, most obvious inconsistency |
 | **P1** | Replace Admin `InsightCard` → `KpiCard` | Eliminates largest inline component duplication |
 | **P2** | Replace Admin `HealthBadge` → `Badge` | Small win, uses new tones |
@@ -209,7 +208,6 @@ The codebase has a strong foundation. Most of the work is convergence, not rebui
 ```
 P0: Badge tones ──────────┐
                           ├──→ P1: KpiCard replacements (Admin)
-P0: requireSession ADMIN ─┘    │
                                ├──→ P2: HealthBadge → Badge
                                ├──→ P2: WorkQueueRow → DataTable
                                ├──→ P2: Recent Activity → DataTable
@@ -227,7 +225,7 @@ P0: requireSession ADMIN ─┘    │
 | `KpiCard` requires `href` prop — Admin insight cards sometimes have conditional hrefs | Pass conditional href (undefined when count is 0); KpiCard wraps in `<Link>` so ensure href is always a string or refactor KpiCard to accept optional href |
 | `DataTable` expects `rows` and `columns` — Admin work queue has no row-level data source | Create a derived `workQueueItems` array from `data.insights` + `data.pending` before passing to DataTable |
 | `InsightCard` has `highlight` ring effect not on KpiCard | Add `className="ring-1 ring-[var(--color-brand)]/20"` to KpiCard when highlight is true — KpiCard passes className to Card which supports it |
-| Admin page has no `requireSession` — adding it may break existing behavior | Test that middleware already blocks unauthorized access; `requireSession` adds defense-in-depth |
+| Proxy cookie checks are not authoritative authorization | The Admin and Sales dashboard layouts call `requireSession(role)`; API handlers must continue using the authorization wrappers in `src/lib/api.ts` |
 | `formatTimeAgo` hydration timing — Admin uses `hydrated` state pattern | Keep existing hydration pattern when moving to DataTable (pass formatted values in column render) |
 | Badge tone mapping — `HealthBadge` maps status to human labels | Use `toneKey` prop on Badge to map `HEALTHY` → "Healthy" display label |
 
@@ -238,7 +236,6 @@ P0: requireSession ADMIN ─┘    │
 | Change | Files Modified | Lines Changed | Risk | Estimate |
 |--------|---------------|---------------|------|----------|
 | Add Badge tones | 1 | ~10 | None | 15 min |
-| Add `requireSession("ADMIN")` | 1 | ~5 | Low | 10 min |
 | Replace `KpiStat` → `KpiCard` | 1 | ~20 | Low | 30 min |
 | Replace `InsightCard` → `KpiCard` | 1 | ~40 | Low | 45 min |
 | Replace `HealthBadge` → `Badge` | 1 | ~15 | Low | 15 min |
@@ -246,29 +243,28 @@ P0: requireSession ADMIN ─┘    │
 | Replace Recent Activity → `DataTable` | 1 | ~40 | Medium | 45 min |
 | Replace Recent Syncs → `DataTable` | 1 | ~40 | Medium | 45 min |
 | Extract `PipelineCard` (optional) | 2 | ~30 | Low | 30 min |
-| **Total** | **~4 files** | **~250 lines** | | **~5 hrs** |
+| **Total** | **~4 files** | **~245 lines** | | **~4 hrs 50 min** |
 
 ---
 
 ## 8. Recommended Execution Order
 
-### Phase 1: Prerequisites (30 min)
+### Phase 1: Prerequisites (15 min)
 1. Add Badge tones to `src/components/ui/badge.tsx`
-2. Add `requireSession("ADMIN")` to `src/app/(dashboard)/admin/page.tsx`
 
 ### Phase 2: Admin KPI/Insight Cards (1.5 hrs)
-3. Replace `KpiStat` → `KpiCard` in `admin/page.tsx`
-4. Replace `InsightCard` → `KpiCard` in `admin-dashboard-client.tsx`
-5. Replace `HealthBadge` → `Badge` in `admin-dashboard-client.tsx`
+1. Replace `KpiStat` → `KpiCard` in `admin/page.tsx`
+2. Replace `InsightCard` → `KpiCard` in `admin-dashboard-client.tsx`
+3. Replace `HealthBadge` → `Badge` in `admin-dashboard-client.tsx`
 
 ### Phase 3: Admin Tables (2.5 hrs)
-6. Replace `WorkQueueRow` table → `DataTable` in `admin-dashboard-client.tsx`
-7. Replace Recent Activity table → `DataTable` in `admin-dashboard-client.tsx`
-8. Replace Recent Syncs table → `DataTable` in `admin-dashboard-client.tsx`
+1. Replace `WorkQueueRow` table → `DataTable` in `admin-dashboard-client.tsx`
+2. Replace Recent Activity table → `DataTable` in `admin-dashboard-client.tsx`
+3. Replace Recent Syncs table → `DataTable` in `admin-dashboard-client.tsx`
 
 ### Phase 4: Optional Refinements (30 min)
-9. Extract `PipelineCard` if Admin needs it (defer if not)
-10. Verify all Admin pages match Sales visual language
+1. Extract `PipelineCard` if Admin needs it (defer if not)
+2. Verify all Admin pages match Sales visual language
 
 ### Verification
 - [ ] `pnpm typecheck` passes

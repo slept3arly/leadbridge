@@ -94,7 +94,7 @@ Start at `docs/README.md` for the canonical guide map. Experimental analysis liv
 | Activity service | `src/services/activity-event.service.ts` |
 | Connector runtime | `src/runtime/connector-runtime.ts` |
 | Routing engine | `src/runtime/routing-engine.ts` |
-| Middleware | `src/middleware.ts` |
+| Request proxy | `src/proxy.ts` |
 | Package config | `package.json` |
 
 ## Verification

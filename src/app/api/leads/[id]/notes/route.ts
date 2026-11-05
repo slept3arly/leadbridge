@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError } from "@/lib/api";
-import { noteSchema } from "@/lib/validation";
+import { createNoteSchema } from "@/lib/validation";
 import { noteService } from "@/services/note.service";
 import { invalidateAfterMutation } from "@/lib/cache-tags";
 
@@ -12,7 +12,7 @@ export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(und
 export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (request, context, session) => {
   let body: unknown;
   try { body = await request.json(); } catch { return apiError("Invalid JSON body.", 400); }
-  const parsed = noteSchema.safeParse(body);
+  const parsed = createNoteSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const { id } = await context.params;
   const result = await noteService.create(id, {

@@ -340,17 +340,25 @@ export class FollowUpService {
     await this.assertLeadAccess(followUp.leadId, actor);
 
     if (followUp.status !== "PENDING") {
-      throw new ServiceError("Only pending follow-ups can be completed.", 400);
+      throw new ServiceError("Follow-up is no longer pending.", 409);
     }
 
     return prisma.$transaction(async (tx) => {
-      const completedFollowUp = await tx.followUp.update({
-        where: { id },
+      const transition = await tx.followUp.updateMany({
+        where: { id, status: "PENDING" },
         data: {
           status: "COMPLETED",
           completedAt: new Date(),
           ...(data.note !== undefined ? { description: data.note } : {}),
         },
+      });
+
+      if (transition.count !== 1) {
+        throw new ServiceError("Follow-up is no longer pending.", 409);
+      }
+
+      const completedFollowUp = await tx.followUp.findUniqueOrThrow({
+        where: { id },
         include: {
           assignedUser: { select: { id: true, name: true } },
           createdBy: { select: { id: true, name: true } },

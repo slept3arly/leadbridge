@@ -2,7 +2,7 @@
 
 > **Status:** Canonical
 > **Last verified:** 2026-09-17
-> **Source of truth:** `src/lib/auth.ts`, `src/lib/auth-client.ts`, `src/lib/session.ts`, `src/lib/permissions.ts`, `src/middleware.ts`
+> **Source of truth:** `src/lib/auth.ts`, `src/lib/auth-client.ts`, `src/lib/session.ts`, `src/lib/permissions.ts`, `src/proxy.ts`
 
 ## Overview
 
@@ -107,16 +107,11 @@ function withApiAuthorization(allowedRoles: string[])     // Checks role
 function withPermissionAuthorization(permission: Permission) // Checks granular permission
 ```
 
-## Middleware
+## Request Proxy and Server Authorization
 
-```typescript
-// src/middleware.ts
-// Checks for session cookie (better-auth.session_token or __Secure-...)
-// Redirects:
-//   - Unauthenticated: /admin/*, /sales/* → /login
-//   - Authenticated: /login → /
-// Matcher: /login, /admin/:path*, /sales/:path*
-```
+`src/proxy.ts` exports Next.js `proxy()` and matches `/login`, `/admin/:path*`, and `/sales/:path*`. It checks for the Better Auth session cookie and redirects page requests without one from `/admin/*` or `/sales/*` to `/login`; a request with a cookie to `/login` is redirected to `/`. This is a navigation convenience only: cookie presence does not verify a session or authorize access.
+
+Dashboard layouts call `requireSession("ADMIN")` or `requireSession("SALES")` to validate the server session and role. API route handlers enforce access through `withApiAuthorization()` or `withPermissionAuthorization()` from `src/lib/api.ts`.
 
 ## Client-Side Auth
 

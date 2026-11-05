@@ -13,7 +13,7 @@
 | [frontend.md](./frontend.md) | Pages, components, UI design system, navigation |
 | [UI_DESIGN_SYSTEM.md](./UI_DESIGN_SYSTEM.md) | Canonical UI reference, design tokens, component inventory, implementation contract |
 | [api.md](./api.md) | API route reference with methods and authorization |
-| [authentication.md](./authentication.md) | Better Auth setup, roles, permissions, middleware |
+| [authentication.md](./authentication.md) | Better Auth setup, request proxy, roles, permissions |
 | [integrations.md](./integrations.md) | Connectors, parsers, runtime engine, routing |
 | [performance.md](./performance.md) | Current performance architecture, known bottlenecks |
 | [development.md](./development.md) | Developer guide, conventions, setup, commands |

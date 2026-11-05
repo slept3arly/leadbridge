@@ -35,10 +35,13 @@ export class NoteService {
     whatIDid?: string | null;
     whatCustomerSaid?: string | null;
     scheduleFollowUp?: boolean;
-    followUpDate?: string | null;
+    followUpDate?: Date | null;
     followUpTime?: string | null;
   }, actor: Actor) {
     await this.assertAccess(leadId, actor);
+    if (data.scheduleFollowUp && !data.followUpDate) {
+      throw new ServiceError("Follow-up date is required when scheduling a follow-up.", 400);
+    }
 
     const content = [data.whatIDid, data.whatCustomerSaid, data.content]
       .filter(Boolean)
@@ -70,16 +73,14 @@ export class NoteService {
       ];
 
       if (data.scheduleFollowUp && data.followUpDate) {
-        let dueDate: Date;
+        let dueDate = data.followUpDate;
         if (data.followUpTime) {
-          const datePart = new Date(data.followUpDate);
+          const datePart = data.followUpDate;
           const [h, m] = data.followUpTime.split(":").map(Number);
           dueDate = new Date(Date.UTC(
             datePart.getUTCFullYear(), datePart.getUTCMonth(), datePart.getUTCDate(),
             h, m, 0, 0,
           ));
-        } else {
-          dueDate = new Date(data.followUpDate);
         }
 
         const followUp = await tx.followUp.create({
