@@ -18,6 +18,6 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(un
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
   const result = await followUpService.create(parsed.data, session.user);
-  invalidateAfterMutation(session.user.id);
-  return NextResponse.json(result, { status: 201 });
+  invalidateAfterMutation(session.user.id, result.affectedUserIds);
+  return NextResponse.json(result.followUp, { status: 201 });
 });

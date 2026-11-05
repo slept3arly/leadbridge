@@ -17,6 +17,8 @@ import { Archive, Trash2, Plus, RotateCcw } from "lucide-react";
 import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
 import { toast } from "sonner";
 import type { TableQueryState } from "@/hooks/use-table-query";
+import { useCrmSync } from "@/hooks/use-crm-sync";
+import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 
 export type SerializedLead = {
   id: string;
@@ -53,6 +55,7 @@ export function AdminLeadsPageContent({
   currentUserId: string;
 }) {
   const router = useRouter();
+  useCrmSync({ entityTypes: CRM_MUTATION_ENTITY_TYPES, onRefresh: () => router.refresh() });
   const [isPending, startTransition] = useTransition();
   const [editOpen, setEditOpen] = useState(false);
   const [sourceModalOpen, setSourceModalOpen] = useState(false);

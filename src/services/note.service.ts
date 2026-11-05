@@ -10,9 +10,10 @@ export class NoteService {
   private async assertAccess(leadId: string, actor: Actor) {
     const lead = await prisma.lead.findFirst({
       where: { id: leadId, isDeleted: false, ...(actor.role === "SALES" ? { assignedUserId: actor.id } : {}) },
-      select: { id: true },
+      select: { id: true, assignedUserId: true },
     });
     if (!lead) throw new ServiceError("Lead not found or access denied.", 404);
+    return lead;
   }
 
   async list(leadId: string, actor: Actor) {
@@ -38,7 +39,7 @@ export class NoteService {
     followUpDate?: Date | null;
     followUpTime?: string | null;
   }, actor: Actor) {
-    await this.assertAccess(leadId, actor);
+    const lead = await this.assertAccess(leadId, actor);
     if (data.scheduleFollowUp && !data.followUpDate) {
       throw new ServiceError("Follow-up date is required when scheduling a follow-up.", 400);
     }
@@ -47,7 +48,7 @@ export class NoteService {
       .filter(Boolean)
       .join("\n\n") || "Note";
 
-    return prisma.$transaction(async (tx) => {
+    const note = await prisma.$transaction(async (tx) => {
       const note = await tx.note.create({
         data: {
           leadId,
@@ -117,6 +118,7 @@ export class NoteService {
 
       return note;
     });
+    return { note, affectedUserIds: [lead.assignedUserId] };
   }
 
   async update(id: string, data: { content?: string | null; whatIDid?: string | null; whatCustomerSaid?: string | null }, actor: Actor) {
@@ -125,7 +127,7 @@ export class NoteService {
       select: { id: true, leadId: true, authorId: true, content: true, createdAt: true, whatIDid: true, whatCustomerSaid: true },
     });
     if (!note) throw new ServiceError("Note not found.", 404);
-    await this.assertAccess(note.leadId, actor);
+    const lead = await this.assertAccess(note.leadId, actor);
     if (note.authorId !== actor.id && actor.role !== "ADMIN") {
       throw new ServiceError("You can only edit your own notes.", 403);
     }
@@ -145,7 +147,7 @@ export class NoteService {
     const newWhatCustomerSaid = data.whatCustomerSaid !== undefined ? data.whatCustomerSaid : note.whatCustomerSaid;
     const newContent = [newWhatIDid, newWhatCustomerSaid, data.content].filter(Boolean).join("\n\n") || note.content;
 
-    return prisma.$transaction(async (tx) => {
+    const updatedNote = await prisma.$transaction(async (tx) => {
       const updated = await tx.note.update({
         where: { id },
         data: { content: newContent, whatIDid: newWhatIDid, whatCustomerSaid: newWhatCustomerSaid },
@@ -170,6 +172,7 @@ export class NoteService {
       }, tx);
       return updated;
     });
+    return { note: updatedNote, affectedUserIds: [lead.assignedUserId] };
   }
 
   async remove(id: string, actor: Actor) {
@@ -178,7 +181,7 @@ export class NoteService {
       select: { id: true, leadId: true, authorId: true, createdAt: true },
     });
     if (!note) throw new ServiceError("Note not found.", 404);
-    await this.assertAccess(note.leadId, actor);
+    const lead = await this.assertAccess(note.leadId, actor);
     if (note.authorId !== actor.id && actor.role !== "ADMIN") {
       throw new ServiceError("You can only delete your own notes.", 403);
     }
@@ -197,6 +200,7 @@ export class NoteService {
     await prisma.$transaction(async (tx) => {
       await tx.note.delete({ where: { id } });
     });
+    return { leadId: note.leadId, affectedUserIds: [lead.assignedUserId] };
   }
 }
 

@@ -11,13 +11,13 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const { id } = await context.params;
   const result = await noteService.update(id, { content: parsed.data.content, whatIDid: parsed.data.whatIDid, whatCustomerSaid: parsed.data.whatCustomerSaid }, session.user);
-  invalidateAfterMutation(session.user.id);
-  return NextResponse.json(result);
+  invalidateAfterMutation(session.user.id, result.affectedUserIds);
+  return NextResponse.json(result.note);
 });
 
 export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
   const { id } = await context.params;
-  await noteService.remove(id, session.user);
-  invalidateAfterMutation(session.user.id);
+  const result = await noteService.remove(id, session.user);
+  invalidateAfterMutation(session.user.id, result.affectedUserIds);
   return new NextResponse(null, { status: 204 });
 });

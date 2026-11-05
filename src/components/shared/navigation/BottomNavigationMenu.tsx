@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import gsap from "gsap";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigation } from "./NavigationProvider";
@@ -37,6 +36,7 @@ export function BottomNavigationMenu() {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const focusFrameRef = useRef<number | null>(null);
 
   const primaryOrder = role === "ADMIN" ? adminPrimaryOrder : salesPrimaryOrder;
   const visibleCount = isDesktop ? 5 : 3;
@@ -50,75 +50,30 @@ export function BottomNavigationMenu() {
     .filter((g) => g.items.length > 0);
 
   useEffect(() => {
-    if (!panelRef.current || !overlayRef.current) return;
-
     if (menuOpen) {
       previousFocusRef.current = document.activeElement as HTMLElement;
       document.body.style.overflow = "hidden";
-
-      const ctx = gsap.context(() => {
-        const tl = gsap.timeline();
-
-        // Fade in the backdrop
-        tl.fromTo(
-          overlayRef.current,
-          {
-            opacity: 0,
-          },
-          {
-            opacity: 1,
-            duration: 0.3,
-            ease: "power2.out",
-          }
-        );
-
-        // Then bring in the menu, slightly overlapping the backdrop fade
-        tl.fromTo(
-          panelRef.current,
-          {
-            opacity: 0,
-            y: 6,
-            scale: 0.985,
-          },
-          {
-            opacity: 1,
-            y: 0,
-            scale: 1,
-            duration: 0.42,
-            ease: "power4.out",
-            overwrite: "auto",
-          },
-          "-=0.18"
-        );
-      });
-
-      requestAnimationFrame(() => {
+      focusFrameRef.current = requestAnimationFrame(() => {
         const first = panelRef.current?.querySelector<HTMLElement>("a, button");
         first?.focus();
       });
-
-      return () => ctx.revert();
     } else {
       document.body.style.overflow = "";
-      const ctx = gsap.context(() => {
-        gsap.to(overlayRef.current, { opacity: 0, duration: 0.12 });
-        gsap.to(panelRef.current, {
-          opacity: 0,
-          y: 8,
-          scale: 0.99,
-          duration: 0.28,
-          ease: "power3.in",
-          overwrite: "auto",
-        });
-      });
       previousFocusRef.current?.focus();
       previousFocusRef.current = null;
-      return () => ctx.revert();
     }
+
+    return () => {
+      if (focusFrameRef.current !== null) {
+        cancelAnimationFrame(focusFrameRef.current);
+        focusFrameRef.current = null;
+      }
+    };
   }, [menuOpen]);
 
   useEffect(() => {
     return () => {
+      if (focusFrameRef.current !== null) cancelAnimationFrame(focusFrameRef.current);
       document.body.style.overflow = "";
     };
   }, []);
@@ -153,9 +108,10 @@ export function BottomNavigationMenu() {
       ref={overlayRef}
       className={
         menuOpen
-          ? "fixed inset-0 z-50 flex items-end justify-center bg-black/[0.06] backdrop-blur-sm p-3"
-          : "hidden"
+          ? "visible fixed inset-0 z-50 flex items-end justify-center bg-black/[0.06] p-3 opacity-100 backdrop-blur-sm transition-opacity duration-200"
+          : "invisible pointer-events-none fixed inset-0 z-50 flex items-end justify-center bg-black/[0.06] p-3 opacity-0 backdrop-blur-sm transition-opacity duration-200"
       }
+      style={{ transition: menuOpen ? "opacity 200ms ease, visibility 0s" : "opacity 200ms ease, visibility 0s linear 300ms" }}
       onClick={(e) => {
         if (e.target === overlayRef.current) closeMenu();
       }}
@@ -163,17 +119,17 @@ export function BottomNavigationMenu() {
       role="dialog"
       aria-modal="true"
       aria-label="Navigation menu"
+      aria-hidden={!menuOpen}
+      inert={!menuOpen}
     >
       <div
         ref={panelRef}
         className={cn(
-          "relative w-full max-w-md max-h-[60vh] overflow-y-auto border border-white/40 bg-white/85 backdrop-blur-2xl shadow-[0_8px_40px_rgba(0,0,0,0.06),0_2px_12px_rgba(0,0,0,0.04)]",
+          "relative w-full max-w-md max-h-[60vh] overflow-y-auto border border-white/40 bg-white/85 backdrop-blur-2xl shadow-[0_8px_40px_rgba(0,0,0,0.06),0_2px_12px_rgba(0,0,0,0.04)] transition-[transform,translate,scale,opacity] duration-300 ease-out",
+          menuOpen ? "translate-y-0 scale-100 opacity-100" : "translate-y-2 scale-[0.99] opacity-0",
           "rounded-[28px] px-5 pb-6 pt-5 md:px-6 md:pb-8",
         )}
-        style={{
-          transform: "translateY(16px) scale(0.94)",
-          transformOrigin: "bottom right",
-        }}
+        style={{ transformOrigin: "bottom right" }}
       >
         <button
           onClick={closeMenu}

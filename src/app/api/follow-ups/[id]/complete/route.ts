@@ -34,9 +34,12 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(un
       activity: parsed.data.activity ?? null,
     }, session.user);
 
-    invalidateAfterMutation(session.user.id);
+    invalidateAfterMutation(session.user.id, result.affectedUserIds);
 
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json({
+      completedFollowUp: result.completedFollowUp,
+      nextFollowUp: result.nextFollowUp,
+    }, { status: 200 });
   } catch (error) {
     return handleApiError(error, "Failed to complete follow-up");
   }

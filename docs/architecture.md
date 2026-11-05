@@ -1,7 +1,7 @@
 # LeadBridge Architecture
 
 > **Status:** Canonical
-> **Last verified:** 2026-09-17
+> **Last verified:** 2026-11-05
 > **Source of truth:** `src/app/`, `src/services/`, `src/lib/`, `src/runtime/`, `prisma/schema.prisma`
 
 ## Overview
@@ -15,7 +15,7 @@ LeadBridge is a single-tenant, single-organization CRM built as a monolithic Nex
 | Framework | Next.js 16.2.10 | App Router, Server Components, Route Handlers |
 | React | 19.2.4 | |
 | TypeScript | ^5 | Strict mode |
-| Database | PostgreSQL (Neon serverless) | |
+| Database | PostgreSQL | Locally hosted with the application |
 | ORM | Prisma 7.8.0 | `@prisma/adapter-pg` driver adapter |
 | Auth | better-auth 1.6.23 | Credentials-only, cookie sessions |
 | Styling | Tailwind CSS v4 | |
@@ -40,7 +40,7 @@ src/services/*.service.ts (business logic, Prisma queries)
   ↓
 src/lib/prisma.ts (PrismaClient singleton with PrismaPg adapter)
   ↓
-PostgreSQL (Neon serverless, HTTP-based driver)
+PostgreSQL (local instance, connected through Prisma's PostgreSQL driver adapter)
 ```
 
 For connector/sync operations:

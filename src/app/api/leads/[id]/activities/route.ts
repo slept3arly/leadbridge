@@ -55,7 +55,7 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(["
 
     let followUpId: string | null = null;
     if (data.scheduleFollowUp && data.followUpDate) {
-      const fu = await followUpService.create({
+      const followUpResult = await followUpService.create({
         leadId: id,
         title: `${data.action === "CALL" ? "Call" : "WhatsApp"} follow-up`,
         description: data.notes,
@@ -64,11 +64,11 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(["
         assignedUserId: session.user.id,
       }, session.user, tx, false);
 
-      followUpId = fu.id;
+      followUpId = followUpResult.followUp.id;
 
       eventEntries.push({
         type: "FOLLOW_UP_SCHEDULED",
-        followUpId: fu.id,
+        followUpId: followUpResult.followUp.id,
         message: "Follow-up scheduled",
         metadata: { dueDate: data.followUpDate, dueTime: data.followUpTime ?? null },
       });

@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { useCrmSync } from "@/hooks/use-crm-sync";
+import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 
 const inFlightLeadDetails = new Map<string, Promise<LeadDetails>>();
 
-function fetchLeadDetails(leadId: string): Promise<LeadDetails> {
+function fetchLeadDetails(leadId: string, force = false): Promise<LeadDetails> {
   const existing = inFlightLeadDetails.get(leadId);
-  if (existing) return existing;
+  if (existing && !force) return existing;
+  if (force) inFlightLeadDetails.delete(leadId);
 
   const request = axios.get<LeadDetails>(`/api/leads/${leadId}/details`).then((response) => response.data);
   inFlightLeadDetails.set(leadId, request);
@@ -104,12 +107,26 @@ export type LeadDetails = {
 export function useLeadDetails(leadId: string) {
   const [data, setData] = useState<LeadDetails | null>(null);
   const [loadedLeadId, setLoadedLeadId] = useState<string | null>(null);
+  const requestSequence = useRef(0);
   const loading = loadedLeadId !== leadId;
 
   const refresh = useCallback(async () => {
-    const details = await fetchLeadDetails(leadId);
-    setData(details);
+    const requestId = ++requestSequence.current;
+    try {
+      const details = await fetchLeadDetails(leadId, true);
+      if (requestSequence.current === requestId) setData(details);
+    } catch (error) {
+      if (requestSequence.current === requestId && axios.isAxiosError(error) && error.response?.status === 404) setData(null);
+      throw error;
+    }
   }, [leadId]);
+
+  const relatedEntityIds = data ? [
+    ...data.notes.map((note) => note.id),
+    ...data.followUps.map((followUp) => followUp.id),
+    ...data.activityEvents.flatMap((event) => [event.id, ...event.entries.map((entry) => entry.id)]),
+  ] : [];
+  useCrmSync({ entityTypes: CRM_MUTATION_ENTITY_TYPES, leadId, entityIds: relatedEntityIds, onRefresh: refresh });
 
   const patchData = useCallback((patch: Partial<LeadDetails> | ((prev: LeadDetails | null) => LeadDetails | null)) => {
     if (typeof patch === "function") {
@@ -121,15 +138,16 @@ export function useLeadDetails(leadId: string) {
 
   useEffect(() => {
     let cancelled = false;
+    const requestId = ++requestSequence.current;
     fetchLeadDetails(leadId)
       .then((details) => {
-        if (!cancelled) {
+        if (!cancelled && requestSequence.current === requestId) {
           setData(details);
           setLoadedLeadId(leadId);
         }
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!cancelled && requestSequence.current === requestId) {
           setData(null);
           setLoadedLeadId(leadId);
         }

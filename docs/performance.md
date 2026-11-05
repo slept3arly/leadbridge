@@ -1,16 +1,16 @@
 # LeadBridge Performance
 
 > **Status:** Canonical
-> **Last verified:** 2026-09-17
+> **Last verified:** 2026-11-05
 > **Source of truth:** `src/services/`, `src/lib/`, `prisma/schema.prisma`
 
 ## Current Performance Architecture
 
 ### Database Access
 
-- **Driver:** `@prisma/adapter-pg` (Neon serverless HTTP driver)
-- **Connection pooling:** Handled by Neon serverless driver (no manual pool management)
-- **Singleton pattern:** `PrismaClient` via `globalThis` in development, per-invocation in production
+- **Driver:** `@prisma/adapter-pg` with the Node PostgreSQL driver
+- **Connection pooling:** Managed by the PostgreSQL driver adapter using its default pool configuration; no external pooler is part of the local deployment
+- **Singleton pattern:** `PrismaClient` via `globalThis` in development and a module-level client in production
 
 ### Query Patterns
 
@@ -18,8 +18,8 @@
 |---|---|---|
 | My Leads list | OFFSET pagination + COUNT(*) + ILIKE search | Core list query |
 | Lead activity enrichment | `DISTINCT ON (leadId)` raw SQL | Runs only for leads on current page |
-| Dashboard admin | 18 parallel queries | Multiple count + groupBy calls |
-| Dashboard sales | 12 parallel queries | Includes activityEntry queries |
+| Dashboard admin | 14 parallel queries | Activity metrics use PostgreSQL grouping sets; only aggregate rows are returned |
+| Dashboard sales | 9 parallel queries | Activity metrics use one PostgreSQL aggregate instead of seven lead-ID result sets |
 | Attention center CTE | 4 CTEs with MATERIALIZED | Joins 5 tables |
 | Export leads | OFFSET in while loop (1000/batch) | Background export |
 
@@ -41,17 +41,26 @@ Leading wildcard prevents B-tree index usage. Each OR branch causes a sequential
 
 OFFSET-based pagination throughout. Activity events (`activityEventService.listByLead`) use cursor-based pagination.
 
+Lead detail projections omit `Lead.rawPayload`, which is retained for connector ingestion but is not used by the ordinary lead detail UI or API response.
+
 ### Caching
 
 - **Cached (unstable_cache):** Dashboard metrics (per-user), attention center (per-user), admin dashboard (60s TTL), settings (300s TTL), lead source list
 - **Not cached:** My Leads, lead details, notes, follow-ups, activity events
-- **Invalidation:** `invalidateAfterMutation()` revalidates dashboard + attention + admin dashboard tags
+- **Invalidation:** `invalidateAfterMutation()` revalidates the acting user's dashboard and attention tags, any additional affected Sales owners' tags, and the Admin dashboard tag. Admin lead creation, ownership changes, and lead-associated note/follow-up mutations resolve affected owner IDs from persisted lead state and invalidate after the write succeeds. Ownership changes include both previous and new owners; tag generation deduplicates IDs. A failed write does not trigger invalidation.
+- **Open tabs:** Successful Axios mutations for leads, notes, follow-ups, and activities broadcast entity identifiers through `BroadcastChannel`, with a `storage` event fallback. Affected views refresh server props, and an open lead detail refetches only for its lead or one of its currently loaded entities. Visible/focused tabs also revalidate after 30 seconds without a refresh; there is no polling.
 
 ### Rendering
 
 - Server Components for all pages (no client-side data fetching for initial load)
 - Client components receive data as props
 - `loading.tsx` at route boundaries for instant feedback
+- Admin lead data and active lead sources load concurrently after the request settings are resolved.
+- Shared bottom navigation uses CSS transitions. GSAP remains on the login route for `AnimatedReveal` and is not included by Admin or Sales client-reference manifests.
+
+### Measurements
+
+The production build before the navigation change referenced a 20,361-byte JavaScript chunk containing GSAP (7,404 bytes when gzipped) from the Admin layout. After the change, the GSAP-containing chunk is referenced by the login route only; Admin and Sales manifests no longer reference it. These are emitted bundle measurements, not browser transfer timings. PostgreSQL dashboard latency and query plans were not measured because an isolated integration database was unavailable.
 
 ## Known Bottlenecks
 
@@ -75,11 +84,11 @@ All performance numbers below are **theoretical estimates from experimental anal
 
 **Estimate:** At 25k leads per salesperson, estimated ~50-100ms. (Theoretical estimate; not measured.)
 
-### 4. Dashboard Query Count
+### 4. Dashboard Query Work
 
-**Current behavior:** Admin dashboard fires 18 parallel queries including count calls and groupBy operations.
+**Current behavior:** Admin and Sales activity metrics are aggregated in PostgreSQL. Admin returns one totals row and per-actor rows; Sales returns one aggregate row. Other dashboard queries remain independent parallel queries.
 
-**Estimate:** At 250k leads, estimated ~500ms-1s. (Theoretical estimate; not measured.)
+**Measurement status:** The prior JavaScript paths materialized matching ActivityEntry records (Admin) and lead IDs across seven Sales queries. The new SQL returns aggregate rows, reducing result transfer and JavaScript aggregation. Query duration and execution plans remain unmeasured; evaluate with `EXPLAIN (ANALYZE, BUFFERS)` and request timing against an isolated local PostgreSQL dataset before proposing index changes.
 
 ## Optimization Priorities
 
@@ -90,7 +99,7 @@ All performance numbers below are **theoretical estimates from experimental anal
 - `COUNT(*)` for total count on paginated lists
 - `unstable_cache` with tag-based invalidation for dashboard/settings
 - No caching for CRM data (leads, notes, follow-ups)
-- 18 parallel queries for admin dashboard
+- 14 parallel queries for admin dashboard
 - Cursor-based pagination for activity events only
 
 ### P0 -- High Impact / Free (when needed)
@@ -99,7 +108,6 @@ All performance numbers below are **theoretical estimates from experimental anal
 |---|---|---|
 | Add GIN trigram index for search | Avoids sequential scans on search | When leads exceed ~15k and search degrades |
 | Replace COUNT(*) with approximate count | Eliminates full table scan for count | When page load time becomes unacceptable |
-| Fix dashboard.sales() activity count | Reduces memory usage | When sales dashboard loads become slow |
 | Add FollowUp(status, dueDate) index | Speeds up global follow-up queries | When dashboard/tasks queries slow down |
 
 ### P1 -- Worthwhile (when needed)
@@ -115,7 +123,7 @@ All performance numbers below are **theoretical estimates from experimental anal
 | Change | Benefit | Trigger |
 |---|---|---|
 | Cursor pagination for deep pages | Constant-time deep pages | When users navigate past page 100 |
-| Dynamic import gsap | Bundle: -166KB | When initial load time becomes a concern |
+| Further bundle work | No change recommended now | Reassess only from route-specific bundle or browser measurements |
 
 ### Future -- Only When Needed
 
@@ -125,23 +133,14 @@ All performance numbers below are **theoretical estimates from experimental anal
 | Read replica for reports | Report isolation | When reports impact main database |
 | Background job queue | Async processing | When connector sync blocks request handling |
 
-## Free-Tier Considerations
-
-- **Neon Free:** 0.5 GB storage, 100 CU-hrs compute, 5 GB egress
-- **Storage is the binding constraint** -- not compute or bandwidth
-- **Recommended ceiling:** ~15,000 leads at realistic activity density (~320 MB) -- estimate from `docs/experiments/08_FREE_TIER_CAPACITY_ASSESSMENT.md`
-- **ILIKE search is acceptable** at <15k leads
-
-See `docs/experiments/08_FREE_TIER_CAPACITY_ASSESSMENT.md` for detailed free-tier analysis (theoretical estimates, not measured).
-
 ## Scaling Considerations
 
 At higher scale (250k+ leads):
 
 - **PostgreSQL handles it trivially** -- no database change needed
-- **Neon Launch with scale-to-zero** provides cost-effective scaling
+- **Local PostgreSQL capacity** should be assessed from the actual machine's storage, memory, and query workload
 - **Full-text search index** becomes essential
 - **Cursor pagination** becomes important for deep page navigation
 - **Approximate counts** become important for page load performance
 
-See `docs/experiments/07_PERFORMANCE_ARCHITECTURE_ASSESSMENT.md` for detailed 250k analysis (theoretical estimates, not measured).
+See `docs/experiments/07_PERFORMANCE_ARCHITECTURE_ASSESSMENT.md` for detailed 250k analysis (theoretical estimates, not measured). Its historical hosted-database assumptions do not describe the current local deployment.

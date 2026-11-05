@@ -33,7 +33,7 @@ test("PostgreSQL note creation atomically persists or omits requested follow-ups
 
   async function createNote(leadId: string, actor: { id: string; role: "SALES" }, input: Record<string, unknown>) {
     const data = createNoteSchema.parse(input);
-    return noteService.create(leadId, {
+    const result = await noteService.create(leadId, {
       content: data.content,
       whatIDid: data.whatIDid,
       whatCustomerSaid: data.whatCustomerSaid,
@@ -41,6 +41,7 @@ test("PostgreSQL note creation atomically persists or omits requested follow-ups
       followUpDate: data.followUpDate,
       followUpTime: data.followUpTime,
     }, actor);
+    return result.note;
   }
 
   try {

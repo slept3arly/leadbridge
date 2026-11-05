@@ -1,18 +1,19 @@
 # LeadBridge Database
 
 > **Status:** Canonical
-> **Last verified:** 2026-09-17
+> **Last verified:** 2026-11-05
 > **Source of truth:** `prisma/schema.prisma`, `prisma.config.ts`, `src/lib/prisma.ts`
 
 ## Configuration
 
-- **Provider:** PostgreSQL (Neon serverless)
+- **Provider:** PostgreSQL (local instance in the intended deployment)
 - **ORM:** Prisma 7.8.0 with `@prisma/adapter-pg` driver adapter
 - **Schema:** `prisma/schema.prisma`
 - **Generated client:** `src/generated/prisma/` (custom output path)
 - **Client singleton:** `src/lib/prisma.ts`
-- **Migrations:** `prisma/migrations/` (16 migrations)
+- **Migrations:** `prisma/migrations/` (17 migrations)
 - **Prisma config:** `prisma.config.ts` (uses `defineConfig` from Prisma v7)
+- **Connection:** `DATABASE_URL`, read by Prisma config and passed to `PrismaPg` in `src/lib/prisma.ts`; use a PostgreSQL connection URL such as `postgresql://user:password@127.0.0.1:5432/leadbridge?schema=public` locally.
 
 ## Client Setup
 
@@ -26,6 +27,8 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 ```
 
 Uses the standard Next.js singleton pattern via `globalThis` to prevent multiple instances in development.
+
+The runtime uses Prisma's `@prisma/adapter-pg` driver adapter and the Node PostgreSQL driver. For migration, backup, and recovery procedures, see [Local Operations](./local-operations.md).
 
 ## Enums (17)
 
@@ -230,7 +233,7 @@ Total: 43 `@@index` declarations + 2 `@@unique` declarations + 12 field-level `@
 
 ## Migrations
 
-16 migrations from initial schema through ActivityEvent/ActivityEntry refactor. Key migrations:
+17 migrations from initial schema through connector execution fencing. Key migrations:
 
 1. `20260713173452_init` -- Initial schema
 2. `20260714120000_phase1_crm_data_model` -- Core CRM models
@@ -240,3 +243,4 @@ Total: 43 `@@index` declarations + 2 `@@unique` declarations + 12 field-level `@
 6. `20260825171917_phase2_performance_indexes` -- Performance indexes
 7. `20260913000000_add_activity_event_entry` -- ActivityEvent/ActivityEntry model
 8. `20260913120000_remove_lead_activity_and_audit_log` -- Removed old LeadActivity/AuditLog
+9. `20261010000000_add_connector_lock_generation` -- Connector execution fencing

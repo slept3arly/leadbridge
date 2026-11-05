@@ -18,6 +18,8 @@ import { formatTimeAgo, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import type { TableQueryState } from "@/hooks/use-table-query";
 import { useHydrated } from "@/hooks/use-hydrated";
+import { useCrmSync } from "@/hooks/use-crm-sync";
+import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 
 export type SalesLeadRow = {
   id: string;
@@ -185,6 +187,7 @@ export function SalesMyLeadsPageContent({
   const [logActivityLeadId, setLogActivityLeadId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+  useCrmSync({ entityTypes: CRM_MUTATION_ENTITY_TYPES, onRefresh: () => router.refresh() });
 
   const [archiveTarget, setArchiveTarget] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);

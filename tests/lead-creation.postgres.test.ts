@@ -19,6 +19,7 @@ test("lead creation commits its creation event, optional interaction, and follow
   const marker = randomUUID().replaceAll("-", "");
   const adminId = `create-admin-${marker}`;
   const salesId = `create-sales-${marker}`;
+  const secondSalesId = `create-sales-second-${marker}`;
   const leadIds: string[] = [];
   const email = (suffix: string) => `${marker}-${suffix}@example.test`;
   const leadInput = (suffix: string) => ({ name: `Creation ${suffix}`, email: email(suffix) });
@@ -27,12 +28,21 @@ test("lead creation commits its creation event, optional interaction, and follow
   try {
     await prisma.user.create({ data: { id: adminId, name: "Lead Creation Admin", email: email("admin"), role: "ADMIN" } });
     await prisma.user.create({ data: { id: salesId, name: "Lead Creation Sales", email: email("sales"), role: "SALES", salesPrivilege: "SENIOR" } });
+    await prisma.user.create({ data: { id: secondSalesId, name: "Second Lead Creation Sales", email: email("sales-second"), role: "SALES", salesPrivilege: "SENIOR" } });
 
     await t.test("legacy creation writes exactly one CREATED event", async () => {
-      const result = await leadService.create(parsedLead(leadInput("legacy")), { id: salesId, role: "SALES", salesPrivilege: "SENIOR" });
+      const rawPayload = { connectorRecord: { externalId: "raw-legacy", privateValue: "retained internally" } };
+      const result = await leadService.create(parsedLead({ ...leadInput("legacy"), rawPayload }), { id: salesId, role: "SALES", salesPrivilege: "SENIOR" });
       assert.equal(result.status, "created");
       if (result.status !== "created") return;
       leadIds.push(result.lead.id);
+      const detail = await leadService.getById(result.lead.id, { id: salesId, role: "SALES", salesPrivilege: "SENIOR" });
+      assert.equal(detail.name, "Creation legacy");
+      assert.equal("company" in detail, true);
+      assert.equal("customFields" in detail, true);
+      assert.equal("rawPayload" in detail, false);
+      const persistedPayload = await prisma.lead.findUnique({ where: { id: result.lead.id }, select: { rawPayload: true } });
+      assert.deepEqual(persistedPayload?.rawPayload, rawPayload);
       const events = await prisma.activityEvent.findMany({ where: { leadId: result.lead.id }, include: { entries: true } });
       assert.equal(events.length, 1);
       assert.equal(events[0]?.type, "SYSTEM");
@@ -80,6 +90,16 @@ test("lead creation commits its creation event, optional interaction, and follow
       assert.equal(followUp?.assignedUserId, adminId);
       assert.equal(followUp?.createdById, adminId);
       assert.equal((await prisma.lead.findUnique({ where: { id: result.lead.id }, select: { assignedUserId: true } }))?.assignedUserId, salesId);
+      assert.deepEqual(result.affectedUserIds, [salesId]);
+
+      const updated = await leadService.update(result.lead.id, { status: "ON_HOLD" }, { id: adminId, role: "ADMIN" });
+      assert.deepEqual(updated.affectedUserIds, [salesId]);
+
+      const reassigned = await leadService.assign(result.lead.id, secondSalesId, { id: adminId, role: "ADMIN" });
+      assert.deepEqual(reassigned.affectedUserIds, [salesId, secondSalesId]);
+
+      const unassigned = await leadService.assign(result.lead.id, null, { id: adminId, role: "ADMIN" });
+      assert.deepEqual(unassigned.affectedUserIds, [secondSalesId, null]);
     });
 
     await t.test("interaction and follow-up failures roll back lead creation", async () => {
@@ -116,7 +136,7 @@ test("lead creation commits its creation event, optional interaction, and follow
     });
   } finally {
     if (leadIds.length) await prisma.lead.deleteMany({ where: { id: { in: leadIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: [adminId, salesId] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [adminId, salesId, secondSalesId] } } });
     await prisma.$disconnect();
   }
 });

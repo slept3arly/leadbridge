@@ -19,17 +19,16 @@ export default async function AdminLeadsPage({
   const resolvedSearchParams = await searchParams;
   const defaultPageSize = (await settingsService.get<number>("default_page_size")) ?? 25;
   const query = parseListQuery(toSearchParams(resolvedSearchParams), { defaultPageSize });
-  const [result, assignableUsers] = await Promise.all([
+  const [result, assignableUsers, leadSources] = await Promise.all([
     leadService.listPage(query),
     userService.listAssignable(),
+    prisma.leadSource.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
   const leads = result.data;
-
-  const leadSources = await prisma.leadSource.findMany({
-    where: { active: true },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
 
   const tableInitial: Partial<TableQueryState> = {
     search: query.search ?? "",

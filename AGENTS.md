@@ -4,7 +4,7 @@
 
 ## Project
 
-LeadBridge is an internal, single-tenant CRM built as a monolithic Next.js 16 App Router application with PostgreSQL (Neon), Prisma 7, and Better Auth.
+LeadBridge is an internal, single-tenant CRM built as a monolithic Next.js 16 App Router application with PostgreSQL, Prisma 7, and Better Auth. The intended deployment is a locally hosted application connected to a local PostgreSQL instance.
 
 ## Source of Truth Hierarchy
 

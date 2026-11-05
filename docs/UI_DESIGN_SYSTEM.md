@@ -237,7 +237,6 @@ Observed in the current Sales UI:
 | SalesDashboardClient | `sales-dashboard-client.tsx` | CANONICAL | Dashboard layout with pipeline, KPI, agenda. |
 | SalesMyLeadsPageContent | `sales-my-leads-page-content.tsx` | CANONICAL | My Leads page with DataTable + controls. |
 | SalesTableControls | `sales-table-controls.tsx` | CANONICAL | Full filter panel. |
-| LeadFilters | `lead-filters.tsx` | LEGACY | Older filter. Superseded by SalesTableControls. |
 | LeadDetailDialog | `lead-detail-dialog.tsx` | CANONICAL | URL-driven detail dialog. |
 | LeadDetailsModal | `lead-details-modal.tsx` | CANONICAL | Full 3-column detail modal. |
 | LeadHeader | `lead-header.tsx` | CANONICAL | Detail header with inline dropdowns. |
@@ -249,7 +248,6 @@ Observed in the current Sales UI:
 | AttentionCenter | `attention-center.tsx` | CANONICAL | KPI cards + segmented filter + card grid. |
 | AttentionCard | `attention-card.tsx` | CANONICAL | Attention item card. |
 | TasksTableClient | `tasks-table-client.tsx` | CANONICAL | Follow-up tasks table. |
-| ArchivedLeadsModal | `archived-leads-modal.tsx` | CANONICAL | Archived leads list with restore. |
 | FollowUpDropdown | `follow-up-dropdown.tsx` | CANONICAL | Quick filter dropdown. |
 | LeadActionBar | `lead-action-bar.tsx` | REUSABLE | Flex wrapper for actions. |
 | LeadActionPanel | `lead-action-panel.tsx` | REUSABLE | Details + archive + delete grid. |
@@ -455,7 +453,6 @@ All modals follow this structure:
 | LogActivityModal | `max-w-lg` |
 | LeadEditModal | `max-w-4xl` (90%w, 88vh) |
 | LeadDetailsModal | `max-w-6xl` (95%w, 92vh) |
-| ArchivedLeadsModal | `max-w-2xl` |
 | Filter panel (dropdown) | `w-[90vw] sm:w-[640px] lg:w-[720px]` |
 
 ### Modal Behavior
@@ -699,7 +696,6 @@ The following MUST remain visually consistent between Sales and Admin:
 | Issue | Category | Severity | Location |
 |-------|----------|----------|----------|
 | Two pagination implementations (inline in SalesTableControls vs Pagination component) | Component duplication | cosmetic | `sales-table-controls.tsx` vs `pagination.tsx` |
-| LeadFilters superseded by SalesTableControls but still exists | Legacy implementation | cosmetic | `lead-filters.tsx` |
 | BlueprintBackground exists but is unused/legacy | Legacy implementation | cosmetic | `blueprint-background.tsx` |
 | `useModalState` hook is defined inside `lead-details-modal.tsx` instead of `src/hooks/` | Inconsistent pattern | cosmetic | `lead-details-modal.tsx` |
 | Inline tables in dashboard don't use DataTable component | Component duplication | cosmetic | `sales-dashboard-client.tsx` |

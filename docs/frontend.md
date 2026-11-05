@@ -30,7 +30,7 @@
 
 The Admin dashboard presents CRM-wide lead totals, status and priority breakdowns, assignment and pending follow-up workload, daily sales activity, salesperson performance, connector status and recent syncs, and recent activity. Its metric cards and tables reuse the shared `KpiCard`, `Badge`, and `DataTable` components.
 
-The Admin Leads page lists CRM-wide leads with URL-backed search, assignment, status, priority, source, archive, activity, follow-up, date, sort, and pagination filters. It reuses the Sales leads filter controls and shared compact table styling, with Admin assignment filters and quick links enabled. Rows open the shared lead details workflow for activity and follow-up management; create/edit, archive/restore, delete, and export use existing API routes and services. Archived leads are shown by selecting the archived filter, while the default list excludes them.
+The Admin Leads page lists CRM-wide leads with URL-backed search, assignment, status, priority, source, archive, activity, follow-up, date, sort, and pagination filters. It uses the shared `SalesTableControls` and compact table styling, with Admin assignment filters and quick links enabled. Rows open the shared lead details workflow for activity and follow-up management; create/edit, archive/restore, delete, and export use existing API routes and services. Archived leads are shown by selecting the archived filter, while the default list excludes them.
 
 ## Create and Edit Leads
 
@@ -72,6 +72,10 @@ export default async function MyLeadsPage({ searchParams }) {
 ```
 
 Client components receive data as props and manage interactive state via `useTableQuery` hook (URL-based state with `router.replace()`).
+
+### Fresh data across tabs
+
+Lead, note, follow-up, and activity mutations publish a minimal same-origin message after the API request succeeds. Active lead lists, dashboards, and the Attention Center refresh their server-provided data when a relevant message arrives. An open lead detail view refetches when the message identifies its lead or one of its currently loaded note, follow-up, or activity IDs. The shared `useCrmSync` hook also revalidates a view when its tab becomes visible or focused, with a 30-second cooldown. It uses `BroadcastChannel` where available and a `storage` event fallback; messages carry entity identifiers and a timestamp only.
 
 ## Navigation Architecture
 

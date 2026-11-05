@@ -25,14 +25,14 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
           dueDate: dueDateStr,
           dueTime: data.dueTime ?? null,
         }, session.user);
-        invalidateAfterMutation(session.user.id);
-        return NextResponse.json(result);
+        invalidateAfterMutation(session.user.id, result.affectedUserIds);
+        return NextResponse.json(result.followUp);
       }
     }
 
     const result = await followUpService.update(id, parsed.data, session.user);
-    invalidateAfterMutation(session.user.id);
-    return NextResponse.json(result);
+    invalidateAfterMutation(session.user.id, result.affectedUserIds);
+    return NextResponse.json(result.followUp);
   } catch (error) {
     return handleApiError(error, "Failed to update follow-up");
   }
@@ -41,8 +41,8 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
 export const DELETE = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (_request, context, session) => {
   const { id } = await context.params;
   try {
-    await followUpService.remove(id, session.user);
-    invalidateAfterMutation(session.user.id);
+    const result = await followUpService.remove(id, session.user);
+    invalidateAfterMutation(session.user.id, result.affectedUserIds);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return handleApiError(error, "Failed to delete follow-up");

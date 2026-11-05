@@ -6,16 +6,16 @@
 
 ## Overview
 
-38 API route files under `src/app/api/`. All use Next.js App Router HTTP verb exports (`GET`, `POST`, `PATCH`, `DELETE`).
+40 API route files under `src/app/api/`. All use Next.js App Router HTTP verb exports (`GET`, `POST`, `PATCH`, `DELETE`).
 
 ## Authentication Patterns
 
 - `withApiAuthorization(undefined)` -- any authenticated user (both ADMIN and SALES)
 - `withApiAuthorization("ADMIN")` -- ADMIN role only
 - `withPermissionAuthorization(Permission.X)` -- checks granular permission (ADMIN always passes; SALES requires SENIOR privilege for supported permissions)
-- Public: only `/api/auth/[...all]`
+- Public: `/api/auth/[...all]` and the non-sensitive health endpoints below
 
-## Routes (38 files, 55+ handlers)
+## Routes (40 files, 55+ handlers)
 
 ### Authentication
 
@@ -28,6 +28,13 @@
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
 | `/api/dashboard` | GET | Any authenticated | Role-derived dashboard metrics (ADMIN or SALES) |
+
+### Health
+
+| Endpoint | Method | Auth | Purpose |
+|---|---|---|---|
+| `/api/health/live` | GET | Public | Confirms the application process can serve a request; does not check PostgreSQL |
+| `/api/health/ready` | GET | Public | Runs a minimal PostgreSQL connectivity query; returns 503 when the database is unavailable |
 
 ### Leads
 

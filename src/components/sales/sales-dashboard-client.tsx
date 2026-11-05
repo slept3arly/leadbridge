@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useCrmSync } from "@/hooks/use-crm-sync";
+import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 import { Card, CardEmptyState } from "@/components/ui/card";
 import { KpiCard } from "@/components/shared/kpi-card";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +99,7 @@ function AgendaRow({ item, onOpen }: { item: UpcomingFollowUp; onOpen: (leadId: 
 
 export function SalesDashboardClient({ data }: { data: SalesDashboardData }) {
   const router = useRouter();
+  useCrmSync({ entityTypes: CRM_MUTATION_ENTITY_TYPES, onRefresh: () => router.refresh() });
 
   const handleOpenLead = useCallback((leadId: string) => {
     if (leadId) router.push(`/sales/my-leads?leadId=${leadId}`);

@@ -4,6 +4,25 @@ import { reportService } from "./report.service";
 import { attentionService } from "./attention.service";
 import { salesFollowUpLeadScope } from "@/services/follow-up-policy";
 
+type ActivityMetricRow = {
+  isTotal: boolean;
+  actorId: string | null;
+  workedLeads: bigint;
+  calls: bigint;
+  whatsapp: bigint;
+  responses: bigint;
+};
+
+type SalesActivityMetricRow = {
+  workedLeads: bigint;
+  calls: bigint;
+  whatsapp: bigint;
+  responded: bigint;
+  noResponse: bigint;
+  interested: bigint;
+  notInterested: bigint;
+};
+
 export class DashboardService {
   async admin() {
     const today = startOfTodayUTC();
@@ -21,7 +40,7 @@ export class DashboardService {
       assignedLeadGroups,
       pendingFollowUps,
       overdueFollowUps,
-      activityEntriesToday,
+      activityMetricsRows,
       connectorHealth,
       recentActivity,
       recentSyncs,
@@ -44,21 +63,27 @@ export class DashboardService {
       }),
       prisma.followUp.count({ where: { status: "PENDING" } }),
       prisma.followUp.count({ where: { status: "PENDING", dueDate: { lt: now } } }),
-      prisma.activityEntry.findMany({
-        where: {
-          OR: [
-            { type: "CALL", action: "CALL" },
-            { type: "WHATSAPP", action: "WHATSAPP" },
-          ],
-          event: { occurredAt: { gte: today, lte: todayEnd } },
-        },
-        select: {
-          type: true,
-          action: true,
-          response: true,
-          event: { select: { leadId: true, actorId: true } },
-        },
-      }),
+      prisma.$queryRaw<ActivityMetricRow[]>`
+        SELECT
+          GROUPING(event."actorId") = 1 AS "isTotal",
+          event."actorId" AS "actorId",
+          COUNT(DISTINCT event."leadId") AS "workedLeads",
+          COUNT(*) FILTER (WHERE entry."type" = 'CALL' AND entry."action" = 'CALL') AS "calls",
+          COUNT(*) FILTER (WHERE entry."type" = 'WHATSAPP' AND entry."action" = 'WHATSAPP') AS "whatsapp",
+          COUNT(*) FILTER (
+            WHERE (entry."type" = 'CALL' AND entry."action" = 'CALL' AND entry."response" = 'PICKED_UP')
+               OR (entry."type" = 'WHATSAPP' AND entry."action" = 'WHATSAPP' AND entry."response" = 'REPLIED')
+          ) AS "responses"
+        FROM "ActivityEntry" entry
+        INNER JOIN "ActivityEvent" event ON event."id" = entry."eventId"
+        WHERE (
+          (entry."type" = 'CALL' AND entry."action" = 'CALL')
+          OR (entry."type" = 'WHATSAPP' AND entry."action" = 'WHATSAPP')
+        )
+          AND event."occurredAt" >= ${today}
+          AND event."occurredAt" <= ${todayEnd}
+        GROUP BY GROUPING SETS ((event."actorId"), ())
+      `,
       prisma.connector.findMany({ select: { id: true, name: true, type: true, healthStatus: true, status: true, isRunning: true, enabled: true } }),
       prisma.activityEvent.findMany({
         orderBy: { occurredAt: "desc" },
@@ -73,35 +98,26 @@ export class DashboardService {
     ]);
 
     const salespersonActivity = new Map(activeSalesUsers.map((user) => [user.id, {
-      workedLeadIds: new Set<string>(),
+      workedLeads: 0,
       calls: 0,
       whatsapp: 0,
       responses: 0,
     }]));
-    let callsLogged = 0;
-    let whatsappLogged = 0;
-    let responseEntries = 0;
-    const allWorkedLeadIds = new Set<string>();
-
-    for (const entry of activityEntriesToday) {
-      const isCall = entry.type === "CALL" && entry.action === "CALL";
-      const isWhatsApp = entry.type === "WHATSAPP" && entry.action === "WHATSAPP";
-      const isResponse = (isCall && entry.response === "PICKED_UP")
-        || (isWhatsApp && entry.response === "REPLIED");
-
-      allWorkedLeadIds.add(entry.event.leadId);
-      if (isCall) callsLogged += 1;
-      if (isWhatsApp) whatsappLogged += 1;
-      if (isResponse) responseEntries += 1;
-
-      const actorStats = entry.event.actorId ? salespersonActivity.get(entry.event.actorId) : undefined;
+    const toCount = (value: bigint) => Number(value);
+    const totals = activityMetricsRows.find((row) => row.isTotal);
+    const workedLeads = toCount(totals?.workedLeads ?? BigInt(0));
+    const callsLogged = toCount(totals?.calls ?? BigInt(0));
+    const whatsappLogged = toCount(totals?.whatsapp ?? BigInt(0));
+    const responseEntries = toCount(totals?.responses ?? BigInt(0));
+    for (const row of activityMetricsRows) {
+      if (row.isTotal || !row.actorId) continue;
+      const actorStats = salespersonActivity.get(row.actorId);
       if (!actorStats) continue;
-      actorStats.workedLeadIds.add(entry.event.leadId);
-      if (isCall) actorStats.calls += 1;
-      if (isWhatsApp) actorStats.whatsapp += 1;
-      if (isResponse) actorStats.responses += 1;
+      actorStats.workedLeads = toCount(row.workedLeads);
+      actorStats.calls = toCount(row.calls);
+      actorStats.whatsapp = toCount(row.whatsapp);
+      actorStats.responses = toCount(row.responses);
     }
-    const workedLeads = allWorkedLeadIds.size;
 
     const assignedLeadCounts = new Map(
       assignedLeadGroups.map(({ assignedUserId, _count }) => [assignedUserId, _count.id]),
@@ -137,7 +153,7 @@ export class DashboardService {
           userId: user.id,
           name: user.name,
           assignedLeads: assignedLeadCounts.get(user.id) ?? 0,
-          workedToday: activity.workedLeadIds.size,
+          workedToday: activity.workedLeads,
           calls: activity.calls,
           whatsapp: activity.whatsapp,
           responses: activity.responses,
@@ -183,16 +199,6 @@ export class DashboardService {
     endOfWeek.setUTCHours(23, 59, 59, 999);
     const leadWhere = { assignedUserId: userId, isDeleted: false };
 
-    const activityTodayWhere = { event: { lead: { assignedUserId: userId }, occurredAt: { gte: startOfToday } } };
-
-    const countDistinctLeads = async (where: Record<string, unknown>): Promise<number> => {
-      const entries = await prisma.activityEntry.findMany({
-        where,
-        select: { event: { select: { leadId: true } } },
-      });
-      return new Set(entries.map((e) => e.event.leadId)).size;
-    };
-
     const [
       leadStats,
       priorityStats,
@@ -202,13 +208,7 @@ export class DashboardService {
       weekFollowUpCount,
       newLeadCount,
       needsAttentionItems,
-      workedLeads,
-      calls,
-      whatsapp,
-      responded,
-      noResponse,
-      interested,
-      notInterested,
+      activityMetrics,
     ] = await Promise.all([
       prisma.lead.groupBy({
         by: ["status"],
@@ -262,43 +262,37 @@ export class DashboardService {
         where: { ...leadWhere, notes: { none: {} }, followUps: { none: {} } },
       }),
       attentionService.getNeedsAttention(userId),
-      countDistinctLeads({
-        type: { in: ["CALL", "WHATSAPP"] },
-        ...activityTodayWhere,
-      }),
-      countDistinctLeads({
-        type: "CALL",
-        action: "CALL",
-        ...activityTodayWhere,
-      }),
-      countDistinctLeads({
-        type: "WHATSAPP",
-        action: "WHATSAPP",
-        ...activityTodayWhere,
-      }),
-      countDistinctLeads({
-        OR: [
-          { type: "CALL", action: "CALL", response: "PICKED_UP" },
-          { type: "WHATSAPP", action: "WHATSAPP", response: "REPLIED" },
-        ],
-        ...activityTodayWhere,
-      }),
-      countDistinctLeads({
-        OR: [
-          { type: "CALL", action: "CALL", response: "NO_RESPONSE" },
-          { type: "WHATSAPP", action: "WHATSAPP", response: "NO_RESPONSE" },
-        ],
-        ...activityTodayWhere,
-      }),
-      countDistinctLeads({
-        interest: "INTERESTED",
-        ...activityTodayWhere,
-      }),
-      countDistinctLeads({
-        interest: "NOT_INTERESTED",
-        ...activityTodayWhere,
-      }),
+      prisma.$queryRaw<SalesActivityMetricRow[]>`
+        SELECT
+          COUNT(DISTINCT event."leadId") FILTER (WHERE entry."type" IN ('CALL', 'WHATSAPP')) AS "workedLeads",
+          COUNT(DISTINCT event."leadId") FILTER (WHERE entry."type" = 'CALL' AND entry."action" = 'CALL') AS "calls",
+          COUNT(DISTINCT event."leadId") FILTER (WHERE entry."type" = 'WHATSAPP' AND entry."action" = 'WHATSAPP') AS "whatsapp",
+          COUNT(DISTINCT event."leadId") FILTER (
+            WHERE (entry."type" = 'CALL' AND entry."action" = 'CALL' AND entry."response" = 'PICKED_UP')
+               OR (entry."type" = 'WHATSAPP' AND entry."action" = 'WHATSAPP' AND entry."response" = 'REPLIED')
+          ) AS "responded",
+          COUNT(DISTINCT event."leadId") FILTER (
+            WHERE (entry."type" = 'CALL' AND entry."action" = 'CALL' AND entry."response" = 'NO_RESPONSE')
+               OR (entry."type" = 'WHATSAPP' AND entry."action" = 'WHATSAPP' AND entry."response" = 'NO_RESPONSE')
+          ) AS "noResponse",
+          COUNT(DISTINCT event."leadId") FILTER (WHERE entry."interest" = 'INTERESTED') AS "interested",
+          COUNT(DISTINCT event."leadId") FILTER (WHERE entry."interest" = 'NOT_INTERESTED') AS "notInterested"
+        FROM "ActivityEntry" entry
+        INNER JOIN "ActivityEvent" event ON event."id" = entry."eventId"
+        INNER JOIN "Lead" lead ON lead."id" = event."leadId"
+        WHERE lead."assignedUserId" = ${userId}
+          AND event."occurredAt" >= ${startOfToday}
+      `,
     ]);
+
+    const [activityMetricsRow] = activityMetrics;
+    const workedLeads = Number(activityMetricsRow?.workedLeads ?? BigInt(0));
+    const calls = Number(activityMetricsRow?.calls ?? BigInt(0));
+    const whatsapp = Number(activityMetricsRow?.whatsapp ?? BigInt(0));
+    const responded = Number(activityMetricsRow?.responded ?? BigInt(0));
+    const noResponse = Number(activityMetricsRow?.noResponse ?? BigInt(0));
+    const interested = Number(activityMetricsRow?.interested ?? BigInt(0));
+    const notInterested = Number(activityMetricsRow?.notInterested ?? BigInt(0));
 
     const myLeadsTotal = leadStats.reduce((sum, s) => sum + s._count.id, 0);
     const myOpenLeads = leadStats

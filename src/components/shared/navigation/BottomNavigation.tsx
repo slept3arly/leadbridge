@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useEffect, useState, useMemo, useCallback, useId } from "react";
-import gsap from "gsap";
 import { cn } from "@/lib/utils";
 import { useNavigation } from "./NavigationProvider";
 import { BottomNavigationItem } from "./BottomNavigationItem";
@@ -40,7 +39,6 @@ export function BottomNavigation() {
   const isDesktop = useIsDesktop();
   const dockRef = useRef<HTMLDivElement | null>(null);
   const indicatorRef = useRef<HTMLDivElement | null>(null);
-  const indicatorCtx = useRef<gsap.Context | null>(null);
   const uid = useId();
 
   const primaryOrder = role === "ADMIN" ? adminPrimaryOrder : salesPrimaryOrder;
@@ -90,27 +88,9 @@ export function BottomNavigation() {
     const dockRect = dockRef.current.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
 
-    if (indicatorCtx.current) {
-      indicatorCtx.current.kill();
-    }
-
-    indicatorCtx.current = gsap.context(() => {
-      gsap.to(indicatorRef.current, {
-        x: targetRect.left - dockRect.left,
-        width: targetRect.width,
-        duration: 0.48,
-        ease: "elastic.out(0.75, 0.8)",
-        overwrite: "auto",
-      });
-    });
-
-    return () => {
-      if (indicatorCtx.current) {
-        indicatorCtx.current.kill();
-        indicatorCtx.current = null;
-      }
-    };
-  }, [activeIndex]);
+    indicatorRef.current.style.transform = `translateX(${targetRect.left - dockRect.left}px)`;
+    indicatorRef.current.style.width = `${targetRect.width}px`;
+  }, [activeIndex, isDesktop]);
 
   const handleMoreClick = useCallback(() => {
     openMenu();
@@ -134,7 +114,8 @@ export function BottomNavigation() {
           {/* single sliding active indicator — inset-y matches dock py-2 */}
           <div
             ref={indicatorRef}
-            className="pointer-events-none absolute inset-y-2 left-0 rounded-[20px] bg-black/[0.04]"
+            className="pointer-events-none absolute inset-y-2 left-0 rounded-[20px] bg-black/[0.04] transition-[transform,width] duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+            style={{ transform: "translateX(0)", width: 0 }}
             aria-hidden="true"
           />
 

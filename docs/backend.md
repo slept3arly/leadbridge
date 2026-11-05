@@ -102,7 +102,6 @@ The initial activity actor is always the authenticated caller. Follow-up assignm
 | `get-error-message.ts` | Error message extraction from Axios/Error/strings |
 | `service-errors.ts` | `ServiceError` class |
 | `lead-constants.ts` | Status/priority/category value constants |
-| `audit-export-params.ts` | Dead code -- exports empty object, related to removed AuditLog feature |
 
 ## Request Proxy and Authorization
 

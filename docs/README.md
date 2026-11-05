@@ -1,7 +1,7 @@
 # LeadBridge Documentation
 
 > **Status:** Canonical
-> **Last verified:** 2026-10-12
+> **Last verified:** 2026-11-05
 
 ## Documentation Map
 
@@ -17,6 +17,7 @@
 | [integrations.md](./integrations.md) | Connectors, parsers, runtime engine, routing |
 | [performance.md](./performance.md) | Current performance architecture, known bottlenecks |
 | [development.md](./development.md) | Developer guide, conventions, setup, commands |
+| [local-operations.md](./local-operations.md) | Local PostgreSQL migrations, backup/restore, readiness, and scheduler operations |
 | [IMPLEMENTATION_AUDIT.md](./IMPLEMENTATION_AUDIT.md) | File-by-file audit of Admin dashboard improvements with implementation plan |
 
 ## Testing & Reference

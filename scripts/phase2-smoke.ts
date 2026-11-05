@@ -27,7 +27,7 @@ async function main() {
   const lead = createResult.lead;
   await leadService.assign(lead.id, sales.id, adminActor);
   await leadService.update(lead.id, { status: "ON_HOLD", nextFollowUpAt: new Date(Date.now() + 86_400_000) }, salesActor);
-  const note = await noteService.create(lead.id, { whatIDid: "Smoke-test follow-up note" }, salesActor);
+  const { note } = await noteService.create(lead.id, { whatIDid: "Smoke-test follow-up note" }, salesActor);
   await noteService.update(note.id, { whatIDid: "Edited smoke-test follow-up note" }, salesActor);
 
   const leadName = `Phase 2 Lead ${suffix}`;

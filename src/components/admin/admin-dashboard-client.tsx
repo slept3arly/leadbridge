@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { CardEmptyState } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { KpiCard } from "@/components/shared/kpi-card";
 import { formatDateTime, formatTimeAgo } from "@/lib/utils";
+import { useCrmSync } from "@/hooks/use-crm-sync";
+import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 
 type StatusMetric = { status: string; count: number };
 type PriorityMetric = { priority: string; count: number };
@@ -161,6 +164,8 @@ function healthLabel(status: string) {
 }
 
 export function AdminDashboardClient({ data }: { data: DashboardData }) {
+  const router = useRouter();
+  useCrmSync({ entityTypes: CRM_MUTATION_ENTITY_TYPES, onRefresh: () => router.refresh() });
   const [hydrated, setHydrated] = useState(false);
   const todayISO = data.renderedAt.slice(0, 10);
 

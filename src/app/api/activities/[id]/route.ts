@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { validateActivityOutcomePatch } from "@/lib/validation";
+import { invalidateAfterMutation } from "@/lib/cache-tags";
 import { z } from "zod";
 
 const updateActivitySchema = z.object({
@@ -74,6 +75,7 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
       data: updateData,
       include: { event: { include: { actor: { select: { id: true, name: true } } } } },
     });
+    invalidateAfterMutation(session.user.id);
     return NextResponse.json(updated);
   } catch (error) {
     return handleApiError(error, "Failed to update activity");

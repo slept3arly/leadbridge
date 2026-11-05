@@ -11,6 +11,8 @@ import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { Check, X, Clock } from "lucide-react";
+import { useCrmSync } from "@/hooks/use-crm-sync";
+import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 
 type FollowUpRow = {
   id: string;
@@ -27,7 +29,8 @@ type FollowUpRow = {
 export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }) {
   const router = useRouter();
   const hydrated = useHydrated();
-  const [rows] = useState(initialRows);
+  const rows = initialRows;
+  useCrmSync({ entityTypes: CRM_MUTATION_ENTITY_TYPES, onRefresh: () => router.refresh() });
 
   const [completeTarget, setCompleteTarget] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);

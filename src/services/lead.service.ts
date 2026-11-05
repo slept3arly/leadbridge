@@ -46,7 +46,7 @@ const leadDetailSelect = {
   closedAt: true, lostReason: true, wonAmount: true,
   status: true, priority: true, category: true, product: true, requirement: true,
   lastFollowUpAt: true, isArchived: true, isDeleted: true,
-  customFields: true, rawPayload: true,
+  customFields: true,
   sourceId: true, connectorId: true,
   createdAt: true, updatedAt: true, deletedAt: true,
   assignedUser: { select: { id: true, name: true } },
@@ -62,7 +62,7 @@ function toApiLead<T extends { displayName: string }>(lead: T) {
 }
 
 export type CreateLeadResult =
-  | { status: "created"; lead: { id: string } }
+  | { status: "created"; lead: { id: string }; affectedUserIds: string[] }
   | { status: "skipped"; reason: string };
 
 export class LeadService {
@@ -348,7 +348,7 @@ export class LeadService {
           }];
 
           if (initialActivity.scheduleFollowUp && initialActivity.followUpDate) {
-            const followUp = await followUpService.create({
+            const followUpResult = await followUpService.create({
               leadId: lead.id,
               title: `${initialActivity.action === "CALL" ? "Call" : "WhatsApp"} follow-up`,
               description: initialActivity.notes,
@@ -358,7 +358,7 @@ export class LeadService {
 
             entries.push({
               type: "FOLLOW_UP_SCHEDULED",
-              followUpId: followUp.id,
+              followUpId: followUpResult.followUp.id,
               message: "Follow-up scheduled",
               metadata: { dueDate: initialActivity.followUpDate, dueTime: initialActivity.followUpTime ?? null },
             });
@@ -371,7 +371,11 @@ export class LeadService {
             entries,
           }, tx);
         }
-        return { status: "created", lead: toApiLead(lead) };
+        return {
+          status: "created",
+          lead: toApiLead(lead),
+          affectedUserIds: assignedUserId ? [assignedUserId] : [],
+        };
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
           return { status: "skipped", reason: "Duplicate lead detected (concurrent insert)." };
@@ -446,12 +450,15 @@ export class LeadService {
           ],
         }, tx);
       }
-      return toApiLead(lead);
+      return {
+        lead: toApiLead(lead),
+        affectedUserIds: Array.from(new Set([existing.assignedUserId, lead.assignedUser?.id].filter((id): id is string => Boolean(id)))),
+      };
     });
   }
 
   async assign(id: string, assignedUserId: string | null, actor: Actor) {
-    await this.assertAccess(id, actor);
+    const existing = await this.assertAccess(id, actor);
     await this.assertAssignableUser(assignedUserId, actor);
     return prisma.$transaction(async (tx) => {
       const lead = await tx.lead.update({ where: { id }, data: { assignedUserId, updatedById: actor.id }, select: leadListSelect });
@@ -467,16 +474,20 @@ export class LeadService {
           },
         ],
       }, tx);
-      return toApiLead(lead);
+      return {
+        lead: toApiLead(lead),
+        affectedUserIds: Array.from(new Set([existing.assignedUserId, assignedUserId].filter((userId): userId is string => Boolean(userId)))),
+      };
     });
   }
 
   async remove(id: string, actor: Actor) {
     if (!can(actor, Permission.DELETE_LEAD)) throw new ServiceError("You do not have permission to delete leads.", 403);
-    await this.assertAccess(id, actor);
+    const existing = await this.assertAccess(id, actor);
     await prisma.$transaction(async (tx) => {
       await tx.lead.delete({ where: { id } });
     });
+    return { affectedUserIds: existing.assignedUserId ? [existing.assignedUserId] : [] };
   }
 
 

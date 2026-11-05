@@ -1,7 +1,7 @@
 # LeadBridge Integrations
 
 > **Status:** Canonical
-> **Last verified:** 2026-09-17
+> **Last verified:** 2026-11-05
 > **Source of truth:** `src/connectors/`, `src/parsers/`, `src/runtime/`
 
 ## Overview
@@ -160,7 +160,7 @@ Main orchestrator:
 
 ## Scheduler
 
-`POST /api/scheduler/trigger` discovers enabled connectors with `nextScheduledRun <= now` and executes them sequentially as the system actor. Admin sessions can trigger due connectors or an individual connector. An external cron can trigger due connectors without an interactive session by sending `Authorization: Bearer <SCHEDULER_TRIGGER_SECRET>`; configure a long random `SCHEDULER_TRIGGER_SECRET` in the server environment and keep it private. Machine credentials cannot request a specific connector ID. Preset schedules and custom intervals (1–525,600 minutes) are advanced from completion time. No scheduler deployment or environment configuration is included in this repository.
+`POST /api/scheduler/trigger` discovers enabled connectors with `nextScheduledRun <= now` and executes them sequentially as the system actor. Admin sessions can trigger due connectors or an individual connector. In the local deployment, a trusted host scheduler should call the endpoint with `Authorization: Bearer <SCHEDULER_TRIGGER_SECRET>`; configure a long random secret in the server environment and keep it private. Machine credentials cannot request a specific connector ID. Preset schedules and custom intervals (1–525,600 minutes) are advanced from completion time. The application has no in-process scheduler loop, and this repository does not install a host cron job. See [Local Operations](./local-operations.md#local-scheduler) for setup.
 
 ## Parser Preview
 

@@ -1,7 +1,7 @@
 # LeadBridge Development Guide
 
 > **Status:** Canonical
-> **Last verified:** 2026-09-17
+> **Last verified:** 2026-11-05
 > **Source of truth:** `package.json`, project conventions
 
 ## Setup
@@ -35,7 +35,9 @@ pnpm dev
 | `pnpm test` | Run database-independent Node.js tests |
 | `pnpm test:integration` | Run PostgreSQL integration tests; requires `LEADBRIDGE_TEST_DATABASE_URL` |
 | `pnpm db:generate` | Generate Prisma Client |
-| `pnpm db:migrate` | Run Prisma migrations |
+| `pnpm db:migrate` | Create/apply migrations during local development (`prisma migrate dev`) |
+| `pnpm db:migrate:deploy` | Apply checked-in migrations to a deployment database (`prisma migrate deploy`) |
+| `pnpm db:migrate:status` | Inspect migration status without applying migrations |
 | `pnpm db:push` | Push schema changes without migration |
 | `pnpm seed:leads` | Seed 25 test leads (refuses to run in production) |
 
@@ -51,6 +53,7 @@ pnpm dev
 | `ADMIN_EMAIL` | Yes | Initial admin email (seed) |
 | `ADMIN_PASSWORD` | Yes | Initial admin password (seed) |
 | `LOG_LEVEL` | No | Pino log level (default: `info`) |
+| `SCHEDULER_TRIGGER_SECRET` | Scheduler machine trigger | Optional bearer secret for trusted local cron calls to `/api/scheduler/trigger` |
 | `LEADBRIDGE_TEST_DATABASE_URL` | Integration tests | Connection URL for an isolated PostgreSQL test database; database name must contain `test` |
 | `GMAIL_<KEY>_CLIENT_ID` | Conditional | Gmail OAuth credentials |
 | `GMAIL_<KEY>_CLIENT_SECRET` | Conditional | Gmail OAuth credentials |
@@ -120,11 +123,26 @@ Before release, also run `pnpm build` and run `pnpm test:integration` when the i
 
 ```bash
 pnpm db:generate
+pnpm db:migrate:status
+pnpm db:migrate:deploy
 pnpm typecheck
 pnpm lint
 pnpm build
 pnpm start
 ```
+
+Use `pnpm db:migrate` only for local development when creating or applying a migration. For an existing local deployment, review `pnpm db:migrate:status`, then apply checked-in migrations with `pnpm db:migrate:deploy`. Both migration commands use `DATABASE_URL`; verify the target before running the deployment command. See [Local Operations](./local-operations.md) for backup and recovery guidance.
+
+## Readiness Checks
+
+After starting the application, check process liveness and database readiness separately:
+
+```bash
+curl --fail --silent --show-error http://127.0.0.1:3000/api/health/live
+curl --fail --silent --show-error http://127.0.0.1:3000/api/health/ready
+```
+
+The liveness endpoint does not query PostgreSQL. Readiness performs a minimal database query and returns HTTP 503 with a generic status if the database is unavailable; it does not return connection details. See [API Reference](./api.md#health).
 
 ## Scheduler Setup
 
@@ -135,22 +153,16 @@ curl -X POST "$LEADBRIDGE_URL/api/scheduler/trigger" \
   -H "Authorization: Bearer $SCHEDULER_TRIGGER_SECRET"
 ```
 
-Set a long random `SCHEDULER_TRIGGER_SECRET` in the server environment and configure Vercel Cron, system crontab, or another trusted scheduler to send it as a bearer token. Keep the secret in the scheduler's secret store. Admins can also call the endpoint using their authenticated session.
-
-**Note:** The repository contains no cron configuration (no `vercel.json`, no GitHub Actions workflow, no system crontab). The scheduler endpoint exists but must be triggered externally.
+Set a long random `SCHEDULER_TRIGGER_SECRET` in the local server environment. Configure the host's system scheduler (for example, cron) to call the local application URL with that bearer token. The endpoint discovers and runs due connectors; it does not run continuously in the application process. A local one-minute cron cadence is appropriate for checking due schedules; connector schedules determine which connectors actually execute. Keep the secret out of source control and command history. Admins can also trigger runs with an authenticated session. See [Local Operations](./local-operations.md#local-scheduler).
 
 ## Known Codebase Issues
 
 These are verified implementation gaps, not architecture decisions:
 
-1. **Dead audit code:** `src/lib/audit-export-params.ts` exports an empty object. Related to the removed `AuditLog` model. Should be deleted.
+1. **Empty API directories:** `src/app/api/audit-logs/`, `src/app/api/mock/leads/`, `src/app/api/sync/`, `src/app/api/follow-ups/[id]/cancel/` contain no route files. Should be removed.
 
-2. **Empty API directories:** `src/app/api/audit-logs/`, `src/app/api/mock/leads/`, `src/app/api/sync/`, `src/app/api/follow-ups/[id]/cancel/` contain no route files. Should be removed.
+2. **Empty barrel files:** `src/hooks/index.ts` and `src/jobs/index.ts` export nothing. Consider removing or populating.
 
-3. **Empty barrel files:** `src/hooks/index.ts` and `src/jobs/index.ts` export nothing. Consider removing or populating.
+3. **No CI/CD:** No GitHub Actions, GitLab CI, or other pipeline configuration.
 
-4. **No CI/CD:** No GitHub Actions, GitLab CI, or other pipeline configuration.
-
-5. **Redundant database index:** `@@index([connectorId, sourceReferenceId])` on Lead is redundant with `@@unique([connectorId, sourceReferenceId])`. The unique constraint already provides the index.
-
-6. **No Vercel Cron configuration:** Scheduler endpoint exists but no cron trigger is configured in the repository. `.vercel` is gitignored but no `vercel.json` exists.
+4. **Redundant database index:** `@@index([connectorId, sourceReferenceId])` on Lead is redundant with `@@unique([connectorId, sourceReferenceId])`. The unique constraint already provides the index.

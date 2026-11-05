@@ -15,6 +15,8 @@ import type {
   NewLeadItem,
   NeedsAttentionItem,
 } from "@/services/attention.service";
+import { useCrmSync } from "@/hooks/use-crm-sync";
+import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 
 export type SectionId = "pending" | "today" | "new" | "stale";
 
@@ -50,6 +52,7 @@ export function AttentionCenter({
   const [deleteLeadId, setDeleteLeadId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
+  useCrmSync({ entityTypes: CRM_MUTATION_ENTITY_TYPES, onRefresh: () => router.refresh() });
 
   const handleArchive = useCallback(async (leadId: string) => {
     try {
