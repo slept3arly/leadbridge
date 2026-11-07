@@ -1,24 +1,29 @@
 "use client";
 
-import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { LEAD_STATUSES, LEAD_PRIORITIES, LEAD_CATEGORIES } from "@/lib/lead-constants";
+import { Badge } from "@/components/ui/badge";
+import { ArrowUpRight, Eye, Mail, Phone, X } from "lucide-react";
+import { getCategoryLabel, getPriorityLabel, getStatusLabel } from "@/lib/lead-constants";
 
-type LeadHeaderProps = {
+type LeadWorkspaceHeaderProps = {
   lead: {
+    id: string;
+    leadNumber?: string;
     displayName: string;
     company: string | null;
+    phone?: string | null;
+    email?: string | null;
     status: string;
     priority: string;
     category?: string | null;
     isArchived?: boolean;
+    assignedUser?: { id: string; name: string } | null;
   };
   onClose: () => void;
-  onChange: (field: string, value: string) => void;
-  onUpdate: () => void;
+  onRecordProgress: () => void;
+  onViewDetails: () => void;
   onToggleArchive: () => void;
   onDelete?: () => void;
-  saving: boolean;
   archiving: boolean;
   deleting?: boolean;
   canArchive?: boolean;
@@ -28,82 +33,47 @@ type LeadHeaderProps = {
 export function LeadHeader({
   lead,
   onClose,
-  onChange,
-  onUpdate,
+  onRecordProgress,
+  onViewDetails,
   onToggleArchive,
   onDelete,
-  saving,
   archiving,
   deleting = false,
   canArchive = false,
   canDelete = false,
-}: LeadHeaderProps) {
+}: LeadWorkspaceHeaderProps) {
   return (
-    <div className="shrink-0 border-b border-[var(--color-border)] bg-white">
-      <div className="flex items-center gap-4 px-5 py-4">
-        {/* Identity */}
-        <div className="min-w-0 shrink-0">
-          <h2 className="text-lg font-bold leading-tight truncate max-w-[200px]">{lead.displayName}</h2>
-          <p className="text-sm text-[var(--color-muted)] leading-tight truncate max-w-[200px]">{lead.company ?? "No company"}</p>
-        </div>
+    <header className="sticky top-0 z-20 shrink-0 border-b border-[var(--color-border)] bg-white/95 px-4 py-4 backdrop-blur sm:px-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 id="lead-workspace-title" className="max-w-full truncate text-xl font-semibold text-[var(--color-ink)] sm:text-2xl">{lead.displayName}</h2>
+            {lead.leadNumber && <span className="text-xs font-medium text-[var(--color-muted)]">#{lead.leadNumber}</span>}
+            {lead.isArchived && <Badge label="Archived" />}
+          </div>
+          {lead.company && <p className="mt-0.5 text-sm text-[var(--color-muted)]">{lead.company}</p>}
 
-        {/* Separator */}
-        <div className="w-px h-8 bg-[var(--color-border)] shrink-0" />
-
-        {/* Dropdowns */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">Status</label>
-            <Select value={lead.status} onChange={(e) => onChange("status", e.target.value)} className="w-auto min-h-[40px] min-w-[120px] rounded-lg px-3">
-              {LEAD_STATUSES.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </Select>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {lead.phone && <a href={`tel:${lead.phone}`} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 text-sm text-[var(--color-ink)] hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]" aria-label={`Call ${lead.displayName} at ${lead.phone}`}><Phone size={14} aria-hidden="true" />{lead.phone}</a>}
+            {lead.email && <a href={`mailto:${lead.email}`} className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 text-sm text-[var(--color-ink)] hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]"><Mail size={14} className="shrink-0" aria-hidden="true" /><span className="truncate">{lead.email}</span></a>}
+            {!lead.phone && !lead.email && <span className="text-sm text-[var(--color-muted)]">No phone or email recorded</span>}
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">Priority</label>
-            <Select value={lead.priority} onChange={(e) => onChange("priority", e.target.value)} className="w-auto min-h-[40px] min-w-[110px] rounded-lg px-3">
-              {LEAD_PRIORITIES.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">Category</label>
-            <Select value={lead.category ?? ""} onChange={(e) => onChange("category", e.target.value)} className="w-auto min-h-[40px] min-w-[140px] rounded-lg px-3">
-              <option value="">None</option>
-              {LEAD_CATEGORIES.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </Select>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Badge label={getStatusLabel(lead.status)} toneKey={lead.status} />
+            <Badge label={getPriorityLabel(lead.priority)} toneKey={lead.priority} />
+            {lead.category && <Badge label={getCategoryLabel(lead.category)} toneKey={lead.category} />}
           </div>
         </div>
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Actions */}
-        <div className="flex items-center gap-2 shrink-0">
-          <Button size="md" variant="black" isLoading={saving} onClick={onUpdate}>
-            Save
-          </Button>
-          {canArchive && (
-            <Button size="md" variant="secondary" isLoading={archiving} onClick={onToggleArchive}>
-              {lead.isArchived ? "Restore" : "Archive"}
-            </Button>
-          )}
-          {canDelete && onDelete && (
-            <Button size="md" variant="ghost" isLoading={deleting} onClick={onDelete} className="text-red-600 hover:text-red-700 hover:bg-red-50">
-              Delete
-            </Button>
-          )}
-          <Button size="md" variant="ghost" onClick={onClose}>
-            Close
-          </Button>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button variant="black" onClick={onRecordProgress}><ArrowUpRight size={16} />Record Progress</Button>
+          <Button variant="secondary" onClick={onViewDetails}><Eye size={15} />View Details</Button>
+          {canArchive && <Button variant="ghost" isLoading={archiving} onClick={onToggleArchive}>{lead.isArchived ? "Restore" : "Archive"}</Button>}
+          {canDelete && onDelete && <Button variant="ghost" isLoading={deleting} onClick={onDelete} className="text-red-600 hover:bg-red-50 hover:text-red-700">Delete</Button>}
+          <Button variant="ghost" onClick={onClose} aria-label="Close lead workspace"><X size={18} /></Button>
         </div>
       </div>
-    </div>
+    </header>
   );
 }

@@ -1,4 +1,6 @@
-type LeadDetail = Record<string, unknown> & {
+import { DateTimeDisplay } from "@/components/shared/date-time-display";
+
+type LeadCustomer = Record<string, unknown> & {
   displayName: string;
   company: string | null;
   email: string | null;
@@ -14,72 +16,102 @@ type LeadDetail = Record<string, unknown> & {
   budget: unknown;
   expectedValue: unknown;
   currency: string | null;
-  campaign: string | null;
-  utmSource: string | null;
-  utmMedium: string | null;
-  utmCampaign: string | null;
-  utmContent: string | null;
-  utmTerm: string | null;
-  product: string | null;
   requirement: string | null;
+  campaign?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  utmContent?: string | null;
+  utmTerm?: string | null;
+  source?: { name: string } | null;
+  sourceName: string | null;
+  createdAt: string;
+  createdBy: { name: string } | null;
+  updatedAt: string;
+  updatedBy: { name: string } | null;
+  importedAt: string | null;
+  firstContactedAt?: string | null;
+  lastContactedAt?: string | null;
+  closedAt?: string | null;
 };
 
-function formatValue(val: unknown): string {
-  if (val === null || val === undefined) return "-";
-  if (typeof val === "number") return String(val);
-  if (typeof val === "object" && "toString" in (val as object)) {
-    const str = (val as object).toString();
-    return str === "[object Object]" ? JSON.stringify(val) : str;
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "object" && "toString" in value) {
+    const text = value.toString();
+    return text === "[object Object]" ? JSON.stringify(value) : text;
   }
-  return String(val);
+  return String(value);
 }
 
-export function LeadInfoSection({ lead }: { lead: LeadDetail }) {
-  const fields: Array<{ label: string; value: unknown }> = [
-    { label: "Name", value: lead.displayName },
-    { label: "Company", value: lead.company },
-    { label: "Email", value: lead.email },
-    { label: "Phone", value: lead.phone },
-    { label: "Alternate Phone", value: lead.alternatePhone },
-    { label: "Address", value: lead.address },
+export function LeadInfoSection({ lead }: { lead: LeadCustomer }) {
+  const fields: Array<{ label: string; value: unknown; kind?: "email" | "phone" | "website"; wide?: boolean }> = [
+    { label: "Phone", value: lead.phone, kind: "phone" },
+    { label: "Email", value: lead.email, kind: "email" },
+    { label: "Alternate phone", value: lead.alternatePhone, kind: "phone" },
     { label: "City", value: lead.city },
     { label: "State", value: lead.state },
     { label: "Country", value: lead.country },
-    { label: "Industry", value: lead.industry },
-    { label: "Website", value: lead.website },
-    { label: "Job Title", value: lead.jobTitle },
-    { label: "Product", value: lead.product },
-    { label: "Requirement", value: lead.requirement },
-    { label: "Budget", value: lead.budget },
-    { label: "Expected Value", value: lead.expectedValue },
-    { label: "Currency", value: lead.currency },
+    { label: "Address", value: lead.address, wide: true },
     { label: "Campaign", value: lead.campaign },
-    { label: "UTM Source", value: lead.utmSource },
-    { label: "UTM Medium", value: lead.utmMedium },
-    { label: "UTM Campaign", value: lead.utmCampaign },
-    { label: "UTM Content", value: lead.utmContent },
-    { label: "UTM Term", value: lead.utmTerm },
+    { label: "UTM source", value: lead.utmSource },
+    { label: "UTM medium", value: lead.utmMedium },
+    { label: "UTM campaign", value: lead.utmCampaign },
+    { label: "UTM content", value: lead.utmContent },
+    { label: "UTM term", value: lead.utmTerm },
+    { label: "Industry", value: lead.industry },
+    { label: "Job title", value: lead.jobTitle },
+    { label: "Website", value: lead.website, kind: "website" },
+    { label: "Budget", value: lead.budget },
+    { label: "Expected value", value: lead.expectedValue },
+    { label: "Currency", value: lead.currency },
+    { label: "Requirement", value: lead.requirement, wide: true },
+    { label: "Lead source", value: lead.source?.name || lead.sourceName || (lead.importedAt ? "Imported" : "Manual entry"), wide: true },
   ];
-
-  const visibleFields = fields.filter((f) => f.value !== null && f.value !== undefined && f.value !== "");
+  const visibleFields = fields.filter((field) => displayValue(field.value).trim() !== "");
 
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-white overflow-hidden">
-      <div className="px-4 py-2.5 bg-slate-50 border-b border-[var(--color-border)]">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">General Information</h4>
+    <section className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white" aria-labelledby="workspace-customer-title">
+      <div className="border-b border-[var(--color-border)] px-4 py-3 sm:px-5">
+        <h3 id="workspace-customer-title" className="text-sm font-semibold text-[var(--color-ink)]">Customer information</h3>
       </div>
-      {visibleFields.length === 0 ? (
-        <div className="p-4 text-sm text-[var(--color-muted)]">No information available.</div>
-      ) : (
-        <div className="divide-y divide-[var(--color-border)] text-sm">
-          {visibleFields.map((field) => (
-            <div key={field.label} className="grid grid-cols-3 gap-2 px-4 py-2">
-              <span className="text-[var(--color-muted)] truncate">{field.label}</span>
-              <span className="col-span-2 font-medium break-words">{formatValue(field.value)}</span>
+      <dl className="grid grid-cols-1 gap-x-6 sm:grid-cols-2 sm:px-5 sm:py-2">
+        {visibleFields.map((field) => {
+          const value = displayValue(field.value);
+          const href = field.kind === "email" ? `mailto:${value}` : field.kind === "phone" ? `tel:${value}` : null;
+          const isWebsite = field.kind === "website" && /^https?:\/\//i.test(value);
+          return (
+            <div key={field.label} className={`min-w-0 border-b border-[var(--color-border)] px-4 py-3 last:border-0 sm:px-0 ${field.wide ? "sm:col-span-2" : ""}`}>
+              <dt className="text-xs font-medium text-[var(--color-muted)]">{field.label}</dt>
+              <dd className="mt-1 break-words text-sm text-[var(--color-ink)]">
+                {href ? <a className="underline decoration-[var(--color-border)] underline-offset-2 hover:text-[var(--color-brand)]" href={href}>{value}</a>
+                  : isWebsite ? <a className="underline decoration-[var(--color-border)] underline-offset-2 hover:text-[var(--color-brand)]" href={value} target="_blank" rel="noreferrer">{value}</a>
+                    : value}
+              </dd>
             </div>
-          ))}
+          );
+        })}
+      </dl>
+      <div className="space-y-3 border-t border-[var(--color-border)] bg-slate-50/70 px-4 py-3 text-xs text-[var(--color-muted)] sm:px-5">
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          <span>Created <DateTimeDisplay date={lead.createdAt} /></span>
+          <span>By {lead.createdBy?.name ?? "System"}</span>
+          <span>Updated <DateTimeDisplay date={lead.updatedAt} /></span>
+          {lead.updatedBy?.name && <span>By {lead.updatedBy.name}</span>}
+          {lead.importedAt && <span>Imported <DateTimeDisplay date={lead.importedAt} /></span>}
         </div>
-      )}
-    </div>
+        {(lead.firstContactedAt || lead.lastContactedAt || lead.closedAt) && (
+          <div className="border-t border-[var(--color-border)] pt-3">
+            <h4 className="mb-2 font-semibold text-[var(--color-ink)]">Lead timing</h4>
+            <dl className="flex flex-wrap gap-x-5 gap-y-2">
+              {lead.firstContactedAt && <div className="flex gap-1"><dt>First contacted</dt><dd><DateTimeDisplay date={lead.firstContactedAt} /></dd></div>}
+              {lead.lastContactedAt && <div className="flex gap-1"><dt>Last contacted</dt><dd><DateTimeDisplay date={lead.lastContactedAt} /></dd></div>}
+              {lead.closedAt && <div className="flex gap-1"><dt>Closed</dt><dd><DateTimeDisplay date={lead.closedAt} /></dd></div>}
+            </dl>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

@@ -13,6 +13,7 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import { Check, X, Clock } from "lucide-react";
 import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
+import { RecordProgressModal } from "@/components/leads/record-progress-modal";
 
 type FollowUpRow = {
   id: string;
@@ -32,29 +33,11 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
   const rows = initialRows;
   useCrmSync({ entityTypes: CRM_MUTATION_ENTITY_TYPES, onRefresh: () => router.refresh() });
 
-  const [completeTarget, setCompleteTarget] = useState<string | null>(null);
-  const [completing, setCompleting] = useState(false);
-  const [completeError, setCompleteError] = useState<string | null>(null);
+  const [progressTarget, setProgressTarget] = useState<FollowUpRow | null>(null);
 
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
-
-  async function handleCompleteConfirm() {
-    if (!completeTarget) return;
-    setCompleting(true);
-    setCompleteError(null);
-    try {
-      await axios.post(`/api/follow-ups/${completeTarget}/complete`, {});
-      toast.success("Task completed");
-      setCompleteTarget(null);
-      router.refresh();
-    } catch {
-      setCompleteError("Failed to complete task. Please try again.");
-    } finally {
-      setCompleting(false);
-    }
-  }
 
   async function handleCancelConfirm() {
     if (!cancelTarget) return;
@@ -136,12 +119,10 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
                 <Button
                   size="sm"
                   variant="ghost"
-                  isLoading={completing && completeTarget === fu.id}
-                  onClick={() => {
-                    setCompleteError(null);
-                    setCompleteTarget(fu.id);
-                  }}
-                  title="Mark completed"
+                  onClick={() => fu.lead && setProgressTarget(fu)}
+                  disabled={!fu.lead}
+                  aria-label={fu.lead ? "Record progress and review task completion" : "Lead unavailable"}
+                  title={fu.lead ? "Record progress and review task completion" : "The lead for this task is unavailable"}
                 >
                   <Check size={14} className="text-green-600" />
                 </Button>
@@ -153,7 +134,8 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
                     setCancelError(null);
                     setCancelTarget(fu.id);
                   }}
-                  title="Mark missed"
+                  aria-label="Cancel task"
+                  title="Cancel task"
                 >
                   <X size={14} className="text-red-500" />
                 </Button>
@@ -163,18 +145,15 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
         ]}
       />
 
-      <ConfirmDialog
-        open={completeTarget !== null}
-        title="Complete task?"
-        description="Mark this task as completed?"
-        confirmLabel="Complete"
-        cancelLabel="Cancel"
-        variant="default"
-        isLoading={completing}
-        error={completeError}
-        onConfirm={handleCompleteConfirm}
-        onCancel={() => { setCompleteTarget(null); setCompleteError(null); }}
-      />
+      {progressTarget?.lead && <RecordProgressModal
+        key={`task-progress:${progressTarget.id}`}
+        open
+        leadId={progressTarget.lead.id}
+        leadName={progressTarget.lead.displayName}
+        initialFollowUpId={progressTarget.id}
+        onClose={() => setProgressTarget(null)}
+        onSaved={() => { setProgressTarget(null); router.refresh(); }}
+      />}
 
       <ConfirmDialog
         open={cancelTarget !== null}

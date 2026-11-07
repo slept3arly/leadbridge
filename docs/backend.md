@@ -1,16 +1,17 @@
 # LeadBridge Backend
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-05
+> **Last verified:** 2026-11-07
 > **Source of truth:** `src/services/`, `src/lib/`, `src/runtime/`
 
 ## Service Layer
 
-20 domain services in `src/services/`. Each exports a class and a singleton instance.
+21 domain services in `src/services/`. Each exports a class and a singleton instance.
 
 | Service | File | Purpose |
 |---|---|---|
-| `LeadService` | `lead.service.ts` | Lead CRUD, list/paginate, search, assign, activity enrichment |
+| `LeadWorkflowService` | `lead-workflow.service.ts` | Atomic manual lead creation with initial interaction; Record Progress orchestration |
+| `LeadService` | `lead.service.ts` | Lead CRUD, list/paginate, search, assign, activity enrichment, change-aware updates |
 | `FollowUpService` | `follow-up.service.ts` | Follow-up CRUD, complete, reschedule, recalculate lead fields |
 | `ActivityEventService` | `activity-event.service.ts` | Activity event/entry creation, querying by lead or follow-up |
 | `DashboardService` | `dashboard.service.ts` | Admin and sales dashboard aggregations |
@@ -60,7 +61,17 @@ Search uses `ILIKE '%term%'` across 5 fields: `displayName`, `company`, `email`,
 
 ### Activity Recording
 
-Lead mutations create `ActivityEvent` + `ActivityEntry` records in the same transaction. Manual lead creation can include an optional structured initial interaction. `LeadService.create()` writes the lead and exactly one SYSTEM/CREATED event, then—when requested—creates a separate INTERACTION event. An optional follow-up is created through `FollowUpService.create()` using the same transaction client; its scheduled entry is linked to the interaction event, and follow-up denormalized lead fields are recalculated in that transaction.
+Manual lead creation and Record Progress are orchestrated by `LeadWorkflowService`. Manual `POST /api/leads` requires one CALL or WHATSAPP interaction; it atomically creates the lead, SYSTEM/CREATED event, exactly one INTERACTION event, and an optional pending follow-up. Connector/import creation continues through `LeadService.create()` and does not require or fabricate a customer interaction.
+
+`Lead.product` remains a nullable database field for historical records and compatibility. The manual lead forms and current detail/list projections omit it. The optional API input remains accepted for older clients, while `LeadService.updateFieldsInTransaction()` updates only submitted fields, so an omitted Product value is preserved. Connector imports continue mapping parsed Product values into the stored field.
+
+`recordLeadProgress()` atomically records one genuine interaction, optionally changes status/priority/category, explicitly completes only the supplied pending follow-up ID, and optionally schedules a new task. Its interaction event groups the contact, lifecycle, and actual field-change entries. Repeated genuine contacts are preserved as separate events. Activity notes remain on the activity entry; they are not converted to `Note` records or copied into `FollowUp.description`. Manual lead creation uses the same `LeadWorkflowService` entry point from the Add Lead form; connector imports continue to use the separate import path.
+
+Follow-ups for assigned leads are assigned to the lead's responsible salesperson even when Admin performs the workflow. For an unassigned lead, the task is assigned to the acting user. Sales access remains scoped to assigned leads; lead creation remains controlled by `CREATE_LEAD` (SENIOR Sales only).
+
+Lead PATCH and workflow field changes compare normalized values against the row read in the transaction, update only changed columns, and use `updatedAt` as a conditional concurrency token. Unchanged patches do not update lead timestamps/actor metadata or create field-history entries. Follow-up transitions use a conditional PENDING-to-COMPLETED update; stale conflicts roll back all writes. Follow-up denormalized fields are recalculated only when their values change.
+
+No business timezone is configured. Follow-up due dates persist as UTC instants. Date-only workflow values use UTC midnight; date-time values require an explicit offset. Existing browser forms submit ISO instants after local date/time selection. A business timezone/default-hour decision remains deferred.
 
 ```typescript
 await prisma.$transaction(async (tx) => {
@@ -74,7 +85,7 @@ await prisma.$transaction(async (tx) => {
 });
 ```
 
-The initial activity actor is always the authenticated caller. Follow-up assignment is not accepted from the create payload: the existing follow-up policy assigns Sales follow-ups to the Sales actor and Admin follow-ups to the Admin actor. The create API invalidates dashboard and attention caches only after the transaction commits. The standalone Sales Log Activity endpoint uses the same `interactionActivitySchema` and `ActivityFormFields` as the combined flow.
+The initial activity actor is always the authenticated caller. Follow-up assignment is derived from the lead owner and never accepted from the workflow payload. Cache invalidation runs only after a successful transaction and includes affected Sales-user dashboard/attention tags when Admin works on their lead. Activity, Note, and standalone follow-up API routes remain available for their supported edit, historical, compatibility, and schedule-only behaviors; primary interaction creation and task completion in the UI use the unified workflows.
 
 ### Denormalized Field Maintenance
 
@@ -93,7 +104,8 @@ The initial activity actor is always the authenticated caller. Follow-up assignm
 | `session.ts` | `getSession()`, `requireSession()`, `AppSession` type |
 | `api.ts` | `apiError()`, `withApiAuthorization()`, `withPermissionAuthorization()`, `handleApiError()` |
 | `permissions.ts` | `Permission` enum, `can()` function for RBAC |
-| `validation.ts` | Zod schemas for all request types |
+| `validation.ts` | Zod schemas for all request types, including manual creation and progress workflows |
+| `follow-up-date.ts` | UTC instant parsing for date-only and offset-bearing workflow due dates |
 | `query-builder.ts` | `parseListQuery()`, `containsSearch()`, `pagination()` helpers |
 | `cache-tags.ts` | Cache tag constants and `invalidateAfterMutation()` |
 | `logger.ts` | Pino logger named "leadbridge" |

@@ -16,6 +16,7 @@ export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(und
     prisma.note.findMany({
       where: { leadId: id },
       orderBy: [{ createdAt: "desc" }],
+      take: 100,
       include: {
         author: { select: { id: true, name: true } },
         followUps: {

@@ -23,12 +23,39 @@ function fetchLeadDetails(leadId: string, force = false): Promise<LeadDetails> {
 
 export type LeadDetail = {
   id: string;
+  leadNumber: string;
   displayName: string;
   company: string | null;
+  email: string | null;
+  phone: string | null;
+  alternatePhone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  industry: string | null;
+  website: string | null;
+  jobTitle: string | null;
+  budget: unknown;
+  expectedValue: unknown;
+  currency: string | null;
+  requirement: string | null;
   status: string;
   priority: string;
   category?: string | null;
   isArchived?: boolean;
+  assignedUser: { id: string; name: string } | null;
+  firstContactedAt: string | null;
+  lastContactedAt: string | null;
+  nextFollowUpAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  createdBy: { id: string; name: string } | null;
+  updatedAt: string;
+  updatedBy: { id: string; name: string } | null;
+  importedAt: string | null;
+  sourceName: string | null;
+  source: { id: string; name: string; sourceType: string } | null;
   [key: string]: unknown;
 };
 
@@ -158,19 +185,5 @@ export function useLeadDetails(leadId: string) {
     };
   }, [leadId]);
 
-  const completeFollowUp = useCallback(async (followUpId: string, data: {
-    note?: string | null;
-    nextFollowUp?: { dueDate: string; dueTime?: string | null } | null;
-    activity?: {
-      action: "CALL" | "WHATSAPP";
-      response: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED";
-      interest?: "INTERESTED" | "NOT_INTERESTED" | null;
-      notes?: string | null;
-    } | null;
-  }) => {
-    const res = await axios.post(`/api/follow-ups/${followUpId}/complete`, data);
-    return res.data as { completedFollowUp: LeadFollowUp; nextFollowUp: LeadFollowUp | null };
-  }, []);
-
-  return { data, loading, refresh, setData, patchData, completeFollowUp };
+  return { data, loading, refresh, setData, patchData };
 }

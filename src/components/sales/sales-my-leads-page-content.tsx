@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog";
 import { LeadDetailsModal } from "@/components/sales/lead-details-modal";
-import { LogActivityModal } from "@/components/sales/log-activity-modal";
+import { RecordProgressModal } from "@/components/leads/record-progress-modal";
 import { SalesTableControls } from "@/components/sales/sales-table-controls";
 import { LeadEditModal } from "@/components/leads/lead-edit-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -184,7 +184,7 @@ export function SalesMyLeadsPageContent({
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
-  const [logActivityLeadId, setLogActivityLeadId] = useState<string | null>(null);
+  const [progressLeadId, setProgressLeadId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   useCrmSync({ entityTypes: CRM_MUTATION_ENTITY_TYPES, onRefresh: () => router.refresh() });
@@ -306,11 +306,11 @@ export function SalesMyLeadsPageContent({
             <Button
               size="sm"
               variant="secondary"
-              onClick={() => setLogActivityLeadId(lead.id)}
+              onClick={() => setProgressLeadId(lead.id)}
               className="gap-1.5"
             >
               <Plus size={14} />
-              Log Activity
+              Record Progress
             </Button>
           </div>
           <div className="flex items-center justify-center gap-1">
@@ -414,15 +414,15 @@ export function SalesMyLeadsPageContent({
           submitLabel="Save"
         />
       )}
-      {logActivityLeadId && (
-        <LogActivityModal
+      {progressLeadId && (
+        <RecordProgressModal
           open={true}
-          leadId={logActivityLeadId}
-          onClose={() => setLogActivityLeadId(null)}
+          leadId={progressLeadId}
           onSaved={() => {
-            setLogActivityLeadId(null);
+            setProgressLeadId(null);
             router.refresh();
           }}
+          onClose={() => setProgressLeadId(null)}
         />
       )}
       <ConfirmDialog

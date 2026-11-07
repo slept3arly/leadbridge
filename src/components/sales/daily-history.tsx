@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { IconActionButton } from "@/components/ui/icon-action-button";
+import { Badge } from "@/components/ui/badge";
 import { Edit, Calendar, CheckCircle2, Trash2, ArrowUpRight, RefreshCw, Phone, MessageSquare } from "lucide-react";
 import { formatDate, formatTimeValue, formatTime } from "@/lib/utils";
 import type { ActivityEventItem, ActivityEventEntry } from "@/hooks/use-lead-details";
@@ -47,10 +48,19 @@ function groupByDay(events: ActivityEventItem[]): DayGroup[] {
 }
 
 function InteractionEntry({ entry }: { entry: ActivityEventEntry }) {
-  const actionLabel = entry.action ? (ACTION_LABELS[entry.action] ?? entry.action) : null;
+  const action = entry.action ?? (entry.type === "CALL" || entry.type === "WHATSAPP" ? entry.type : null);
+  const actionLabel = action ? (ACTION_LABELS[action] ?? action) : null;
   const responseLabel = entry.response ? (RESPONSE_LABELS[entry.response] ?? entry.response) : null;
   const interestLabel = entry.interest ? INTEREST_LABELS[entry.interest] ?? entry.interest : null;
-  const isCall = entry.action === "CALL";
+  const isCall = action === "CALL";
+  const generatedMessage = action && entry.response
+    ? [`${action} - ${entry.response.replaceAll("_", " ")}`, entry.interest ? `(${entry.interest.replaceAll("_", " ")})` : ""].filter(Boolean).join(" ").toLowerCase()
+    : null;
+  const note = typeof entry.metadata?.notes === "string" && entry.metadata.notes.trim()
+    ? entry.metadata.notes.trim()
+    : entry.message && entry.message.toLowerCase() !== generatedMessage
+      ? entry.message
+      : null;
 
   return (
     <div className="flex items-start gap-2">
@@ -63,17 +73,17 @@ function InteractionEntry({ entry }: { entry: ActivityEventEntry }) {
       </div>
       <div className="min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          {actionLabel && responseLabel && (
+          {actionLabel && (
             <span className="text-sm font-medium text-[var(--color-ink)]">
-              {actionLabel} · {responseLabel}
+              {actionLabel}{responseLabel ? ` · ${responseLabel}` : ""}
             </span>
           )}
           {interestLabel && (
             <span className="text-xs text-[var(--color-muted)]">· {interestLabel}</span>
           )}
         </div>
-        {entry.message && entry.message !== `${entry.action} - ${responseLabel}${interestLabel ? ` ${interestLabel}` : ""}` && (
-          <p className="text-sm text-[var(--color-muted)] mt-0.5">&ldquo;{entry.message}&rdquo;</p>
+        {note && (
+          <p className="mt-0.5 whitespace-pre-wrap text-sm text-[var(--color-muted)]">&ldquo;{note}&rdquo;</p>
         )}
       </div>
     </div>
@@ -167,11 +177,30 @@ function NoteEntry({ entry }: { entry: ActivityEventEntry }) {
     <div className="flex items-start gap-2">
       <div className="min-w-0">
         {entry.message && (
-          <p className="text-sm text-[var(--color-muted)]">&ldquo;{entry.message}&rdquo;</p>
+          <p className="whitespace-pre-wrap text-sm text-[var(--color-muted)]">&ldquo;{entry.message}&rdquo;</p>
         )}
       </div>
     </div>
   );
+}
+
+function changedFieldSummary(entry: ActivityEventEntry): string[] {
+  const changes = entry.metadata?.changes;
+  if (!Array.isArray(changes)) return [];
+  const labels: Record<string, string> = {
+    displayName: "Name", company: "Company", email: "Email", phone: "Phone",
+    city: "City", state: "State", product: "Product", requirement: "Requirement",
+    status: "Status", priority: "Priority", category: "Category", sourceId: "Lead source",
+  };
+  return changes.flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const change = value as { field?: unknown; from?: unknown; to?: unknown };
+    if (typeof change.field !== "string") return [];
+    const label = labels[change.field] ?? change.field.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
+    const from = change.from === null || change.from === undefined || change.from === "" ? "None" : String(change.from);
+    const to = change.to === null || change.to === undefined || change.to === "" ? "None" : String(change.to);
+    return [`${label}: ${from} → ${to}`];
+  });
 }
 
 function EntryRow({ entry }: { entry: ActivityEventEntry }) {
@@ -190,8 +219,15 @@ function EntryRow({ entry }: { entry: ActivityEventEntry }) {
       return <span className="text-sm text-[var(--color-muted)]">Lead created</span>;
     case "STATUS_CHANGED":
       return <span className="text-sm text-[var(--color-muted)]">{entry.message}</span>;
-    case "UPDATED":
-      return <span className="text-sm text-[var(--color-muted)]">{entry.message || "Updated"}</span>;
+    case "UPDATED": {
+      const changes = changedFieldSummary(entry);
+      return (
+        <div className="min-w-0">
+          <span className="text-sm font-medium text-[var(--color-ink)]">{entry.message || "Lead updated"}</span>
+          {changes.length > 0 && <ul className="mt-1 space-y-0.5 text-xs text-[var(--color-muted)]">{changes.map((change) => <li key={change}>{change}</li>)}</ul>}
+        </div>
+      );
+    }
     default:
       return <span className="text-sm text-[var(--color-muted)]">{entry.message || entry.type}</span>;
   }
@@ -205,16 +241,25 @@ function ActivityEventGroup({
   onEditActivity?: (entryId: string) => void;
 }) {
   const time = formatTimeValue(event.occurredAt, "");
+  const eventLabel = event.type === "INTERACTION" ? "Customer contact"
+    : event.type === "SYSTEM" ? "Lead history"
+      : event.type === "FOLLOW_UP" ? "Follow-up history"
+        : event.type === "NOTE" ? "Legacy note"
+          : event.type.replaceAll("_", " ").toLowerCase();
 
   return (
     <div className="py-3">
       <div className="flex items-start gap-3">
         <span className="text-xs text-[var(--color-muted)] tabular-nums pt-0.5 w-16 shrink-0">{time}</span>
-        <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Badge label={eventLabel} variant="square" className="text-[10px]" />
+            {event.actor?.name ? <span className="text-xs text-[var(--color-muted)]">{event.actor.name}</span> : <span className="text-xs text-[var(--color-muted)]">System</span>}
+          </div>
           {event.entries.map((entry) => (
             <div key={entry.id} className="flex items-start gap-2">
               <EntryRow entry={entry} />
-              {onEditActivity && entry.type === "CALL" && (
+              {onEditActivity && (entry.type === "CALL" || entry.type === "WHATSAPP") && (
                 <IconActionButton
                   icon={Edit}
                   label="Edit activity"

@@ -1,7 +1,7 @@
 # LeadBridge Frontend
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-05
+> **Last verified:** 2026-11-07
 > **Source of truth:** `src/app/`, `src/components/`, `src/hooks/`
 
 ## Rendering Model
@@ -36,7 +36,31 @@ The Admin Leads page lists CRM-wide leads with URL-backed search, assignment, st
 
 Sales and Admin both use `src/components/leads/lead-edit-modal.tsx` (`LeadEditModal`). Labels identify fields as Required or Optional. Name is required; Email and Phone are individually optional, while at least one must be provided. Email is trimmed and checked for valid format. A supplied phone must contain exactly 10 digits; its input uses a numeric mobile keyboard and invalid characters or lengths remain visible with an inline error. Classification and contact fields use responsive two-column grids; Requirement spans the form width. Admin receives the optional Assigned User field through `assignableUsers`; Sales keeps the existing automatic self-assignment behavior.
 
-Create mode includes a collapsed **Initial Activity — Optional** section. Expanding it reuses `src/components/sales/activity-fields.tsx` for Call/WhatsApp action, action-specific response, conditional interest, notes, and optional follow-up date/time. Action changes reset response and interest. Disabling follow-up scheduling clears its date and time. The section is omitted from edit mode. Lead creation submits the optional interaction with the lead in one request; the modal retains entered values on failure and refreshes the route after success.
+Create mode requires an **Initial Customer Interaction**. It reuses `src/components/sales/activity-fields.tsx` for Call/WhatsApp action, action-specific response, conditional interest, activity notes, and optional initial follow-up date/time. The response starts blank, so the salesperson must record what happened. Action changes reset response and interest. Disabling follow-up scheduling clears its date and time. The section is omitted from edit mode. Manual lead creation submits the lead, exactly one initial interaction, and an optional follow-up through `POST /api/leads`; connector/import creation remains separate. The modal retains entered values after a failed request and closes/refreshes only after success.
+
+Create mode organizes the form into three shared `AccordionSection` panels: **Lead Information** (required), **Lead Classification** (optional), and **Initial Customer Interaction** (required). All start collapsed. Form state remains owned by `LeadEditModal`, so collapsing panels preserves values; validation still checks every field, opens each panel with an error, and focuses the first invalid field when possible. Edit mode retains its existing expanded layout and does not use these accordions. The API payload, required initial interaction, conditional interest rules, and optional initial follow-up behavior are unchanged.
+
+The Create Lead dialog sizes to its content, centers when compact, and caps its height at 90dvh. Its content area scrolls when expanded panels exceed that limit, while the header and footer remain fixed within the dialog. Edit Lead retains its existing 88vh sizing.
+
+Product is no longer shown or submitted by the manual Add/Edit Lead form, View Details popup, or Admin lead list. Existing lead data is retained in storage; historical Product field-change labels remain in Activity and History. Connector imports may still populate the legacy field, and CSV export retains its Product column and stored values for compatibility.
+
+## Record Progress
+
+`src/components/leads/record-progress-modal.tsx` is the canonical interaction workflow for existing leads. It records one genuine Call or WhatsApp interaction, and can optionally update status, priority, and category, explicitly complete one selected pending follow-up, and/or schedule another. Customer Interaction, Update Lead Classification, and Manage Follow-ups use the shared `AccordionSection` primitive and start collapsed. The modal retains field values when sections are collapsed; schema validation still covers collapsed fields, expands every section with errors, and focuses the first invalid field when possible. Pending tasks appear as a single-select radio list. No task is selected for a normal entry; a valid pending task opened from Tasks is preselected as the proposed completion. Submitting Record Progress confirms that proposal; selecting or clearing it does not mutate a task. Scheduling another follow-up is independent.
+
+The shared component is used by Lead Details (including its follow-up completion action), the My Leads quick **Record Progress** action, and Tasks. Sales dashboard agenda and Attention Center actions open Lead Details, which uses the same component. Admin dashboard has no direct interaction or task-completion action; Admin lead details use the same workflow. All progress is submitted once to `POST /api/leads/[id]/activities`. The Axios mutation synchronizer publishes the successful activity response to other open tabs; the current view refreshes after success.
+
+## Lead Workspace
+
+`src/components/sales/lead-details-modal.tsx` owns the Lead Workspace and its single `useLeadDetails` request. The responsive layout keeps a sticky identity header with contact links, current status/priority/category badges and primary Record Progress action. Activity and History is the primary workspace content; the supporting column shows the lead owner and every pending follow-up (with the earliest due task called out, overdue state, owner, and task-specific Record Progress action), plus a collapsed list of the three most recently completed tasks. Customer information is available in the accessible `LeadDetailsPopup` opened from View Details. Its Edit Details action closes the popup and opens the existing `LeadEditModal`. Created/updated/imported and first-contacted/last-contacted/closed timestamps are shown in customer/lead metadata, not under Lead owner. Standalone scheduling/rescheduling, archive/restore and permitted delete actions remain available.
+
+`LeadInfoSection` omits empty customer values and does not request or render `rawPayload`. `DailyHistory` distinguishes contact interactions from lifecycle/follow-up/system history, displays actual field changes when event metadata includes them, and retains activity editing for Sales users. Admin activity editing remains hidden because the existing activity PATCH endpoint only authorizes the assigned salesperson. Legacy standalone Note records are joined to their matching note event or represented as a timeline item when no event exists; their existing API and storage remain intact. No missing historical interaction outcome is inferred.
+
+The details endpoint returns up to the latest 100 activity events and latest 100 saved Notes, plus the lead and follow-ups. Pending and completed follow-ups are currently returned without pagination so the workspace can show every pending task. The same-origin CRM mutation sync refreshes this view for related lead, activity, note and follow-up changes; focus/visibility revalidation remains cooldown-limited, with no polling. Dashboard lead actions continue to open the shared workspace, while Tasks and My Leads can open the same Record Progress component directly. Browser-level visual and keyboard testing is unavailable in the current test setup; pure projection behavior is covered by Node tests.
+
+Standalone follow-up scheduling and rescheduling remain available when no interaction is being recorded; the schedule-only dialog directs users to Record Progress if they want to combine an interaction and a task. Task completion from Tasks and Lead Workspace requires Record Progress, while cancellation/deletion remains a separate task-management action. Sales users can edit their own lead's historical interaction entries; Admin activity editing is hidden because the endpoint authorizes the assigned salesperson only. Note storage and APIs remain for historical and compatibility use; this UI does not create separate Notes from interaction notes. The obsolete `LogActivityModal` and unused `LeadMetadataCard` have been removed. `ActivityFormFields` remains shared by Add Lead and Record Progress.
+
+The Sales dashboard agenda opens the Lead Workspace for the selected lead, where Record Progress is primary. The Admin dashboard has no quick interaction or task-completion action, so no new dashboard action was added. Add Lead is available through the shared create form on the lead-management pages where `CREATE_LEAD` is granted.
 
 ## Loading States (6)
 
@@ -115,6 +139,7 @@ Secondary admin links: Connectors, Users, Providers, Settings.
 | `IconActionButton` | `icon-action-button.tsx` | Icon-only button |
 | `AnimatedReveal` | `animated-reveal.tsx` | GSAP-powered reveal animation |
 | `ExpandableSection` | `expandable-section.tsx` | Collapsible section |
+| `AccordionSection` | `accordion-section.tsx` | Controlled accessible disclosure section |
 | `Label` | `label.tsx` | Form label |
 
 ### Shared Components (`src/components/shared/`)

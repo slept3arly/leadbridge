@@ -1,7 +1,7 @@
 # LeadBridge Integrations
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-05
+> **Last verified:** 2026-11-07
 > **Source of truth:** `src/connectors/`, `src/parsers/`, `src/runtime/`
 
 ## Overview
@@ -132,6 +132,7 @@ Main orchestrator:
 - Validates: name not empty, email format, phone format
 - Enriches: `sourceId`, `sourceType`, `parserVersion`, `importedAt`
 - Warnings do NOT block lead creation
+- The legacy nullable `Lead.product` field remains import-compatible: parsers may provide it and `src/runtime/connector-runtime.ts` persists it. It is not part of the manual lead form; existing values and CSV export compatibility are preserved.
 
 ### RetryPolicy (`src/runtime/retry-policy.ts`)
 

@@ -1,7 +1,7 @@
 # LeadBridge API Reference
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-05
+> **Last verified:** 2026-11-07
 > **Source of truth:** `src/app/api/`
 
 ## Overview
@@ -41,17 +41,18 @@
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
 | `/api/leads` | GET | Any authenticated | List leads with pagination, search, filters |
-| `/api/leads` | POST | `CREATE_LEAD` permission | Create lead and optionally its initial interaction/follow-up atomically |
+| `/api/leads` | POST | `CREATE_LEAD` permission | Create a lead with mandatory initial interaction and optional follow-up atomically |
 | `/api/leads/[id]` | GET | Any authenticated | Get lead details |
 | `/api/leads/[id]` | PATCH | Any authenticated | Update lead fields |
 | `/api/leads/[id]` | DELETE | `DELETE_LEAD` permission | Permanently delete lead and cascade-deleted dependent records |
 | `/api/leads/[id]/assign` | POST | ADMIN | Assign lead to sales user |
 | `/api/leads/[id]/activities` | GET | Any authenticated | Get lead activity timeline |
+| `/api/leads/[id]/activities` | POST | ADMIN or assigned SALES | Record progress; optional classification changes, explicit pending follow-up completion, and optional next follow-up |
 | `/api/leads/[id]/notes` | GET | Any authenticated | List lead notes |
 | `/api/leads/[id]/notes` | POST | Any authenticated | Add note to lead |
 | `/api/leads/[id]/follow-ups` | GET | Any authenticated | List lead follow-ups |
 | `/api/leads/[id]/follow-ups` | POST | Any authenticated | Create follow-up for lead |
-| `/api/leads/[id]/details` | GET | Any authenticated | Get lead with notes, follow-ups, activities |
+| `/api/leads/[id]/details` | GET | Any authenticated | Get lead with up to 100 latest Notes, all follow-ups, and the latest 100 activity events |
 
 ### Lead Sources
 
@@ -164,9 +165,10 @@
 
 All request bodies are validated with Zod schemas from `src/lib/validation.ts`:
 
-- `createLeadRequestSchema` -- Manual lead creation, including at least one of email or phone and optional initial activity
+- `createLeadRequestSchema` -- Manual lead creation, including at least one of email or phone and required initial activity
 - `leadSchema` -- Lead update fields
-- `interactionActivitySchema` -- Shared structured activity validation for standalone logging and lead creation
+- `interactionActivitySchema` -- Shared structured interaction validation for Add Lead and resulting activity-edit validation
+- `leadProgressRequestSchema` -- Record Progress interaction, optional classification fields, explicit completion ID, and optional follow-up schedule
 - `followUpSchema` -- Follow-up create/update
 - `noteSchema` -- Note create/update
 - `userSchema` -- User create/update
@@ -180,7 +182,9 @@ All request bodies are validated with Zod schemas from `src/lib/validation.ts`:
 
 ### Manual lead creation payload
 
-`POST /api/leads` accepts the normal lead fields plus an optional `initialActivity` object. A valid request includes a Name and at least one of Email or Phone. Email is optional, whitespace is trimmed, and a non-empty value must be valid. Phone is optional, but a non-empty value must consist of exactly 10 digits. Empty or whitespace-only optional contact values normalize to null. The same email/phone shape validation is used by lead updates; the create-only at-least-one-contact rule does not prevent edits to existing contactless records. When provided, the activity requires an action (`CALL` or `WHATSAPP`), a compatible response, and Interest exactly when the response is `PICKED_UP` or `REPLIED`. Notes are optional. Follow-up scheduling is optional; when enabled, `followUpDate` is required and `followUpTime` is optional. Activity actor and follow-up assignee are derived from the authenticated session and existing follow-up policy; the payload cannot set either user ID.
+`POST /api/leads` accepts lead fields plus a required `initialActivity` object. A valid request includes a Name and at least one of Email or Phone. Email is optional, whitespace is trimmed, and a non-empty value must be valid. Phone is optional, but a non-empty value must consist of exactly 10 digits. Empty or whitespace-only optional contact values normalize to null. The interaction requires an action (`CALL` or `WHATSAPP`), a compatible response, and Interest exactly when the response is `PICKED_UP` or `REPLIED`. `NO_RESPONSE` and `INVALID_NUMBER` are valid; notes are optional. Follow-up scheduling is optional; when enabled, `followUpDate` is required and `followUpTime` is optional. Manual lead creation is limited to ADMIN and SALES users with `CREATE_LEAD` (currently SENIOR Sales). SALES-created leads are assigned to the actor; only Admin may choose a Sales assignee. Connector/import creation remains on the service import path and does not fabricate an interaction.
+
+Product is omitted from the manual Add/Edit Lead forms. The optional `product` request field remains accepted for existing API clients and integrations; omitting it from a lead PATCH leaves any stored value unchanged. Connector imports may continue supplying it. The authenticated CSV export retains the `Product` column in its existing position and exports stored values.
 
 ```json
 {
@@ -198,7 +202,19 @@ All request bodies are validated with Zod schemas from `src/lib/validation.ts`:
 }
 ```
 
-Lead, SYSTEM/CREATED event, optional INTERACTION event and entries, and optional follow-up are committed in one transaction. Requests without `initialActivity` remain valid. The standalone `POST /api/leads/[id]/activities` remains Sales-only.
+Lead, SYSTEM/CREATED event, exactly one INTERACTION event and entry, and optional follow-up are committed atomically. The route returns the existing lead response shape. A request without `initialActivity` returns 400.
+
+### Record Progress
+
+`POST /api/leads/[id]/activities` accepts the existing interaction fields and optional `status`, `priority`, `category`, `completeFollowUpId`, `scheduleFollowUp`, `followUpDate`, and `followUpTime`. Every successful request creates a new genuine interaction event; matching payloads are not deduplicated. Admin may record progress on any non-deleted lead. Sales may act only on assigned leads. Activity notes remain on the interaction and are neither copied to `FollowUp.description` nor written as standalone Notes.
+
+When `completeFollowUpId` is present, it must identify a pending follow-up belonging to the route's lead. Only that task is completed; a concurrent or already-completed task returns 409. A replacement follow-up is optional and can be scheduled whether or not a task was completed. Other pending follow-ups are left untouched. Follow-ups for assigned leads are assigned to that lead's salesperson; for unassigned leads, they are assigned to the actor.
+
+Lead field writes compare normalized values in the transaction. No-op fields do not update `updatedAt`/`updatedById` or create history entries. A stale conflicting lead update returns 409 and rolls back the interaction/follow-up work. Follow-up dates are stored as UTC instants: date-only values use UTC midnight and date-time values require an explicit timezone offset. No business timezone is configured.
+
+`PATCH /api/leads/[id]` also skips unchanged fields and returns without history/cache invalidation when the submitted patch is a no-op. `nextFollowUpAt` is derived from pending follow-up records and cannot be written through lead PATCH.
+
+The legacy `POST /api/follow-ups/[id]/complete` remains available and continues to accept `{}` for existing callers; it is not treated as Record Progress and does not fabricate an interaction.
 
 ## Error Handling
 

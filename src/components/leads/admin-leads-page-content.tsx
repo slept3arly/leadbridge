@@ -28,7 +28,6 @@ export type SerializedLead = {
   phone: string | null;
   city: string | null;
   state: string | null;
-  product: string | null;
   requirement: string | null;
   status: string;
   priority: string;
@@ -247,7 +246,6 @@ export function AdminLeadsPageContent({
                 phone: selectedLead.phone,
                 city: selectedLead.city,
                 state: selectedLead.state,
-                product: selectedLead.product,
                 requirement: selectedLead.requirement,
                 status: selectedLead.status,
                 priority: selectedLead.priority,

@@ -51,7 +51,6 @@ export default async function AdminLeadsPage({
     phone: l.phone,
     city: l.city,
     state: l.state,
-    product: l.product,
     requirement: l.requirement,
     status: l.status,
     priority: l.priority,

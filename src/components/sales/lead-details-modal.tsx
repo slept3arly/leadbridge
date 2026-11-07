@@ -1,26 +1,27 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import axios from "axios";
 import { LeadHeader } from "@/components/sales/lead-header";
-import { LeadInfoSection } from "@/components/sales/lead-info-section";
-import { LeadMetadataCard } from "@/components/sales/lead-metadata-card";
+import type { LeadInfoSection } from "@/components/sales/lead-info-section";
+import { LeadDetailsPopup } from "@/components/sales/lead-details-popup";
 import { DailyHistory } from "@/components/sales/daily-history";
 import { IconActionButton } from "@/components/ui/icon-action-button";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { useLeadDetails, type LeadFollowUp, type ActivityEventItem } from "@/hooks/use-lead-details";
-import { CheckCircle2, RotateCcw, Trash2, Plus, Pencil } from "lucide-react";
-import { LogActivityModal } from "@/components/sales/log-activity-modal";
+import { CheckCircle2, RotateCcw, Trash2, Plus } from "lucide-react";
+import { RecordProgressModal } from "@/components/leads/record-progress-modal";
 import { LeadEditModal } from "@/components/leads/lead-edit-modal";
 import { formatDate, formatTime } from "@/lib/utils";
 import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
-
-type LeftTab = "activity" | "details";
+import { followUpFormDate } from "@/lib/follow-up-form-date";
+import { buildLeadWorkspaceTimeline, organizeLeadWorkspaceFollowUps } from "@/lib/lead-workspace";
 
 const ACTION_OPTIONS = [
   { value: "CALL", label: "Call" },
@@ -44,7 +45,7 @@ function isResponded(response: string) {
   return response === "PICKED_UP" || response === "REPLIED";
 }
 
-export function useModalState(open: boolean, onClose: () => void, canClose = true) {
+function useModalState(open: boolean, onClose: () => void, canClose = true) {
   return useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose });
 }
 
@@ -53,55 +54,35 @@ function ScheduleFollowUpModal({
   leadId,
   onClose,
   onSaved,
+  onRecordProgress,
 }: {
   open: boolean;
   leadId: string;
   onClose: () => void;
   onSaved: () => void;
+  onRecordProgress: (date: string, time: string) => void;
 }) {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [logActivity, setLogActivity] = useState(false);
-  const [action, setAction] = useState("CALL");
-  const [response, setResponse] = useState("");
-  const [interest, setInterest] = useState("");
-  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useModalState(open, onClose, !saving);
 
-  const responses = RESPONSE_OPTIONS[action] ?? [];
-  const interestVisible = isResponded(response);
-  const canSubmit = Boolean(date && (!logActivity || (response && (!interestVisible || interest))));
+  const canSubmit = Boolean(date && followUpFormDate(date, time));
 
   async function handleSubmit() {
     if (!canSubmit) return;
     setSaving(true);
     setError(null);
     try {
-      const localStr = time ? `${date}T${time}` : `${date}T00:00`;
-      const dueDate = new Date(localStr).toISOString();
-
-      if (logActivity) {
-        // Log activity with follow-up scheduling
-        await axios.post(`/api/leads/${leadId}/activities`, {
-          action,
-          response,
-          interest: interestVisible ? interest : null,
-          notes: notes.trim() || null,
-          scheduleFollowUp: true,
-          followUpDate: dueDate,
-          followUpTime: time || null,
-        });
-      } else {
-        // Schedule follow-up only
-        await axios.post(`/api/leads/${leadId}/follow-ups`, {
-          title: "Follow-up",
-          dueDate,
-          dueTime: time || null,
-          leadId,
-        });
-      }
+      const dueDate = followUpFormDate(date, time);
+      if (!dueDate) throw new Error("Enter a valid due date.");
+      await axios.post(`/api/leads/${leadId}/follow-ups`, {
+        title: "Follow-up",
+        dueDate,
+        dueTime: time || null,
+        leadId,
+      });
 
       toast.success("Follow-up scheduled");
       onSaved();
@@ -134,42 +115,9 @@ function ScheduleFollowUpModal({
             </div>
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={logActivity} onChange={(e) => setLogActivity(e.target.checked)} className="rounded border-[var(--color-border)] text-[var(--color-brand)] focus:ring-[var(--color-brand)]" />
-            <span className="text-sm font-medium text-[var(--color-ink)]">Also log activity</span>
-          </label>
-
-          {logActivity && (
-            <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
-              <div className="space-y-2">
-                <label htmlFor="schedule-activity-action" className="text-xs font-semibold text-[var(--color-muted)]">Action</label>
-                <Select id="schedule-activity-action" value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
-                  {ACTION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="schedule-activity-response" className="text-xs font-semibold text-[var(--color-muted)]">Response</label>
-                <Select id="schedule-activity-response" value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
-                  <option value="">Select response</option>
-                  {responses.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </Select>
-              </div>
-              {interestVisible && (
-                <div className="space-y-2">
-                  <label htmlFor="schedule-activity-interest" className="text-xs font-semibold text-[var(--color-muted)]">Interest</label>
-                  <Select id="schedule-activity-interest" value={interest} onChange={(e) => setInterest(e.target.value)}>
-                    <option value="">Select interest</option>
-                    <option value="INTERESTED">Interested</option>
-                    <option value="NOT_INTERESTED">Not Interested</option>
-                  </Select>
-                </div>
-              )}
-              <div className="space-y-2">
-                <label htmlFor="schedule-activity-notes" className="text-xs font-semibold text-[var(--color-muted)]">Notes</label>
-                <Textarea id="schedule-activity-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Add notes..." className="resize-none" />
-              </div>
-            </div>
-          )}
+          <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            Need to record a customer interaction too? <button type="button" onClick={() => onRecordProgress(date, time)} className="font-semibold underline underline-offset-2">Use Record Progress</button> to record it and schedule a follow-up together.
+          </div>
 
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700" role="alert">
@@ -181,158 +129,6 @@ function ScheduleFollowUpModal({
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
           <Button variant="black" onClick={handleSubmit} disabled={!canSubmit || saving}>
             {saving ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Saving...</span> : "Schedule"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CompleteFollowUpModal({
-  open,
-  followUp,
-  onClose,
-  onCompleted,
-}: {
-  open: boolean;
-  followUp: { id: string; title: string } | null;
-  onClose: () => void;
-  onCompleted: (data: { completedFollowUp: LeadFollowUp; nextFollowUp: LeadFollowUp | null }) => void;
-}) {
-  const [note, setNote] = useState("");
-  const [logActivity, setLogActivity] = useState(false);
-  const [action, setAction] = useState("CALL");
-  const [response, setResponse] = useState("");
-  const [interest, setInterest] = useState("");
-  const [activityNotes, setActivityNotes] = useState("");
-  const [scheduleNext, setScheduleNext] = useState(false);
-  const [nextDate, setNextDate] = useState("");
-  const [nextTime, setNextTime] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const dialogRef = useModalState(open, onClose, !saving);
-
-  const responses = RESPONSE_OPTIONS[action] ?? [];
-  const interestVisible = isResponded(response);
-
-  async function handleSubmit() {
-    if (!followUp) return;
-    setSaving(true);
-    setError(null);
-    try {
-      let nextFollowUp: { dueDate: string; dueTime: string | null } | null = null;
-      if (scheduleNext && nextDate) {
-        const localStr = nextTime ? `${nextDate}T${nextTime}` : `${nextDate}T00:00`;
-        nextFollowUp = {
-          dueDate: new Date(localStr).toISOString(),
-          dueTime: nextTime || null,
-        };
-      }
-
-      const result = await axios.post(`/api/follow-ups/${followUp.id}/complete`, {
-        note: note.trim() || null,
-        nextFollowUp,
-        activity: logActivity ? {
-          action,
-          response,
-          interest: interestVisible ? interest : null,
-          notes: activityNotes.trim() || null,
-        } : null,
-      });
-
-      onCompleted(result.data);
-      toast.success("Follow-up completed");
-      onClose();
-    } catch (err: unknown) {
-      const message = axios.isAxiosError(err) ? err.response?.data?.error : "Failed to complete follow-up";
-      setError(typeof message === "string" ? message : "Failed to complete follow-up");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!open || !followUp) return null;
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
-      <div ref={dialogRef} data-accessible-dialog role="dialog" aria-modal="true" aria-label="Complete follow-up" tabIndex={-1} className="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-xl border border-[var(--color-border)] max-h-[85vh] flex flex-col">
-        <div className="p-6 space-y-4 overflow-y-auto flex-1">
-          <div>
-            <h2 className="text-lg font-bold text-[var(--color-ink)]">Complete Follow-up</h2>
-            <p className="text-sm text-[var(--color-muted)] mt-1">{followUp.title}</p>
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="complete-follow-up-notes" className="text-sm font-medium text-[var(--color-ink)]">Notes / Outcome</label>
-            <Textarea id="complete-follow-up-notes" data-autofocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="What happened? What did the customer say?" rows={3} className="resize-none" />
-          </div>
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={logActivity} onChange={(e) => setLogActivity(e.target.checked)} className="rounded border-[var(--color-border)] text-[var(--color-brand)] focus:ring-[var(--color-brand)]" />
-            <span className="text-sm font-medium text-[var(--color-ink)]">Log activity</span>
-          </label>
-
-          {logActivity && (
-            <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
-              <div className="space-y-2">
-                <label htmlFor="complete-activity-action" className="text-xs font-semibold text-[var(--color-muted)]">Action</label>
-                <Select id="complete-activity-action" value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
-                  {ACTION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="complete-activity-response" className="text-xs font-semibold text-[var(--color-muted)]">Response</label>
-                <Select id="complete-activity-response" value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
-                  <option value="">Select response</option>
-                  {responses.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </Select>
-              </div>
-              {interestVisible && (
-                <div className="space-y-2">
-                  <label htmlFor="complete-activity-interest" className="text-xs font-semibold text-[var(--color-muted)]">Interest</label>
-                  <Select id="complete-activity-interest" value={interest} onChange={(e) => setInterest(e.target.value)}>
-                    <option value="">Select interest</option>
-                    <option value="INTERESTED">Interested</option>
-                    <option value="NOT_INTERESTED">Not Interested</option>
-                  </Select>
-                </div>
-              )}
-              <div className="space-y-2">
-                <label htmlFor="complete-activity-notes" className="text-xs font-semibold text-[var(--color-muted)]">Notes</label>
-                <Textarea id="complete-activity-notes" value={activityNotes} onChange={(e) => setActivityNotes(e.target.value)} rows={2} placeholder="Add notes..." className="resize-none" />
-              </div>
-            </div>
-          )}
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={scheduleNext} onChange={(e) => setScheduleNext(e.target.checked)} className="rounded border-[var(--color-border)] text-[var(--color-brand)] focus:ring-[var(--color-brand)]" />
-            <span className="text-sm font-medium text-[var(--color-ink)]">Schedule next follow-up</span>
-          </label>
-
-          {scheduleNext && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label htmlFor="complete-follow-up-date" className="text-xs font-medium text-[var(--color-muted)]">Date</label>
-                <Input id="complete-follow-up-date" type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} required />
-              </div>
-              <div className="space-y-1">
-                <label htmlFor="complete-follow-up-time" className="text-xs font-medium text-[var(--color-muted)]">Time</label>
-                <Input id="complete-follow-up-time" type="time" value={nextTime} onChange={(e) => setNextTime(e.target.value)} />
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700" role="alert">
-              {error}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)]">
-          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button variant="black" onClick={handleSubmit} disabled={saving}>
-            {saving ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Saving...</span> : "Complete"}
           </Button>
         </div>
       </div>
@@ -516,127 +312,67 @@ function FollowUpsColumn({
 }: {
   followUps: LeadFollowUp[];
   currentUserId: string;
-  onComplete: (id: string, title: string) => void;
+  onComplete: (id: string) => void;
   onReschedule: (id: string) => void;
   onDelete: (id: string) => void;
   onScheduleNew: () => void;
 }) {
-  const pending = followUps.filter((f) => f.status === "PENDING");
-
-  const now = new Date();
-  const todayStartUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const tomorrowStartUTC = new Date(todayStartUTC.getTime() + 24 * 60 * 60 * 1000);
-  const dayAfterTomorrowUTC = new Date(tomorrowStartUTC.getTime() + 24 * 60 * 60 * 1000);
-
-  const overdue = pending.filter((f) => {
-    if (!f.dueDate) return false;
-    return new Date(f.dueDate) < todayStartUTC;
-  });
-
-  const today = pending.filter((f) => {
-    if (!f.dueDate) return false;
-    const d = new Date(f.dueDate);
-    return d >= todayStartUTC && d < tomorrowStartUTC;
-  });
-
-  const tomorrow = pending.filter((f) => {
-    if (!f.dueDate) return false;
-    const d = new Date(f.dueDate);
-    return d >= tomorrowStartUTC && d < dayAfterTomorrowUTC;
-  });
-
-  const upcoming = pending.filter((f) => {
-    if (!f.dueDate) return true;
-    const d = new Date(f.dueDate);
-    return d >= dayAfterTomorrowUTC;
-  });
-
-  function renderGroup(label: string, items: LeadFollowUp[]) {
-    if (items.length === 0) return null;
-    return (
-      <div className="mb-4">
-        <h4 className="text-[10px] font-bold text-[var(--color-muted)] uppercase tracking-wider mb-2">{label}</h4>
-        <div className="space-y-2">
-          {items.map((fu) => {
-            const isOverdue = fu.dueDate && new Date(fu.dueDate) < todayStartUTC;
-            return (
-              <div
-                key={fu.id}
-                className={`rounded-xl border p-3 ${isOverdue ? "border-red-200 bg-red-50" : "border-[var(--color-border)] bg-white"}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    {fu.dueDate && (
-                      <p className="text-xs text-[var(--color-muted)]">
-                        {formatDate(fu.dueDate, "-")}
-                        {fu.dueTime ? ` · ${formatTime(fu.dueTime)}` : ""}
-                      </p>
-                    )}
-                    <p className="text-sm font-medium text-[var(--color-ink)] mt-0.5">{fu.title}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 mt-2">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => onComplete(fu.id, fu.title)}
-                  >
-                    <CheckCircle2 size={12} />
-                    Complete
-                  </Button>
-                  <IconActionButton
-                    icon={RotateCcw}
-                    label="Reschedule follow-up"
-                    onClick={() => onReschedule(fu.id)}
-                    className="h-7 w-7"
-                  />
-                  {fu.createdBy.id === currentUserId && (
-                    <IconActionButton
-                      icon={Trash2}
-                      label="Delete follow-up"
-                      onClick={() => onDelete(fu.id)}
-                      className="h-7 w-7"
-                    />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
+  const { pending, completed, overdueIds } = useMemo(() => organizeLeadWorkspaceFollowUps(followUps), [followUps]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="shrink-0 px-5 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
-          <h3 className="text-xs font-bold text-[var(--color-muted)] uppercase tracking-wider">Follow-ups</h3>
-          <Button size="sm" variant="secondary" onClick={onScheduleNew}>
-            <Plus size={12} />
-            Follow-up
-          </Button>
+    <section className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white" aria-labelledby="workspace-follow-ups-title">
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-3">
+        <div>
+          <h3 id="workspace-follow-ups-title" className="text-sm font-semibold text-[var(--color-ink)]">Follow-ups</h3>
+          <p className="mt-0.5 text-xs text-[var(--color-muted)]">{pending.length ? `${pending.length} pending` : "No pending tasks"}</p>
+        </div>
+        <Button size="sm" variant="secondary" onClick={onScheduleNew}><Plus size={14} />Schedule</Button>
       </div>
-      <div className="flex-1 overflow-y-auto px-5 py-3">
+
+      <div className="space-y-3 p-3">
         {pending.length === 0 ? (
-          <div className="text-center py-8 text-sm text-[var(--color-muted)]">
-            No upcoming follow-ups
-          </div>
-        ) : (
-          <>
-            {overdue.length > 0 && renderGroup("Overdue", overdue)}
-            {today.length > 0 && renderGroup("Today", today)}
-            {tomorrow.length > 0 && renderGroup("Tomorrow", tomorrow)}
-            {upcoming.length > 0 && renderGroup("Upcoming", upcoming)}
-          </>
+          <div className="rounded-xl bg-slate-50 px-3 py-4 text-sm text-[var(--color-muted)]">Nothing is waiting on this lead.</div>
+        ) : pending.map((followUp, index) => {
+          const overdue = overdueIds.has(followUp.id);
+          return (
+            <article key={followUp.id} className={`rounded-xl border p-3 ${overdue ? "border-red-200 bg-red-50/60" : "border-[var(--color-border)] bg-white"}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  {index === 0 && <span className="mb-1 inline-block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-brand)]">Next action</span>}
+                  <h4 className="break-words text-sm font-semibold text-[var(--color-ink)]">{followUp.title}</h4>
+                  <p className={`mt-1 text-xs ${overdue ? "font-semibold text-red-700" : "text-[var(--color-muted)]"}`}>
+                    {followUp.dueDate ? `${formatDate(followUp.dueDate, "-")}${followUp.dueTime ? ` · ${formatTime(followUp.dueTime)}` : ""}` : "No due date"}
+                  </p>
+                  {followUp.assignedUser && <p className="mt-1 text-xs text-[var(--color-muted)]">Owner: {followUp.assignedUser.name}</p>}
+                </div>
+                {overdue && <Badge label="Overdue" toneKey="URGENT" className="shrink-0" />}
+              </div>
+              <div className="mt-3 flex items-center gap-1.5">
+                <Button size="sm" variant="secondary" onClick={() => onComplete(followUp.id)}><CheckCircle2 size={13} />Record Progress</Button>
+                <IconActionButton icon={RotateCcw} label={`Reschedule ${followUp.title}`} onClick={() => onReschedule(followUp.id)} className="h-8 w-8" />
+                {followUp.createdBy.id === currentUserId && <IconActionButton icon={Trash2} label={`Delete ${followUp.title}`} onClick={() => onDelete(followUp.id)} className="h-8 w-8" />}
+              </div>
+            </article>
+          );
+        })}
+
+        {completed.length > 0 && (
+          <details className="rounded-xl border border-[var(--color-border)] px-3 py-2.5">
+            <summary className="cursor-pointer text-sm font-medium text-[var(--color-ink)]">Completed follow-ups <span className="text-[var(--color-muted)]">({completed.length})</span></summary>
+            <ul className="mt-3 space-y-2">
+              {completed.slice(0, 3).map((item) => <li key={item.id} className="flex items-start justify-between gap-3 text-sm"><span className="min-w-0 break-words text-[var(--color-ink)]">{item.title}</span><span className="shrink-0 text-xs text-[var(--color-muted)]">{item.completedAt ? formatDate(item.completedAt) : "Completed"}</span></li>)}
+            </ul>
+          </details>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
 export function LeadDetailsModal({
   leadId,
   currentUserId,
+  isAdmin,
   canArchive = false,
   canDelete = false,
   leadSources,
@@ -652,16 +388,16 @@ export function LeadDetailsModal({
   onClose: () => void;
   onUpdate?: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<LeftTab>("activity");
-  const [saving, setSaving] = useState(false);
-  const { data, loading: detailsLoading, refresh, patchData } = useLeadDetails(leadId);
+  const { data, loading: detailsLoading, refresh } = useLeadDetails(leadId);
   const leadDraft = data?.lead ?? null;
 
-  const [logActivityOpen, setLogActivityOpen] = useState(false);
+  const [recordProgressOpen, setRecordProgressOpen] = useState(false);
   const [scheduleFollowUpOpen, setScheduleFollowUpOpen] = useState(false);
-  const [completionFollowUp, setCompletionFollowUp] = useState<{ id: string; title: string } | null>(null);
+  const [completionFollowUpId, setCompletionFollowUpId] = useState<string | undefined>(undefined);
+  const [progressScheduleDraft, setProgressScheduleDraft] = useState<{ date: string; time: string } | null>(null);
   const [editActivity, setEditActivity] = useState<ActivityEventItem | null>(null);
   const [rescheduleFollowUp, setRescheduleFollowUp] = useState<{ id: string; dueDate: string | null; dueTime: string | null } | null>(null);
+  const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
   const [editLeadOpen, setEditLeadOpen] = useState(false);
 
   const [deleteFollowUpTarget, setDeleteFollowUpTarget] = useState<string | null>(null);
@@ -676,35 +412,7 @@ export function LeadDetailsModal({
   const [deletingConfirm, setDeletingConfirm] = useState(false);
   const [deleteConfirmError, setDeleteConfirmError] = useState<string | null>(null);
 
-  const dialogRef = useAccessibleDialog<HTMLDivElement>({ open: true, onClose, canClose: !saving });
-
-  const handleFieldChange = useCallback((field: string, value: string) => {
-    patchData((prev) => prev?.lead ? { ...prev, lead: { ...prev.lead, [field]: value } } : prev);
-  }, [patchData]);
-
-  const handleUpdate = useCallback(async () => {
-    if (!leadDraft) return;
-    setSaving(true);
-    try {
-      const payload: Record<string, unknown> = {
-        status: leadDraft.status,
-        priority: leadDraft.priority,
-        category: leadDraft.category || null,
-      };
-      await axios.patch(`/api/leads/${leadId}`, payload);
-      toast.success("Lead updated");
-      patchData((prev) => prev ? {
-        ...prev,
-        lead: { ...prev.lead, status: leadDraft.status, priority: leadDraft.priority, category: leadDraft.category },
-      } : prev);
-      refresh();
-      if (onUpdate) onUpdate();
-    } catch {
-      toast.error("Failed to update lead");
-    } finally {
-      setSaving(false);
-    }
-  }, [leadDraft, leadId, onUpdate, refresh, patchData]);
+  const dialogRef = useAccessibleDialog<HTMLDivElement>({ open: true, onClose });
 
   const handleToggleArchive = useCallback(() => {
     setArchiveConfirmError(null);
@@ -750,10 +458,6 @@ export function LeadDetailsModal({
     }
   }, [leadId, onClose, onUpdate]);
 
-  const handleCompleteFollowUp = useCallback(async () => {
-    refresh();
-  }, [refresh]);
-
   const handleEditActivity = useCallback(async (id: string, data: { action: string; response: string; interest: string | null; notes: string | null }) => {
     await axios.patch(`/api/activities/${id}`, data);
     toast.success("Activity updated");
@@ -784,20 +488,23 @@ export function LeadDetailsModal({
   const lead = leadDraft ?? data?.lead ?? null;
   const activityEvents = data?.activityEvents ?? [];
   const allFollowUps = data?.followUps ?? [];
+  const workspaceEvents = useMemo(
+    () => buildLeadWorkspaceTimeline(data?.activityEvents ?? [], data?.notes ?? []),
+    [data?.activityEvents, data?.notes],
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       <div
         ref={dialogRef}
         data-accessible-dialog
         role="dialog"
         aria-modal="true"
-        aria-label="Lead details"
+        aria-labelledby="lead-workspace-title"
         tabIndex={-1}
-        className="relative z-10 mt-4 mb-4 w-[95%] max-w-6xl flex flex-col bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] overflow-hidden"
-        style={{ height: "92vh", maxHeight: "92vh" }}
+        className="relative z-10 mt-2 mb-2 flex h-[96dvh] max-h-[96dvh] w-[96%] max-w-7xl flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-2xl sm:mt-4 sm:mb-4 sm:h-[92vh] sm:max-h-[92vh] sm:w-[95%]"
       >
         {detailsLoading ? (
           <div className="flex-1 flex items-center justify-center">
@@ -812,113 +519,77 @@ export function LeadDetailsModal({
             <LeadHeader
               lead={lead}
               onClose={onClose}
-              onChange={handleFieldChange}
-              onUpdate={handleUpdate}
+              onRecordProgress={() => { setCompletionFollowUpId(undefined); setProgressScheduleDraft(null); setRecordProgressOpen(true); }}
+              onViewDetails={() => setViewDetailsOpen(true)}
               onToggleArchive={handleToggleArchive}
               onDelete={handleDelete}
-              saving={saving}
               archiving={archivingConfirm}
               deleting={deletingConfirm}
               canArchive={canArchive}
               canDelete={canDelete}
             />
 
-            <div className="flex flex-1 overflow-hidden">
-              {/* Left Column - Navigation */}
-              <div className="w-[200px] shrink-0 border-r border-[var(--color-border)] flex flex-col bg-white">
-                <div className="flex flex-col p-2 gap-1">
-                  <button
-                    onClick={() => setActiveTab("activity")}
-                    className={`px-3 py-2 text-sm font-medium rounded-lg transition text-left ${
-                      activeTab === "activity"
-                        ? "bg-[var(--color-brand)]/10 text-[var(--color-brand)]"
-                        : "text-[var(--color-muted)] hover:text-[var(--color-ink)] hover:bg-slate-50"
-                    }`}
-                  >
-                    Activity
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("details")}
-                    className={`px-3 py-2 text-sm font-medium rounded-lg transition text-left ${
-                      activeTab === "details"
-                        ? "bg-[var(--color-brand)]/10 text-[var(--color-brand)]"
-                        : "text-[var(--color-muted)] hover:text-[var(--color-ink)] hover:bg-slate-50"
-                    }`}
-                  >
-                    Details
-                  </button>
-                </div>
-              </div>
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 p-3 sm:p-5 lg:overflow-hidden">
+              <div className="mx-auto grid max-w-7xl grid-cols-1 items-start gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-5">
+                <aside className="order-2 min-w-0 space-y-4 lg:order-2 lg:h-full lg:overflow-y-auto lg:pb-2" aria-label="Lead owner and follow-ups">
+                  <section className="rounded-2xl border border-[var(--color-border)] bg-white p-4" aria-labelledby="workspace-ownership-title">
+                    <h3 id="workspace-ownership-title" className="text-sm font-semibold text-[var(--color-ink)]">Lead owner</h3>
+                    <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
+                      <dt className="text-[var(--color-muted)]">Assigned to</dt><dd className="text-right font-medium text-[var(--color-ink)]">{lead.assignedUser?.name ?? "Unassigned"}</dd>
+                    </dl>
+                  </section>
+                  <FollowUpsColumn
+                    followUps={allFollowUps}
+                    currentUserId={currentUserId}
+                    onComplete={(id) => { setCompletionFollowUpId(id); setProgressScheduleDraft(null); setRecordProgressOpen(true); }}
+                    onReschedule={(id) => {
+                      const fu = allFollowUps.find((f) => f.id === id);
+                      if (fu) setRescheduleFollowUp({ id: fu.id, dueDate: fu.dueDate, dueTime: fu.dueTime });
+                    }}
+                    onDelete={handleDeleteFollowUp}
+                    onScheduleNew={() => setScheduleFollowUpOpen(true)}
+                  />
+                </aside>
 
-              {/* Center Column */}
-              <div className="flex-1 flex flex-col overflow-hidden">
-                {activeTab === "activity" && (
-                  <div className="shrink-0 px-5 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-[var(--color-muted)] uppercase tracking-wider">History</h3>
-                    <Button size="sm" variant="secondary" onClick={() => setLogActivityOpen(true)}>
-                      <Plus size={12} />
-                      Log Activity
-                    </Button>
-                  </div>
-                )}
-                {activeTab === "details" && (
-                  <div className="shrink-0 px-5 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-[var(--color-muted)] uppercase tracking-wider">Lead Details</h3>
-                    <Button size="sm" variant="secondary" onClick={() => setEditLeadOpen(true)}>
-                      <Pencil size={12} />
-                      Edit
-                    </Button>
-                  </div>
-                )}
-                <div className="flex-1 overflow-y-auto p-5">
-                  {activeTab === "activity" ? (
-                    <DailyHistory
-                      activityEvents={activityEvents}
-                      onEditActivity={(id) => {
-                        const event = activityEvents.find((e) => e.entries.some((en) => en.id === id));
-                        if (event) {
-                          const entry = event.entries.find((en) => en.id === id);
-                          if (entry && entry.action) {
-                            setEditActivity(event);
-                          }
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div className="space-y-5">
-                      <LeadInfoSection lead={lead as unknown as Parameters<typeof LeadInfoSection>[0]["lead"]} />
-                      <LeadMetadataCard lead={lead as unknown as Parameters<typeof LeadMetadataCard>[0]["lead"]} />
+                <main className="order-1 min-w-0 space-y-4 lg:order-1 lg:h-full lg:overflow-y-auto lg:pb-2">
+                  <section className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white" aria-labelledby="workspace-history-title">
+                    <div className="border-b border-[var(--color-border)] px-4 py-3 sm:px-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 id="workspace-history-title" className="text-sm font-semibold text-[var(--color-ink)]">Activity and history</h3>
+                          <p className="mt-0.5 text-xs text-[var(--color-muted)]">Most recent first · up to 100 activity events and 100 saved notes</p>
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Right Column - Follow-ups (persistent) */}
-              <div className="w-[300px] shrink-0 border-l border-[var(--color-border)] bg-white">
-                <FollowUpsColumn
-                  followUps={allFollowUps}
-                  currentUserId={currentUserId}
-                  onComplete={(id, title) => setCompletionFollowUp({ id, title })}
-                  onReschedule={(id) => {
-                    const fu = allFollowUps.find((f) => f.id === id);
-                    if (fu) setRescheduleFollowUp({ id: fu.id, dueDate: fu.dueDate, dueTime: fu.dueTime });
-                  }}
-                  onDelete={handleDeleteFollowUp}
-                  onScheduleNew={() => setScheduleFollowUpOpen(true)}
-                />
+                    <div className="px-4 py-2 sm:px-5">
+                      <DailyHistory
+                        activityEvents={workspaceEvents}
+                        onEditActivity={!isAdmin ? (id) => {
+                          const event = activityEvents.find((item) => item.entries.some((entry) => entry.id === id));
+                          if (event) setEditActivity(event);
+                        } : undefined}
+                      />
+                    </div>
+                  </section>
+                </main>
               </div>
             </div>
           </>
         )}
       </div>
 
-      <LogActivityModal
-        key={`lead:${leadId}:log-activity:${logActivityOpen ? "open" : "closed"}`}
-        open={logActivityOpen}
+      {recordProgressOpen && <RecordProgressModal
+        key={`lead:${leadId}:record-progress:${recordProgressOpen ? "open" : "closed"}:${completionFollowUpId ?? "none"}`}
+        open
         leadId={leadId}
-        onClose={() => setLogActivityOpen(false)}
-        onSaved={refresh}
-      />
+        leadName={lead?.displayName as string | undefined}
+        lead={leadDraft}
+        pendingFollowUps={allFollowUps.filter((item) => item.status === "PENDING")}
+        initialFollowUpId={completionFollowUpId}
+        initialFollowUpSchedule={progressScheduleDraft}
+        onClose={() => { setRecordProgressOpen(false); setCompletionFollowUpId(undefined); setProgressScheduleDraft(null); }}
+        onSaved={async () => { await refresh(); if (onUpdate) onUpdate(); }}
+      />}
 
       <ScheduleFollowUpModal
         key={`lead:${leadId}:schedule-follow-up:${scheduleFollowUpOpen ? "open" : "closed"}`}
@@ -926,16 +597,9 @@ export function LeadDetailsModal({
         leadId={leadId}
         onClose={() => setScheduleFollowUpOpen(false)}
         onSaved={refresh}
+        onRecordProgress={(date, time) => { setScheduleFollowUpOpen(false); setCompletionFollowUpId(undefined); setProgressScheduleDraft({ date, time }); setRecordProgressOpen(true); }}
       />
 
-      {completionFollowUp && (
-        <CompleteFollowUpModal
-          open={true}
-          followUp={completionFollowUp}
-          onClose={() => setCompletionFollowUp(null)}
-          onCompleted={handleCompleteFollowUp}
-        />
-      )}
 
       <EditActivityModal
         key={`lead:${leadId}:edit-activity:${editActivity?.id ?? "none"}:${editActivity ? "open" : "closed"}`}
@@ -953,6 +617,13 @@ export function LeadDetailsModal({
         onSaved={refresh}
       />
 
+      {lead && <LeadDetailsPopup
+        open={viewDetailsOpen}
+        lead={lead as unknown as Parameters<typeof LeadInfoSection>[0]["lead"]}
+        onClose={() => setViewDetailsOpen(false)}
+        onEdit={() => { setViewDetailsOpen(false); setEditLeadOpen(true); }}
+      />}
+
       {lead && (
         <LeadEditModal
           open={editLeadOpen}
@@ -966,7 +637,6 @@ export function LeadDetailsModal({
             phone: lead.phone as string | null,
             city: lead.city as string | null,
             state: lead.state as string | null,
-            product: lead.product as string | null,
             requirement: lead.requirement as string | null,
             status: lead.status,
             priority: lead.priority,

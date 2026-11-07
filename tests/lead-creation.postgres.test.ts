@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { createLeadRequestSchema } from "../src/lib/validation";
+import { createLeadRequestSchema, leadSchema } from "../src/lib/validation";
 
 const databaseUrl = process.env.LEADBRIDGE_TEST_DATABASE_URL;
 
-test("lead creation commits its creation event, optional interaction, and follow-up atomically", { skip: !databaseUrl }, async (t) => {
+test("LeadService preserves import and legacy initial-activity creation behavior", { skip: !databaseUrl }, async (t) => {
   assert.ok(databaseUrl);
   assert.match(new URL(databaseUrl).pathname, /test/i, "refusing to run against a database not named as a test database");
   process.env.DATABASE_URL = databaseUrl;
@@ -32,7 +32,7 @@ test("lead creation commits its creation event, optional interaction, and follow
 
     await t.test("legacy creation writes exactly one CREATED event", async () => {
       const rawPayload = { connectorRecord: { externalId: "raw-legacy", privateValue: "retained internally" } };
-      const result = await leadService.create(parsedLead({ ...leadInput("legacy"), rawPayload }), { id: salesId, role: "SALES", salesPrivilege: "SENIOR" });
+      const result = await leadService.create(leadSchema.parse({ ...leadInput("legacy"), rawPayload }), { id: salesId, role: "SALES", salesPrivilege: "SENIOR" });
       assert.equal(result.status, "created");
       if (result.status !== "created") return;
       leadIds.push(result.lead.id);
@@ -47,6 +47,23 @@ test("lead creation commits its creation event, optional interaction, and follow
       assert.equal(events.length, 1);
       assert.equal(events[0]?.type, "SYSTEM");
       assert.equal(events[0]?.entries.filter((entry) => entry.type === "CREATED").length, 1);
+    });
+
+    await t.test("imported Product values persist and remain after an edit that omits Product", async () => {
+      const result = await leadService.create(leadSchema.parse({
+        ...leadInput("product-import"),
+        company: "Imported company",
+        product: "Imported legacy value",
+      }), { id: salesId, role: "SALES", salesPrivilege: "SENIOR" });
+      assert.equal(result.status, "created");
+      if (result.status !== "created") return;
+      leadIds.push(result.lead.id);
+
+      assert.equal((await prisma.lead.findUnique({ where: { id: result.lead.id }, select: { product: true } }))?.product, "Imported legacy value");
+      const updated = await leadService.update(result.lead.id, { company: "Updated company" }, { id: salesId, role: "SALES", salesPrivilege: "SENIOR" });
+      assert.equal(updated.changed, true);
+      assert.equal((await prisma.lead.findUnique({ where: { id: result.lead.id }, select: { product: true, company: true } }))?.product, "Imported legacy value");
+      assert.equal((await leadService.getById(result.lead.id, { id: salesId, role: "SALES", salesPrivilege: "SENIOR" })).company, "Updated company");
     });
 
     await t.test("Sales creation writes a Call and assigns its follow-up under existing policy", async () => {
@@ -72,7 +89,7 @@ test("lead creation commits its creation event, optional interaction, and follow
       assert.equal(followUp?.createdById, salesId);
     });
 
-    await t.test("Admin remains activity author and uses existing Admin follow-up assignment behavior", async () => {
+    await t.test("Admin remains activity author and the assigned Sales owner receives the follow-up", async () => {
       const result = await leadService.create(parsedLead({
         ...leadInput("admin"), assignedUserId: salesId,
         initialActivity: {
@@ -87,7 +104,7 @@ test("lead creation commits its creation event, optional interaction, and follow
       assert.equal(interaction?.actorId, adminId);
       assert.equal(interaction?.entries.filter((entry) => entry.type === "WHATSAPP").length, 1);
       const followUp = await prisma.followUp.findFirst({ where: { leadId: result.lead.id } });
-      assert.equal(followUp?.assignedUserId, adminId);
+      assert.equal(followUp?.assignedUserId, salesId);
       assert.equal(followUp?.createdById, adminId);
       assert.equal((await prisma.lead.findUnique({ where: { id: result.lead.id }, select: { assignedUserId: true } }))?.assignedUserId, salesId);
       assert.deepEqual(result.affectedUserIds, [salesId]);

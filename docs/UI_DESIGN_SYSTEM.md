@@ -1,7 +1,7 @@
 # LeadBridge UI Design System
 
 > **Status:** Canonical — Implementation Contract
-> **Last verified:** 2026-10-09
+> **Last verified:** 2026-11-07
 > **Source of truth:** Current Sales UI (post Major Sales UI Overhaul)
 
 ---
@@ -44,7 +44,8 @@ The following components define the canonical UI language:
 - `src/components/shared/active-filters.tsx` — Active filter chips with reset
 - `src/components/sales/sales-table-controls.tsx` — Full filter/sort/pagination controls
 - `src/components/sales/sales-dashboard-client.tsx` — Dashboard content layout
-- `src/components/sales/lead-details-modal.tsx` — Full lead detail modal (3-column)
+- `src/components/sales/lead-details-modal.tsx` — Responsive Lead Workspace with identity header, primary activity/history timeline, and follow-up support column; customer information is in `LeadDetailsPopup`
+- `src/components/leads/record-progress-modal.tsx` — Canonical interaction, classification, and follow-up workflow
 - `src/components/sales/attention-center.tsx` — Attention center with segmented filter
 
 ---
@@ -208,6 +209,7 @@ Observed in the current Sales UI:
 | Loading (Spinner, ButtonSpinner, Overlay, PageLoader, SkeletonCard, SkeletonTable, SkeletonList) | `loading.tsx` | CANONICAL | Full loading system. |
 | DateTimeCell | `date-time-cell.tsx` | CANONICAL | Client-hydrated date+time for tables. |
 | ExpandableSection | `expandable-section.tsx` | REUSABLE | Show more/less with count. |
+| AccordionSection | `accordion-section.tsx` | REUSABLE | Controlled disclosure with full-width button header and accessible panel. |
 | IconActionButton | `icon-action-button.tsx` | CANONICAL | Square icon-only button for row actions. |
 | AnimatedReveal | `animated-reveal.tsx` | REUSABLE | GSAP fade-in animation. |
 
@@ -238,13 +240,13 @@ Observed in the current Sales UI:
 | SalesMyLeadsPageContent | `sales-my-leads-page-content.tsx` | CANONICAL | My Leads page with DataTable + controls. |
 | SalesTableControls | `sales-table-controls.tsx` | CANONICAL | Full filter panel. |
 | LeadDetailDialog | `lead-detail-dialog.tsx` | CANONICAL | URL-driven detail dialog. |
-| LeadDetailsModal | `lead-details-modal.tsx` | CANONICAL | Full 3-column detail modal. |
-| LeadHeader | `lead-header.tsx` | CANONICAL | Detail header with inline dropdowns. |
-| LeadInfoSection | `lead-info-section.tsx` | CANONICAL | General info key-value display. |
-| LeadMetadataCard | `lead-metadata-card.tsx` | CANONICAL | Record information display. |
+| LeadDetailsModal | `lead-details-modal.tsx` | CANONICAL | Responsive Lead Workspace; one details fetch shared by its sections. |
+| LeadDetailsPopup | `lead-details-popup.tsx` | CANONICAL | Accessible View Details dialog reusing LeadInfoSection and the existing edit flow. |
+| LeadHeader | `lead-header.tsx` | CANONICAL | Customer identity, contact links, classification badges, and primary actions including View Details. |
+| LeadInfoSection | `lead-info-section.tsx` | CANONICAL | Customer fields and record/lead timing metadata, omitting empty values. |
 | DailyHistory | `daily-history.tsx` | CANONICAL | Activity timeline by day. |
-| LogActivityModal | `log-activity-modal.tsx` | CANONICAL | Log call/whatsapp activity. |
-| ActivityFormFields | `activity-fields.tsx` | REUSABLE | Shared Call/WhatsApp and follow-up fields for standalone activity logging and initial lead activity. |
+| RecordProgressModal | `src/components/leads/record-progress-modal.tsx` | CANONICAL | Single interaction workflow used by Lead Workspace, Tasks, and My Leads. |
+| ActivityFormFields | `activity-fields.tsx` | REUSABLE | Shared Call/WhatsApp, conditional interest, notes, and follow-up fields for Add Lead and Record Progress. |
 | AttentionCenter | `attention-center.tsx` | CANONICAL | KPI cards + segmented filter + card grid. |
 | AttentionCard | `attention-card.tsx` | CANONICAL | Attention item card. |
 | TasksTableClient | `tasks-table-client.tsx` | CANONICAL | Follow-up tasks table. |
@@ -284,7 +286,7 @@ Observed in the current Sales UI:
 | `danger` | Destructive confirm buttons | Red bg, white text |
 | `ghost` | Inline text actions, Reset, Delete in header | Transparent, hover bg |
 | `outline` | Outlined CTAs | Blue border, blue text |
-| `black` | Modal primary actions (Save, Log Activity) | Black bg, white text |
+| `black` | Modal primary actions (Save, Record Progress) | Black bg, white text |
 
 **Sizes:** `sm` (compact), `md` (default), `lg` (rarely used).
 
@@ -450,9 +452,9 @@ All modals follow this structure:
 | Modal | Max Width |
 |-------|-----------|
 | ConfirmDialog | `max-w-md` |
-| LogActivityModal | `max-w-lg` |
+| RecordProgressModal | `max-w-2xl` |
 | LeadEditModal | `max-w-4xl` (90%w, 88vh) |
-| LeadDetailsModal | `max-w-6xl` (95%w, 92vh) |
+| LeadDetailsModal | `max-w-7xl` (95%w, 92vh desktop; 96dvh mobile) |
 | Filter panel (dropdown) | `w-[90vw] sm:w-[640px] lg:w-[720px]` |
 
 ### Modal Behavior

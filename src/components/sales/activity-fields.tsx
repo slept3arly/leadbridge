@@ -9,6 +9,7 @@ export function ActivityFormFields({
   idPrefix,
   autoFocusAction = false,
   showFieldGuidance = false,
+  showFollowUpScheduling = true,
   errors = {},
   action,
   response,
@@ -28,7 +29,8 @@ export function ActivityFormFields({
   idPrefix: string;
   autoFocusAction?: boolean;
   showFieldGuidance?: boolean;
-  errors?: { response?: string; interest?: string; followUpDate?: string };
+  showFollowUpScheduling?: boolean;
+  errors?: { action?: string; response?: string; interest?: string; notes?: string; followUpDate?: string; followUpTime?: string };
   action: string;
   response: string;
   interest: string;
@@ -54,9 +56,10 @@ export function ActivityFormFields({
     <>
       <div className="space-y-2">
         <label htmlFor={`${idPrefix}-action`} className="text-sm font-medium text-[var(--color-ink)]">Action{guidance("Required")}</label>
-        <Select id={`${idPrefix}-action`} data-autofocus={autoFocusAction || undefined} value={action} onChange={(e) => onActionChange(e.target.value)}>
+        <Select id={`${idPrefix}-action`} data-autofocus={autoFocusAction || undefined} value={action} onChange={(e) => onActionChange(e.target.value)} required aria-invalid={!!errors.action} aria-describedby={errors.action ? `${idPrefix}-action-error` : undefined}>
           {ACTIVITY_ACTION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </Select>
+        {errors.action && <p id={`${idPrefix}-action-error`} className="text-xs text-[var(--color-danger)]" role="alert">{errors.action}</p>}
       </div>
 
       <div className="space-y-2">
@@ -82,32 +85,36 @@ export function ActivityFormFields({
 
       <div className="space-y-2">
         <label htmlFor={`${idPrefix}-notes`} className="text-sm font-medium text-[var(--color-ink)]">Notes{guidance("Optional")}</label>
-        <Textarea id={`${idPrefix}-notes`} value={notes} onChange={(e) => onNotesChange(e.target.value)} rows={3} placeholder="Add notes..." className="resize-none" />
+        <Textarea id={`${idPrefix}-notes`} value={notes} onChange={(e) => onNotesChange(e.target.value)} rows={3} placeholder="Add notes..." className="resize-none" aria-invalid={!!errors.notes} aria-describedby={errors.notes ? `${idPrefix}-notes-error` : undefined} />
+        {errors.notes && <p id={`${idPrefix}-notes-error`} className="text-xs text-[var(--color-danger)]" role="alert">{errors.notes}</p>}
       </div>
 
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={scheduleFollowUp}
-          onChange={(e) => onScheduleFollowUpChange(e.target.checked)}
-          className="rounded border-[var(--color-border)] text-[var(--color-brand)] focus:ring-[var(--color-brand)]"
-        />
-        <span className="text-sm font-medium text-[var(--color-ink)]">Schedule follow-up</span>
-      </label>
+      {showFollowUpScheduling && <>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={scheduleFollowUp}
+            onChange={(e) => onScheduleFollowUpChange(e.target.checked)}
+            className="rounded border-[var(--color-border)] text-[var(--color-brand)] focus:ring-[var(--color-brand)]"
+          />
+          <span className="text-sm font-medium text-[var(--color-ink)]">Schedule follow-up</span>
+        </label>
 
-      {scheduleFollowUp && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label htmlFor={`${idPrefix}-follow-up-date`} className="text-xs font-medium text-[var(--color-muted)]">Date{guidance("Required")}</label>
-            <Input id={`${idPrefix}-follow-up-date`} type="date" value={followUpDate} onChange={(e) => onFollowUpDateChange(e.target.value)} required aria-invalid={!!errors.followUpDate} aria-describedby={errors.followUpDate ? `${idPrefix}-follow-up-date-error` : undefined} />
-            {errors.followUpDate && <p id={`${idPrefix}-follow-up-date-error`} className="text-xs text-[var(--color-danger)]" role="alert">{errors.followUpDate}</p>}
+        {scheduleFollowUp && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label htmlFor={`${idPrefix}-follow-up-date`} className="text-xs font-medium text-[var(--color-muted)]">Date{guidance("Required")}</label>
+              <Input id={`${idPrefix}-follow-up-date`} type="date" value={followUpDate} onChange={(e) => onFollowUpDateChange(e.target.value)} required aria-invalid={!!errors.followUpDate} aria-describedby={errors.followUpDate ? `${idPrefix}-follow-up-date-error` : undefined} />
+              {errors.followUpDate && <p id={`${idPrefix}-follow-up-date-error`} className="text-xs text-[var(--color-danger)]" role="alert">{errors.followUpDate}</p>}
+            </div>
+            <div className="space-y-1">
+              <label htmlFor={`${idPrefix}-follow-up-time`} className="text-xs font-medium text-[var(--color-muted)]">Time{guidance("Optional")}</label>
+              <Input id={`${idPrefix}-follow-up-time`} type="time" value={followUpTime} onChange={(e) => onFollowUpTimeChange(e.target.value)} aria-invalid={!!errors.followUpTime} aria-describedby={errors.followUpTime ? `${idPrefix}-follow-up-time-error` : undefined} />
+              {errors.followUpTime && <p id={`${idPrefix}-follow-up-time-error`} className="text-xs text-[var(--color-danger)]" role="alert">{errors.followUpTime}</p>}
+            </div>
           </div>
-          <div className="space-y-1">
-            <label htmlFor={`${idPrefix}-follow-up-time`} className="text-xs font-medium text-[var(--color-muted)]">Time{guidance("Optional")}</label>
-            <Input id={`${idPrefix}-follow-up-time`} type="time" value={followUpTime} onChange={(e) => onFollowUpTimeChange(e.target.value)} />
-          </div>
-        </div>
-      )}
+        )}
+      </>}
     </>
   );
 }

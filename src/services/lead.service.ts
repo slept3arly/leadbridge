@@ -16,12 +16,37 @@ import { followUpService } from "@/services/follow-up.service";
 export type LeadInput = z.infer<typeof leadSchema>;
 type InitialActivityInput = z.infer<typeof interactionActivitySchema>;
 type CreateLeadInput = LeadInput & { initialActivity?: InitialActivityInput };
-type Actor = { id: string; role: UserRole; salesPrivilege?: SalesPrivilege | null };
+export type LeadActor = { id: string; role: UserRole; salesPrivilege?: SalesPrivilege | null };
+type Actor = LeadActor;
+export type PreparedLeadCreation = {
+  assignedUserId: string | null;
+  duplicateCandidates: unknown[];
+};
+
+export type LeadFieldChange = { field: string; from: unknown; to: unknown };
+
+function comparableLeadValue(value: unknown): unknown {
+  if (value instanceof Date) return value.getTime();
+  if (value && typeof value === "object" && "toNumber" in value && typeof value.toNumber === "function") {
+    return value.toString();
+  }
+  if (Array.isArray(value)) return value.map(comparableLeadValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, comparableLeadValue(child)]));
+  }
+  return value;
+}
+
+function historyValue(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString();
+  if (value && typeof value === "object" && "toNumber" in value && typeof value.toNumber === "function") return value.toString();
+  return value;
+}
 
 const leadListSelect = {
   id: true, leadNumber: true, displayName: true, company: true,
   email: true, phone: true, city: true, state: true,
-  product: true, requirement: true,
+  requirement: true,
   status: true, priority: true, category: true, createdAt: true, updatedAt: true,
   nextFollowUpAt: true, lastFollowUpAt: true, isArchived: true,
   assignedUser: { select: { id: true, name: true } },
@@ -44,7 +69,7 @@ const leadDetailSelect = {
   parserVersion: true, receivedAt: true, importedAt: true,
   firstContactedAt: true, lastContactedAt: true, nextFollowUpAt: true,
   closedAt: true, lostReason: true, wonAmount: true,
-  status: true, priority: true, category: true, product: true, requirement: true,
+  status: true, priority: true, category: true, requirement: true,
   lastFollowUpAt: true, isArchived: true, isDeleted: true,
   customFields: true,
   sourceId: true, connectorId: true,
@@ -62,7 +87,7 @@ function toApiLead<T extends { displayName: string }>(lead: T) {
 }
 
 export type CreateLeadResult =
-  | { status: "created"; lead: { id: string }; affectedUserIds: string[] }
+  | { status: "created"; lead: { id: string }; interactionEventId: string | null; followUp: unknown | null; affectedUserIds: string[] }
   | { status: "skipped"; reason: string };
 
 export class LeadService {
@@ -89,6 +114,43 @@ export class LeadService {
     });
     if (!lead) throw new ServiceError("Lead not found or access denied.", 404);
     return lead;
+  }
+
+  /** Apply a normalized patch with optimistic concurrency inside the caller's transaction. */
+  async updateFieldsInTransaction(
+    tx: Prisma.TransactionClient,
+    existing: Prisma.LeadGetPayload<Record<string, never>>,
+    data: Partial<LeadInput>,
+    actorId: string,
+  ) {
+    const updateData: Record<string, unknown> = {};
+    const changes: LeadFieldChange[] = [];
+
+    for (const [field, value] of Object.entries(data)) {
+      const persistedField = field === "name" ? "displayName" : field;
+      const previous = (existing as unknown as Record<string, unknown>)[persistedField];
+      if (JSON.stringify(comparableLeadValue(previous)) === JSON.stringify(comparableLeadValue(value))) continue;
+      changes.push({ field, from: historyValue(previous), to: historyValue(value) });
+
+      if (field === "customFields" || field === "rawPayload") {
+        updateData[field] = value === null ? Prisma.JsonNull : value as Prisma.InputJsonValue;
+      } else {
+        updateData[persistedField] = value;
+      }
+    }
+
+    if (changes.length === 0) return { lead: existing, changes };
+
+    const result = await tx.lead.updateMany({
+      where: { id: existing.id, isDeleted: false, updatedAt: existing.updatedAt },
+      data: { ...updateData, updatedById: actorId } as Prisma.LeadUpdateManyMutationInput,
+    });
+    if (result.count !== 1) {
+      throw new ServiceError("Lead changed while this request was being processed. Reload and try again.", 409);
+    }
+
+    const lead = await tx.lead.findUniqueOrThrow({ where: { id: existing.id } });
+    return { lead, changes };
   }
 
   async getById(id: string, actor?: Actor) {
@@ -281,6 +343,19 @@ export class LeadService {
   }
 
   async create(data: CreateLeadInput, actor: Actor, executionFence?: ExecutionFence): Promise<CreateLeadResult> {
+    const prepared = await this.prepareCreate(data, actor);
+    if ("status" in prepared) return prepared;
+    try {
+      return await prisma.$transaction((tx) => this.createInTransaction(tx, data, actor, prepared, executionFence));
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return { status: "skipped", reason: "Duplicate lead detected (concurrent insert)." };
+      }
+      throw error;
+    }
+  }
+
+  async prepareCreate(data: CreateLeadInput, actor: Actor): Promise<PreparedLeadCreation | Extract<CreateLeadResult, { status: "skipped" }>> {
     if (!can(actor, Permission.CREATE_LEAD)) {
       throw new ServiceError("You do not have permission to create leads.", 403);
     }
@@ -305,153 +380,137 @@ export class LeadService {
       }
     }
 
-    const duplicates = await duplicateService.findPotentialDuplicates(data);
+    const duplicateCandidates = await duplicateService.findPotentialDuplicates(data);
+    return { assignedUserId: assignedUserId ?? null, duplicateCandidates };
+  }
+
+  async createInTransaction(
+    tx: Prisma.TransactionClient,
+    data: CreateLeadInput,
+    actor: Actor,
+    prepared: PreparedLeadCreation,
+    executionFence?: ExecutionFence,
+  ): Promise<CreateLeadResult> {
+    const { assignedUserId, duplicateCandidates } = prepared;
     const { name, customFields, rawPayload, status, priority, category, initialActivity, ...rest } = data;
-    return prisma.$transaction(async (tx) => {
-      if (executionFence) await assertExecutionFence(tx, executionFence);
-      try {
-        const lead = await tx.lead.create({
-          data: {
-            ...rest,
-            displayName: name,
-            status: status as LeadStatus,
-            priority: (priority ?? "MEDIUM") as LeadPriority,
-            category: (category ?? null) as LeadCategory | null,
-            createdById: actor.id === "system" ? null : actor.id,
-            assignedUserId: assignedUserId ?? null,
-            ...(customFields === null ? { customFields: Prisma.JsonNull } : customFields === undefined ? {} : { customFields: customFields as Prisma.InputJsonValue }),
-            ...(rawPayload === null ? { rawPayload: Prisma.JsonNull } : rawPayload === undefined ? {} : { rawPayload: rawPayload as Prisma.InputJsonValue }),
-          },
-          select: leadListSelect,
-        });
-        await activityEventService.createEvent({
-          leadId: lead.id,
-          type: "SYSTEM",
-          actorId: actor.id === "system" ? null : actor.id,
-          entries: [
-            {
-              type: "CREATED",
-              message: "Lead created",
-              metadata: duplicates.length ? { duplicateCandidates: duplicates } : undefined,
-            },
-          ],
-        }, tx);
-
-        if (initialActivity) {
-          const entries: import("@/services/activity-event.service").ActivityEntryInput[] = [{
-            type: initialActivity.action,
-            action: initialActivity.action,
-            response: initialActivity.response,
-            interest: initialActivity.interest,
-            message: initialActivity.notes || `${initialActivity.action} - ${initialActivity.response.replaceAll("_", " ")}${initialActivity.interest ? ` (${initialActivity.interest.replaceAll("_", " ")})` : ""}`,
-            metadata: initialActivity.notes ? { notes: initialActivity.notes } : undefined,
-          }];
-
-          if (initialActivity.scheduleFollowUp && initialActivity.followUpDate) {
-            const followUpResult = await followUpService.create({
-              leadId: lead.id,
-              title: `${initialActivity.action === "CALL" ? "Call" : "WhatsApp"} follow-up`,
-              description: initialActivity.notes,
-              dueDate: initialActivity.followUpDate,
-              dueTime: initialActivity.followUpTime,
-            }, actor, tx, false);
-
-            entries.push({
-              type: "FOLLOW_UP_SCHEDULED",
-              followUpId: followUpResult.followUp.id,
-              message: "Follow-up scheduled",
-              metadata: { dueDate: initialActivity.followUpDate, dueTime: initialActivity.followUpTime ?? null },
-            });
-          }
-
-          await activityEventService.createEvent({
-            leadId: lead.id,
-            type: "INTERACTION",
-            actorId: actor.id,
-            entries,
-          }, tx);
-        }
-        return {
-          status: "created",
-          lead: toApiLead(lead),
-          affectedUserIds: assignedUserId ? [assignedUserId] : [],
-        };
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-          return { status: "skipped", reason: "Duplicate lead detected (concurrent insert)." };
-        }
-        throw error;
-      }
+    if (executionFence) await assertExecutionFence(tx, executionFence);
+    const lead = await tx.lead.create({
+      data: {
+        ...rest,
+        displayName: name,
+        status: status as LeadStatus,
+        priority: (priority ?? "MEDIUM") as LeadPriority,
+        category: (category ?? null) as LeadCategory | null,
+        createdById: actor.id === "system" ? null : actor.id,
+        assignedUserId: assignedUserId ?? null,
+        ...(customFields === null ? { customFields: Prisma.JsonNull } : customFields === undefined ? {} : { customFields: customFields as Prisma.InputJsonValue }),
+        ...(rawPayload === null ? { rawPayload: Prisma.JsonNull } : rawPayload === undefined ? {} : { rawPayload: rawPayload as Prisma.InputJsonValue }),
+      },
+      select: leadListSelect,
     });
+    await activityEventService.createEvent({
+      leadId: lead.id,
+      type: "SYSTEM",
+      actorId: actor.id === "system" ? null : actor.id,
+      entries: [{
+        type: "CREATED",
+        message: "Lead created",
+        metadata: duplicateCandidates.length ? { duplicateCandidates } : undefined,
+      }],
+    }, tx);
+
+    let interactionEventId: string | null = null;
+    let createdFollowUp: unknown | null = null;
+    if (initialActivity) {
+      const entries: import("@/services/activity-event.service").ActivityEntryInput[] = [{
+        type: initialActivity.action,
+        action: initialActivity.action,
+        response: initialActivity.response,
+        interest: initialActivity.interest,
+        message: initialActivity.notes || `${initialActivity.action} - ${initialActivity.response.replaceAll("_", " ")}${initialActivity.interest ? ` (${initialActivity.interest.replaceAll("_", " ")})` : ""}`,
+        metadata: initialActivity.notes ? { notes: initialActivity.notes } : undefined,
+      }];
+
+      if (initialActivity.scheduleFollowUp && initialActivity.followUpDate) {
+        const followUpResult = await followUpService.create({
+          leadId: lead.id,
+          title: `${initialActivity.action === "CALL" ? "Call" : "WhatsApp"} follow-up`,
+          description: null,
+          dueDate: initialActivity.followUpDate,
+          dueTime: initialActivity.followUpTime,
+          assignedUserId: assignedUserId ?? actor.id,
+        }, actor, tx, false);
+
+        createdFollowUp = followUpResult.followUp;
+        entries.push({
+          type: "FOLLOW_UP_SCHEDULED",
+          followUpId: followUpResult.followUp.id,
+          message: "Follow-up scheduled",
+          metadata: { dueDate: initialActivity.followUpDate, dueTime: initialActivity.followUpTime ?? null },
+        });
+      }
+
+      const interactionEvent = await activityEventService.createEvent({
+        leadId: lead.id,
+        type: "INTERACTION",
+        actorId: actor.id,
+        entries,
+      }, tx);
+      interactionEventId = interactionEvent.id;
+    }
+
+    const createdLead = createdFollowUp
+      ? await tx.lead.findUniqueOrThrow({ where: { id: lead.id }, select: leadListSelect })
+      : lead;
+    return {
+      status: "created",
+      lead: toApiLead(createdLead),
+      interactionEventId,
+      followUp: createdFollowUp,
+      affectedUserIds: assignedUserId ? [assignedUserId] : [],
+    };
   }
 
   async update(id: string, data: Partial<LeadInput>, actor: Actor) {
-    const existing = await this.assertAccess(id, actor);
-    if ("isArchived" in data && !can(actor, Permission.ARCHIVE_LEAD)) {
-      throw new ServiceError("You do not have permission to archive leads.", 403);
+    if (data.nextFollowUpAt !== undefined) {
+      throw new ServiceError("Follow-up dates must be changed through follow-up operations.", 400);
     }
-    await this.assertAssignableUser(data.assignedUserId, actor);
-    const { name, customFields, rawPayload, status, priority, category, ...rest } = data;
     return prisma.$transaction(async (tx) => {
-      const lead = await tx.lead.update({
-        where: { id },
-        data: {
-          ...rest,
-          ...(name === undefined ? {} : { displayName: name }),
-          ...(status === undefined ? {} : { status: status as LeadStatus }),
-          ...(priority === undefined ? {} : { priority: priority as LeadPriority }),
-          ...(category === undefined ? {} : { category: category as LeadCategory | null }),
-          ...(customFields === null ? { customFields: Prisma.JsonNull } : customFields === undefined ? {} : { customFields: customFields as Prisma.InputJsonValue }),
-          ...(rawPayload === null ? { rawPayload: Prisma.JsonNull } : rawPayload === undefined ? {} : { rawPayload: rawPayload as Prisma.InputJsonValue }),
-          updatedById: actor.id,
-        },
-        select: leadListSelect,
+      const existing = await tx.lead.findFirst({
+        where: { id, isDeleted: false, ...this.accessWhere(actor) },
       });
-      const statusChanged = status && status !== existing.status;
+      if (!existing) throw new ServiceError("Lead not found or access denied.", 404);
+      if ("isArchived" in data && !can(actor, Permission.ARCHIVE_LEAD)) {
+        throw new ServiceError("You do not have permission to archive leads.", 403);
+      }
+      await this.assertAssignableUser(data.assignedUserId, actor);
 
-      if (statusChanged) {
-        await activityEventService.createEvent({
-          leadId: id,
-          type: "SYSTEM",
-          actorId: actor.id,
-          entries: [
-            {
-              type: "STATUS_CHANGED",
-              message: `Status changed to ${status}`,
-              metadata: { from: existing.status, to: status },
-            },
-          ],
-        }, tx);
-      } else {
-        await activityEventService.createEvent({
-          leadId: id,
-          type: "SYSTEM",
-          actorId: actor.id,
-          entries: [
-            {
-              type: "UPDATED",
-              message: "Lead updated",
-            },
-          ],
-        }, tx);
+      const { changes } = await this.updateFieldsInTransaction(tx, existing, data, actor.id);
+      const lead = await tx.lead.findUniqueOrThrow({ where: { id }, select: leadListSelect });
+      if (changes.length > 0) {
+        const statusChange = changes.find((change) => change.field === "status");
+        const otherChanges = changes.filter((change) => change.field !== "status");
+        const entries: import("@/services/activity-event.service").ActivityEntryInput[] = [];
+        if (statusChange) {
+          entries.push({
+            type: "STATUS_CHANGED",
+            message: `Status changed to ${String(statusChange.to)}`,
+            metadata: { from: statusChange.from, to: statusChange.to },
+          });
+        }
+        if (otherChanges.length > 0) {
+          entries.push({
+            type: "UPDATED",
+            message: "Lead updated",
+            metadata: { changes: otherChanges },
+          });
+        }
+        await activityEventService.createEvent({ leadId: id, type: "SYSTEM", actorId: actor.id, entries }, tx);
       }
 
-      if (data.nextFollowUpAt !== undefined) {
-        await activityEventService.createEvent({
-          leadId: id,
-          type: "SYSTEM",
-          actorId: actor.id,
-          entries: [
-            {
-              type: "UPDATED",
-              message: data.nextFollowUpAt ? "Follow-up scheduled" : "Follow-up cleared",
-              metadata: { nextFollowUpAt: data.nextFollowUpAt?.toISOString() ?? null },
-            },
-          ],
-        }, tx);
-      }
       return {
         lead: toApiLead(lead),
+        changed: changes.length > 0,
         affectedUserIds: Array.from(new Set([existing.assignedUserId, lead.assignedUser?.id].filter((id): id is string => Boolean(id)))),
       };
     });

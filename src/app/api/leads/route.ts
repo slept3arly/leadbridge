@@ -3,6 +3,7 @@ import { withApiAuthorization, withPermissionAuthorization, apiError, handleApiE
 import { createLeadRequestSchema } from "@/lib/validation";
 import { parseListQuery } from "@/lib/query-builder";
 import { leadService } from "@/services/lead.service";
+import { leadWorkflowService } from "@/services/lead-workflow.service";
 import { mutateAndInvalidate } from "@/lib/cache-tags";
 import { Permission } from "@/lib/permissions";
 
@@ -23,7 +24,7 @@ export const POST = withPermissionAuthorization(Permission.CREATE_LEAD, async (r
   try {
     const result = await mutateAndInvalidate(
       session.user.id,
-      () => leadService.create(parsed.data, session.user),
+      () => leadWorkflowService.createLeadWithInitialActivity(parsed.data, session.user),
       (created) => created.status === "created" ? created.affectedUserIds : null,
     );
     if (result.status === "skipped") {

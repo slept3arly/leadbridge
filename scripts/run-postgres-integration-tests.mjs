@@ -34,6 +34,7 @@ const testFiles = [
   "tests/follow-up-completion.postgres.test.ts",
   "tests/dashboard-activity.postgres.test.ts",
   "tests/lead-creation.postgres.test.ts",
+  "tests/lead-workflow.postgres.test.ts",
   "tests/note-scheduling.postgres.test.ts",
 ];
 const result = spawnSync(process.execPath, ["--import", "tsx", "--test", ...testFiles], {

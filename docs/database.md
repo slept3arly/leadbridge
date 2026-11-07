@@ -1,7 +1,7 @@
 # LeadBridge Database
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-05
+> **Last verified:** 2026-11-07
 > **Source of truth:** `prisma/schema.prisma`, `prisma.config.ts`, `src/lib/prisma.ts`
 
 ## Configuration
@@ -67,7 +67,7 @@ The runtime uses Prisma's `@prisma/adapter-pg` driver adapter and the Node Postg
 
 | Model | Table | Purpose |
 |---|---|---|
-| `Lead` | `Lead` | Core lead record with contact details, status, priority, category |
+| `Lead` | `Lead` | Core lead record with contact details, status, priority, category; nullable `product` remains for imported and historical data |
 | `LeadSource` | `LeadSource` | Vendor/provider registry (e.g., "IndiaMART", "Website") |
 | `Note` | `Note` | Interaction notes attached to leads |
 | `FollowUp` | `FollowUp` | Scheduled follow-up tasks linked to leads |
