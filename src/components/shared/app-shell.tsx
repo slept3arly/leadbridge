@@ -5,14 +5,16 @@ import { BottomNavigation } from "@/components/shared/navigation/BottomNavigatio
 export function AppShell({
   children,
   role,
+  salesCanExportLeads = false,
   surfaceClassName = "bg-[var(--color-surface-raised)]",
 }: {
   children: ReactNode;
   role: "ADMIN" | "SALES";
+  salesCanExportLeads?: boolean;
   surfaceClassName?: string;
 }) {
   return (
-    <NavigationProvider role={role}>
+    <NavigationProvider role={role} salesCanExportLeads={salesCanExportLeads}>
       <div className={`min-h-screen p-4 pb-24 md:p-6 md:pb-24 ${surfaceClassName}`}>
         <div className="mx-auto max-w-7xl">
           <main className="space-y-6">{children}</main>

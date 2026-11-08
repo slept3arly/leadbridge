@@ -1,6 +1,5 @@
 import { Navbar } from "@/components/shared/navbar";
 import { SignOutButton } from "@/components/shared/sign-out-button";
-import { ExportButton } from "@/components/shared/export-button";
 import { SalesMyLeadsPageContent } from "@/components/sales/sales-my-leads-page-content";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/session";
@@ -59,7 +58,6 @@ export default async function SalesMyLeadsPage({
         showResync
         actions={
           <>
-            {canExport && <ExportButton type="leads" iconOnly />}
             <SignOutButton />
           </>
         }
@@ -71,6 +69,7 @@ export default async function SalesMyLeadsPage({
         leadSources={leadSources}
         autoOpenLeadId={autoOpenLeadId}
         user={user}
+        canExport={canExport}
         canDelete={canDelete}
         canArchive={canArchive}
         canCreate={canCreate}

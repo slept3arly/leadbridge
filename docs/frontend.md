@@ -10,7 +10,7 @@
 - **Client components** (`"use client"`) are used for interactive UI: tables, modals, forms, filters
 - **No server actions** -- all mutations via API routes
 
-## Pages (13)
+## Pages (15)
 
 | Route | File | Type |
 |---|---|---|
@@ -22,15 +22,19 @@
 | `/admin/providers` | `src/app/(dashboard)/admin/providers/page.tsx` | Provider management |
 | `/admin/connectors` | `src/app/(dashboard)/admin/connectors/page.tsx` | Connector management |
 | `/admin/reports` | `src/app/(dashboard)/admin/reports/page.tsx` | Analytics & reports |
+| `/admin/exports` | `src/app/(dashboard)/admin/exports/page.tsx` | Role-authorized export workspace |
 | `/admin/settings` | `src/app/(dashboard)/admin/settings/page.tsx` | System settings |
 | `/sales` | `src/app/(dashboard)/sales/page.tsx` | Sales dashboard |
 | `/sales/my-leads` | `src/app/(dashboard)/sales/my-leads/page.tsx` | My Leads list |
 | `/sales/tasks` | `src/app/(dashboard)/sales/tasks/page.tsx` | Tasks / Attention Center |
 | `/sales/profile` | `src/app/(dashboard)/sales/profile/page.tsx` | User profile |
+| `/sales/exports` | `src/app/(dashboard)/sales/exports/page.tsx` | Senior Sales lead export workspace |
 
 The Admin dashboard presents CRM-wide lead totals, status and priority breakdowns, assignment and pending follow-up workload, daily sales activity, salesperson performance, connector status and recent syncs, and recent activity. Its metric cards and tables reuse the shared `KpiCard`, `Badge`, and `DataTable` components.
 
 The Admin Leads page lists CRM-wide leads with URL-backed search, assignment, status, priority, source, archive, activity, follow-up, date, sort, and pagination filters. It uses the shared `SalesTableControls` and compact table styling, with Admin assignment filters and quick links enabled. Rows open the shared lead details workflow for activity and follow-up management; create/edit, archive/restore, delete, and export use existing API routes and services. Archived leads are shown by selecting the archived filter, while the default list excludes them.
+
+The Admin and Senior Sales export workspaces expose the currently supported Lead filters: status, source, action, response, priority, category, interest, archive state, search, lead-created date range, and activity occurrence date. Activity values must match the same CALL/WHATSAPP entry on a matching event. Admin may narrow by salesperson or unassigned state; Senior Sales sees no assignee control and remains scoped to their own assigned non-deleted leads. Export columns remain fixed for compatibility. `Lead Number` still shows the stored identifier string because the schema has no reliable numeric lead sequence.
 
 ## Create and Edit Leads
 
@@ -109,8 +113,8 @@ Header with logo, section title, search/filter triggers, resync button, user ava
 ### Bottom Navigation (`src/components/shared/navigation/`)
 Fixed bottom bar on all viewports:
 
-- **Admin:** Dashboard, Leads, Reports, "More" drawer
-- **Sales:** Dashboard, My Leads, Tasks, Profile
+- **Admin:** Dashboard, Leads, Reports, "More" drawer (including Exports)
+- **Sales:** Dashboard, My Leads, Tasks, Profile; Senior Sales also receives Exports
 
 ### "More" Drawer (`BottomNavigationMenu.tsx`)
 Secondary admin links: Connectors, Users, Providers, Settings.
@@ -147,7 +151,7 @@ Secondary admin links: Connectors, Users, Providers, Settings.
 | Component | Description |
 |---|---|
 | `DataTable` | Reusable table with loading/empty states |
-| `ExportButton` | CSV export trigger with toast feedback |
+| `ExportButton` | Browser-native CSV download shortcut; passes supported URL-backed filters and blocks shortcuts when active filters cannot be represented |
 | `DateRangePicker` | Date range selector |
 | `KpiCard` | Summary metric display |
 | `ResyncButton` | Manual refresh action |

@@ -1,7 +1,7 @@
 # LeadBridge Performance
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-05
+> **Last verified:** 2026-11-07
 > **Source of truth:** `src/services/`, `src/lib/`, `prisma/schema.prisma`
 
 ## Current Performance Architecture
@@ -21,7 +21,7 @@
 | Dashboard admin | 14 parallel queries | Activity metrics use PostgreSQL grouping sets; only aggregate rows are returned |
 | Dashboard sales | 9 parallel queries | Activity metrics use one PostgreSQL aggregate instead of seven lead-ID result sets |
 | Attention center CTE | 4 CTEs with MATERIALIZED | Joins 5 tables |
-| Export leads | OFFSET in while loop (1000/batch) | Background export |
+| CSV exports | Exact filtered count + 250-row keyset batches | Streamed response; 50,000 row, 25 MB serialized-body, 30-second application limits; no snapshot across pages |
 
 ### Search
 
@@ -40,6 +40,8 @@ Leading wildcard prevents B-tree index usage. Each OR branch causes a sequential
 ### Pagination
 
 OFFSET-based pagination throughout. Activity events (`activityEventService.listByLead`) use cursor-based pagination.
+
+The five current CSV export categories use keyset batches rather than OFFSET and serialize one row at a time to the response. Each count/page query uses a short transaction; the export does not retain a transaction snapshot during download. The application enforces row, generated-byte, and elapsed-time limits, while an in-flight Prisma query is bounded by PostgreSQL statement timeout rather than immediate disconnect cancellation. These export constraints and concurrency limitations are documented in [the Phase 3 reliability note](experiments/21_EXPORT_DELIVERY_RELIABILITY.md); they have not been benchmarked against a production database.
 
 Lead detail projections omit `Lead.rawPayload`, which is retained for connector ingestion but is not used by the ordinary lead detail UI or API response.
 

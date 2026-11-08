@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/activity-patch-validation.test.ts tests/cache-tags.test.ts tests/crm-sync.test.ts tests/database-readiness.test.ts tests/lead-creation-validation.test.ts tests/lead-workflow-entrypoints.test.ts tests/lead-workflow-form.test.ts tests/lead-workspace.test.ts tests/record-progress-accordion.test.ts tests/record-progress-follow-ups.test.ts tests/note-scheduling-validation.test.ts tests/phase1-hardening.test.ts",
+    "test": "node --import tsx --test tests/activity-patch-validation.test.ts tests/cache-tags.test.ts tests/crm-sync.test.ts tests/database-readiness.test.ts tests/lead-creation-validation.test.ts tests/lead-workflow-entrypoints.test.ts tests/lead-workflow-form.test.ts tests/lead-workspace.test.ts tests/record-progress-accordion.test.ts tests/record-progress-follow-ups.test.ts tests/note-scheduling-validation.test.ts tests/phase1-hardening.test.ts tests/export-contracts.test.ts tests/export-query.test.ts tests/export-delivery.test.ts tests/export-ui.test.ts",
     "test:integration": "node scripts/run-postgres-integration-tests.mjs",
     "db:generate": "pnpm exec prisma generate",
     "db:migrate": "pnpm exec prisma migrate dev",

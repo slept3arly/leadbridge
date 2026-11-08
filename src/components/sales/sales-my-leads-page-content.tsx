@@ -168,6 +168,7 @@ export function SalesMyLeadsPageContent({
   leadSources,
   autoOpenLeadId,
   user,
+  canExport,
   canDelete,
   canArchive,
   canCreate,
@@ -178,6 +179,7 @@ export function SalesMyLeadsPageContent({
   leadSources: Array<{ id: string; name: string }>;
   autoOpenLeadId: string | null;
   user: { id: string; role: string };
+  canExport: boolean;
   canDelete: boolean;
   canArchive: boolean;
   canCreate: boolean;
@@ -353,6 +355,7 @@ export function SalesMyLeadsPageContent({
         initial={initial}
         pagination={pagination}
         leadSources={leadSources}
+        showExportShortcut={canExport}
         startTransition={startTransition}
         actions={
           canCreate ? (

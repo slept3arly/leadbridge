@@ -29,10 +29,12 @@ export function UsersPageContent({
   users,
   initial,
   pagination,
+  showExportShortcut = false,
 }: {
   users: SerializedUser[];
   initial: Partial<TableQueryState>;
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
+  showExportShortcut?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [modalOpen, setModalOpen] = useState(false);
@@ -63,6 +65,7 @@ export function UsersPageContent({
       <UserTableControls
         initial={initial}
         pagination={pagination}
+        showExportShortcut={showExportShortcut}
         actions={
           <Button variant="secondary" onClick={openCreate} className="h-10">
             <Plus size={16} />

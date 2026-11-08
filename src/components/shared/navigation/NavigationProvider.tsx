@@ -10,9 +10,8 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import {
-  adminNavigation,
-  salesNavigation,
   flattenNav,
+  getNavigation,
   type NavItem,
   type NavGroup,
 } from "@/lib/navigation";
@@ -39,18 +38,17 @@ export function useNavigation() {
 
 export function NavigationProvider({
   role,
+  salesCanExportLeads = false,
   children,
 }: {
   role: "ADMIN" | "SALES";
+  salesCanExportLeads?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const groups = useMemo(
-    () => (role === "ADMIN" ? adminNavigation : salesNavigation),
-    [role],
-  );
+  const groups = useMemo(() => getNavigation(role, salesCanExportLeads), [role, salesCanExportLeads]);
 
   const flattened = useMemo(() => flattenNav(groups), [groups]);
 

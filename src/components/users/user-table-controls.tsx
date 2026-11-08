@@ -4,10 +4,12 @@ import { useState, useRef, useEffect, useMemo, type ReactNode, type TransitionSt
 import { SearchToolbar } from "@/components/shared/search-toolbar";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { ExportButton } from "@/components/shared/export-button";
 import { ActiveFilters } from "@/components/shared/active-filters";
 import { Filter, X } from "lucide-react";
 import { useTableQuery, type TableQueryState } from "@/hooks/use-table-query";
 import { formatDate } from "@/lib/utils";
+import { getContextualExportParamsFromState } from "@/lib/export/ui";
 
 const SORT_OPTIONS = [
   { value: "createdAt:desc", label: "Newest Created" },
@@ -28,14 +30,17 @@ export function UserTableControls({
   initial,
   pagination,
   actions,
+  showExportShortcut = false,
   startTransition,
 }: {
   initial: Partial<TableQueryState>;
   pagination?: { page: number; pageSize: number; total: number; totalPages: number };
   actions?: ReactNode;
+  showExportShortcut?: boolean;
   startTransition?: TransitionStartFunction;
 }) {
   const query = useTableQuery(initial, 300, startTransition);
+  const exportContext = getContextualExportParamsFromState("users", query);
   const [filterOpen, setFilterOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -143,6 +148,7 @@ export function UserTableControls({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+        {showExportShortcut && <ExportButton type="users" params={exportContext.params} disabledReason={exportContext.error} iconOnly />}
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         <div className="relative shrink-0">
           <button

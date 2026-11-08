@@ -9,6 +9,7 @@ import {
   Cable,
   ClipboardList,
   CircleUser,
+  Download,
 } from "lucide-react";
 
 const iconProps = { size: 22, strokeWidth: 1.5 };
@@ -38,6 +39,7 @@ export const salesPrimaryOrder = [
   "/sales",
   "/sales/my-leads",
   "/sales/tasks",
+  "/sales/exports",
   "/sales/profile",
 ];
 
@@ -66,10 +68,19 @@ export const adminNavigation: NavGroup[] = [
       { href: "/admin/connectors", label: "Connectors", icon: <Cable {...iconProps} /> },
       { href: "/admin/users", label: "User Administration", icon: <UserCog {...iconProps} /> },
       { href: "/admin/providers", label: "Providers", icon: <Building2 {...iconProps} /> },
+      { href: "/admin/exports", label: "Exports", icon: <Download {...iconProps} /> },
       { href: "/admin/settings", label: "Settings", icon: <Settings {...iconProps} /> },
     ],
   },
 ];
+
+export function getNavigation(role: "ADMIN" | "SALES", salesCanExportLeads = false): NavGroup[] {
+  if (role === "ADMIN") return adminNavigation;
+  if (!salesCanExportLeads) return salesNavigation;
+  return salesNavigation.map((group) => group.title === "Sales"
+    ? { ...group, items: [...group.items, { href: "/sales/exports", label: "Exports", icon: <Download {...iconProps} /> }] }
+    : group);
+}
 
 export const salesNavigation: NavGroup[] = [
   {

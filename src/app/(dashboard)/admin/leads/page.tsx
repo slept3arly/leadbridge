@@ -1,6 +1,5 @@
 import { Navbar } from "@/components/shared/navbar";
 import { SignOutButton } from "@/components/shared/sign-out-button";
-import { ExportButton } from "@/components/shared/export-button";
 import { AdminLeadsPageContent, type SerializedLead } from "@/components/leads/admin-leads-page-content";
 import { prisma } from "@/lib/prisma";
 import { leadService } from "@/services/lead.service";
@@ -74,7 +73,6 @@ export default async function AdminLeadsPage({
         showResync
         actions={
           <>
-            <ExportButton type="leads" iconOnly />
             <SignOutButton />
           </>
         }

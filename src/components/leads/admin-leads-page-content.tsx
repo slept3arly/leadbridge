@@ -109,6 +109,7 @@ export function AdminLeadsPageContent({
         leadSources={leadSources}
         assignableUsers={assignableUsers}
         adminMode
+        showExportShortcut
         startTransition={startTransition}
         actions={
           <div className="flex items-center gap-2">

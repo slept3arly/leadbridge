@@ -153,7 +153,13 @@
 
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/export` | GET | Any authenticated | Download CSV export |
+| `/api/export` | GET | ADMIN; SALES/SENIOR for leads only | Download current CSV export types |
+
+The current endpoint supports `leads`, `users`, `providers`, `sync-history`, and `reports`, with the existing query parameters, filenames, CSV column order, and download response. It streams UTF-8 CSV rows and enforces 50,000 rows, 25,000,000 serialized body bytes, and a 30-second application deadline. Responses are marked private/no-store. Planned categories remain unavailable. The legacy Sync Run `Error` column is retained but blank; stream failures after headers start terminate the body without appending diagnostics. Export operation logs use best-effort structured Pino events. See [the Phase 2 query architecture](experiments/20_EXPORT_QUERY_ARCHITECTURE.md) and [Phase 3 delivery reliability](experiments/21_EXPORT_DELIVERY_RELIABILITY.md).
+
+The Admin and Senior Sales workspaces are `/admin/exports` and `/sales/exports`. The pages use the same endpoint and do not add a preview/count API. Leads accept `status`, `source`, `activityAction`, `activityResponse`, `activityInterest`, `priority`, `category`, `archived`, `assignedUserId` (ADMIN only), `search`, lead creation `from`/`to`, and `activityDate` with optional `activityFrom`/`activityTo`. Multi-value filters are comma-separated; values within a group are ORed and groups are ANDed. Activity values and occurrence date must match a CALL/WHATSAPP entry on the same ActivityEvent. Activity presets are `today`, `yesterday`, and `custom`, evaluated in UTC; custom date-only bounds include both calendar dates. `archived=true` selects archived leads, `false` selects active leads, and omission selects both. `assignedUserId=unassigned` selects unassigned leads for ADMIN. Sales scope remains fixed to the authenticated Senior Sales user and cannot be widened with query parameters. Sync Runs accept connector and date bounds; Reports accept paired date bounds; Users and Providers accept no query filters. The Provider compatibility adapter exports active providers only. Column selection and exact record-count preview are not available through this route. The browser opens a native download tab so the CSV body remains streamed.
+
+The Leads `Lead Number` CSV value remains the stored `Lead.leadNumber` string. It is generated as a CUID for new records; historical backfilled values use `lead-` plus the database ID. There is no separate reliable numeric sequence, so the export does not derive or substitute a number.
 
 ### Cache / State
 

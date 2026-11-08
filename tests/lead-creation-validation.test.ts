@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createLeadRequestSchema, interactionActivitySchema, leadProgressRequestSchema, leadSchema } from "../src/lib/validation";
 import { resolveFollowUpAssignee } from "../src/services/follow-up-policy";
+import { LEGACY_EXPORT_COLUMNS, resolveLeadProjection } from "../src/services/export/projections";
 
 const validActivity = {
   action: "CALL",
@@ -134,14 +135,15 @@ test("lead PATCH omission preserves the stored Product value", async () => {
 
 test("connector mapping, CSV export compatibility, and historical Product labels remain", () => {
   const connector = readFileSync("src/runtime/connector-runtime.ts", "utf8");
-  const exporter = readFileSync("src/services/export.service.ts", "utf8");
+  const exporter = readFileSync("src/services/export/csv-serialization.ts", "utf8");
   const history = readFileSync("src/components/sales/daily-history.tsx", "utf8");
   const schema = readFileSync("prisma/schema.prisma", "utf8");
-  const exportHeader = exporter.match(/\["Lead Number"[^\]]+\]/)?.[0];
+  const exportHeader = exporter.match(/leads: \["Lead Number"[^\]]+\]/)?.[0];
+  const legacyProjection = resolveLeadProjection(LEGACY_EXPORT_COLUMNS.leads).select;
 
   assert.match(connector, /product: lead\.product \?\? null/);
-  assert.match(exporter, /product: true/);
-  assert.match(exporter, /lead\.country, lead\.product, lead\.requirement/);
+  assert.equal(legacyProjection.product, true);
+  assert.match(exporter, /lead\.city, lead\.state, lead\.country, lead\.product, lead\.requirement/);
   assert.ok(exportHeader);
   assert.ok(exportHeader.indexOf('"Product"') > exportHeader.indexOf('"Country"'));
   assert.ok(exportHeader.indexOf('"Product"') < exportHeader.indexOf('"Requirement"'));

@@ -1,11 +1,16 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { startOfTodayUTC } from "@/lib/utils";
+import type { ReportExportFilters } from "@/lib/export/filters";
+import { resolveExportDateRange } from "@/lib/export/dates";
+import { andLeadWhere, buildReportActivityLeadWhere, buildReportLeadWhere } from "@/services/export/query-builders";
 
 export interface DateRange {
   from: Date;
   to: Date;
 }
+
+type ReportClient = Prisma.TransactionClient;
 
 function dateWhere(field: string, range?: DateRange) {
   if (!range) return {};
@@ -13,16 +18,19 @@ function dateWhere(field: string, range?: DateRange) {
 }
 
 export class ReportService {
-  async leadSummary(range?: DateRange) {
-    const where = { ...dateWhere("createdAt", range), isDeleted: false };
-    const deletedWhere = { ...dateWhere("createdAt", range), isDeleted: true };
+  async leadSummary(range?: DateRange, filters?: ReportExportFilters, client: ReportClient = prisma) {
+    const where = filters ? buildReportLeadWhere({ ...filters, dateRange: undefined }) : { ...dateWhere("createdAt", range), isDeleted: false };
+    const selectedDate = filters?.dateRange ? resolveExportDateRange(filters.dateRange) : undefined;
+    if (selectedDate?.from || selectedDate?.toExclusive) Object.assign(where, { createdAt: { ...(selectedDate.from ? { gte: selectedDate.from } : {}), ...(selectedDate.toExclusive ? { lt: selectedDate.toExclusive } : {}) } });
+    const deletedWhere = filters ? buildReportLeadWhere({ ...filters, dateRange: undefined }, true) : { ...dateWhere("createdAt", range), isDeleted: true };
+    if (selectedDate?.from || selectedDate?.toExclusive) Object.assign(deletedWhere, { createdAt: { ...(selectedDate.from ? { gte: selectedDate.from } : {}), ...(selectedDate.toExclusive ? { lt: selectedDate.toExclusive } : {}) } });
 
     const [total, open, won, lost, deleted] = await Promise.all([
-      prisma.lead.count({ where }),
-      prisma.lead.count({ where: { ...where, status: { in: ["NEW", "ON_HOLD"] } } }),
-      prisma.lead.count({ where: { ...where, status: "CONVERTED" } }),
-      prisma.lead.count({ where: { ...where, status: "LOST" } }),
-      prisma.lead.count({ where: deletedWhere }),
+      client.lead.count({ where }),
+      client.lead.count({ where: { AND: [where, { status: { in: ["NEW", "ON_HOLD"] } }] } }),
+      client.lead.count({ where: { AND: [where, { status: "CONVERTED" }] } }),
+      client.lead.count({ where: { AND: [where, { status: "LOST" }] } }),
+      client.lead.count({ where: deletedWhere }),
     ]);
 
     return {
@@ -38,23 +46,25 @@ export class ReportService {
     };
   }
 
-  async leadSources(range?: DateRange) {
-    const dateFilter = dateWhere("createdAt", range);
+  async leadSources(range?: DateRange, filters?: ReportExportFilters, client: ReportClient = prisma) {
+    const dateFilter = filters ? buildReportLeadWhere({ ...filters, dateRange: undefined }) : dateWhere("createdAt", range);
+    const selectedDate = filters?.dateRange ? resolveExportDateRange(filters.dateRange) : undefined;
+    if (selectedDate?.from || selectedDate?.toExclusive) Object.assign(dateFilter, { createdAt: { ...(selectedDate.from ? { gte: selectedDate.from } : {}), ...(selectedDate.toExclusive ? { lt: selectedDate.toExclusive } : {}) } });
 
     const [byProvider, byConnector, byParser] = await Promise.all([
-      prisma.lead.groupBy({
+      client.lead.groupBy({
         by: ["sourceId"],
-        where: { ...dateFilter, isDeleted: false, sourceId: { not: null } },
+        where: andLeadWhere(dateFilter, { isDeleted: false }, { sourceId: { not: null } }),
         _count: { id: true },
       }),
-      prisma.lead.groupBy({
+      client.lead.groupBy({
         by: ["connectorId"],
-        where: { ...dateFilter, isDeleted: false, connectorId: { not: null } },
+        where: andLeadWhere(dateFilter, { isDeleted: false }, { connectorId: { not: null } }),
         _count: { id: true },
       }),
-      prisma.lead.groupBy({
+      client.lead.groupBy({
         by: ["parserVersion"],
-        where: { ...dateFilter, isDeleted: false, parserVersion: { not: null } },
+        where: andLeadWhere(dateFilter, { isDeleted: false }, { parserVersion: { not: null } }),
         _count: { id: true },
       }),
     ]);
@@ -63,8 +73,8 @@ export class ReportService {
     const connectorIds = byConnector.map((r) => r.connectorId!).filter(Boolean);
 
     const [providers, connectors] = await Promise.all([
-      prisma.leadSource.findMany({ where: { id: { in: providerIds } }, select: { id: true, name: true } }),
-      prisma.connector.findMany({ where: { id: { in: connectorIds } }, select: { id: true, name: true, type: true } }),
+      client.leadSource.findMany({ where: { id: { in: providerIds } }, select: { id: true, name: true } }),
+      client.connector.findMany({ where: { id: { in: connectorIds } }, select: { id: true, name: true, type: true } }),
     ]);
 
     return {
@@ -86,22 +96,24 @@ export class ReportService {
     };
   }
 
-  async assignments(range?: DateRange) {
-    const dateFilter = dateWhere("createdAt", range);
+  async assignments(range?: DateRange, filters?: ReportExportFilters, client: ReportClient = prisma) {
+    const dateFilter = filters ? buildReportLeadWhere({ ...filters, dateRange: undefined }) : dateWhere("createdAt", range);
+    const selectedDate = filters?.dateRange ? resolveExportDateRange(filters.dateRange) : undefined;
+    if (selectedDate?.from || selectedDate?.toExclusive) Object.assign(dateFilter, { createdAt: { ...(selectedDate.from ? { gte: selectedDate.from } : {}), ...(selectedDate.toExclusive ? { lt: selectedDate.toExclusive } : {}) } });
 
     const [bySalesperson, unassigned] = await Promise.all([
-      prisma.lead.groupBy({
+      client.lead.groupBy({
         by: ["assignedUserId"],
-        where: { ...dateFilter, isDeleted: false, assignedUserId: { not: null } },
+        where: andLeadWhere(dateFilter, { isDeleted: false }, { assignedUserId: { not: null } }),
         _count: { id: true },
       }),
-      prisma.lead.count({
-        where: { ...dateFilter, isDeleted: false, assignedUserId: null },
+      client.lead.count({
+        where: andLeadWhere(dateFilter, { isDeleted: false }, { assignedUserId: null }),
       }),
     ]);
 
     const userIds = bySalesperson.map((r) => r.assignedUserId!).filter(Boolean);
-    const users = await prisma.user.findMany({
+    const users = await client.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, name: true },
     });
@@ -116,23 +128,32 @@ export class ReportService {
     };
   }
 
-  async activity() {
+  async activity(filters?: ReportExportFilters, client: ReportClient = prisma) {
     const startOfDay = startOfTodayUTC();
     const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    if (filters) {
+      const now = new Date();
+      sevenDaysAgo.setTime(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      thirtyDaysAgo.setTime(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else {
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    }
 
+    // These are fixed-window operational metrics. The report's selected lead
+    // creation date range does not replace their explicit today/7/30-day windows.
+    const leadScope = filters ? { lead: { is: buildReportActivityLeadWhere(filters) } } : {};
     // Count interaction entries (CALL/WHATSAPP) from ActivityEntry
     const [today, thisWeek, thisMonth] = await Promise.all([
-      prisma.activityEntry.count({
-        where: { type: { in: ["CALL", "WHATSAPP"] }, event: { occurredAt: { gte: startOfDay } } },
+      client.activityEntry.count({
+        where: { type: { in: ["CALL", "WHATSAPP"] }, event: { is: { occurredAt: { gte: startOfDay }, ...leadScope } } },
       }),
-      prisma.activityEntry.count({
-        where: { type: { in: ["CALL", "WHATSAPP"] }, event: { occurredAt: { gte: sevenDaysAgo } } },
+      client.activityEntry.count({
+        where: { type: { in: ["CALL", "WHATSAPP"] }, event: { is: { occurredAt: { gte: sevenDaysAgo }, ...leadScope } } },
       }),
-      prisma.activityEntry.count({
-        where: { type: { in: ["CALL", "WHATSAPP"] }, event: { occurredAt: { gte: thirtyDaysAgo } } },
+      client.activityEntry.count({
+        where: { type: { in: ["CALL", "WHATSAPP"] }, event: { is: { occurredAt: { gte: thirtyDaysAgo }, ...leadScope } } },
       }),
     ]);
 
@@ -143,9 +164,11 @@ export class ReportService {
     };
   }
 
-  async statusBreakdown(range?: DateRange) {
-    const dateFilter = dateWhere("createdAt", range);
-    const results = await prisma.lead.groupBy({
+  async statusBreakdown(range?: DateRange, filters?: ReportExportFilters, client: ReportClient = prisma) {
+    const dateFilter = filters ? buildReportLeadWhere({ ...filters, dateRange: undefined }) : dateWhere("createdAt", range);
+    const selectedDate = filters?.dateRange ? resolveExportDateRange(filters.dateRange) : undefined;
+    if (selectedDate?.from || selectedDate?.toExclusive) Object.assign(dateFilter, { createdAt: { ...(selectedDate.from ? { gte: selectedDate.from } : {}), ...(selectedDate.toExclusive ? { lt: selectedDate.toExclusive } : {}) } });
+    const results = await client.lead.groupBy({
       by: ["status"],
       where: { ...dateFilter, isDeleted: false },
       _count: { id: true },
@@ -153,18 +176,27 @@ export class ReportService {
     return results.map((r) => ({ status: r.status, count: r._count.id }));
   }
 
-  async monthlyTrends() {
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-    const results = await prisma.$queryRaw<Array<{ month: string; total: bigint; won: bigint; lost: bigint }>>(Prisma.sql`
+  async monthlyTrends(filters?: ReportExportFilters, client: ReportClient = prisma) {
+    const resolved = filters?.dateRange ? resolveExportDateRange(filters.dateRange) : undefined;
+    const conditions = [Prisma.sql`"isDeleted" = false`];
+    if (resolved?.from) conditions.push(Prisma.sql`"createdAt" >= ${resolved.from}`);
+    if (resolved?.toExclusive) conditions.push(Prisma.sql`"createdAt" < ${resolved.toExclusive}`);
+    if (filters === undefined) {
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      conditions.push(Prisma.sql`"createdAt" >= ${sixMonthsAgo}`);
+    }
+    if (filters?.sourceIds?.length) conditions.push(Prisma.sql`"sourceId" IN (${Prisma.join(filters.sourceIds)})`);
+    if (filters?.ownerIds?.length) conditions.push(Prisma.sql`"assignedUserId" IN (${Prisma.join(filters.ownerIds)})`);
+    if (filters?.statuses?.length) conditions.push(Prisma.sql`"status" IN (${Prisma.join(filters.statuses)})`);
+    const results = await client.$queryRaw<Array<{ month: string; total: bigint; won: bigint; lost: bigint }>>(Prisma.sql`
       SELECT
         to_char(date_trunc('month', "createdAt"), 'YYYY-MM') AS month,
         COUNT(*)::bigint AS total,
         COUNT(*) FILTER (WHERE "status" = 'CONVERTED')::bigint AS won,
         COUNT(*) FILTER (WHERE "status" = 'LOST')::bigint AS lost
       FROM "Lead"
-      WHERE "createdAt" >= ${sixMonthsAgo} AND "isDeleted" = false
+      WHERE ${Prisma.join(conditions, " AND ")}
       GROUP BY 1
       ORDER BY 1 ASC
     `);

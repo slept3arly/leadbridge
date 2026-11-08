@@ -5,6 +5,7 @@ import axios from "axios";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ExportButton } from "@/components/shared/export-button";
 import { ErrorState } from "@/components/ui/error-state";
 import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 
@@ -62,17 +63,21 @@ export function SyncHistoryModal({
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       <div ref={dialogRef} data-accessible-dialog tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="sync-history-title" className="relative z-10 flex max-h-[calc(100dvh-1.5rem)] min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
-        <div className="flex shrink-0 items-center justify-between border-b border-[var(--color-border)] px-5 py-4 sm:px-6">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4 sm:px-6">
           <h2 id="sync-history-title" className="text-lg font-semibold text-[var(--color-ink)]">
             Sync History
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl p-2 text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)] transition"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <ExportButton type="sync-history" label="Export this connector" params={{ connectorId }} />
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl p-2 text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)] transition"
+              aria-label="Close sync history"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">

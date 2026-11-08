@@ -1,0 +1,78 @@
+# Export Delivery Reliability — Phase 3
+
+> **Status:** Phase 3 implemented CSV streaming, execution bounds, and best-effort operation logging for the five existing live categories. Phase 4 subsequently added the Admin and Senior Sales workspace UI; no new categories, preview endpoint, or background job was added. See [22_EXPORT_UI_IMPLEMENTATION.md](./22_EXPORT_UI_IMPLEMENTATION.md).
+> **Date:** 2026-11-07
+> **Contracts:** [19_EXPORT_SYSTEM_CONTRACTS.md](./19_EXPORT_SYSTEM_CONTRACTS.md)
+> **Query architecture:** [20_EXPORT_QUERY_ARCHITECTURE.md](./20_EXPORT_QUERY_ARCHITECTURE.md)
+
+## 1. Streaming Architecture and Data Flow
+
+The existing `GET /api/export` route remains the download boundary. It authenticates using `withApiAuthorization()`, applies the Phase 2 legacy parameter adapter, calls `ExportService.open*()`, then passes an async iterable of already-serialized CSV records to `createCsvByteStream()` in `src/services/export/csv-stream.ts`. The route returns a Web `ReadableStream<Uint8Array>` directly as the `Response` body. No complete CSV string or byte buffer is assembled.
+
+`src/services/export/csv-serialization.ts` owns the stable headers and row serialization for Leads, Users, Providers, and Sync Runs. It uses the existing `toCsvRow()`/`escapeCsv()` helpers in `src/lib/csv.ts`, preserving CSV quoting, formula-prefix neutralization, UTF-8, empty nulls, LF line endings, existing column order, the Lead `Product` field, and the blank Sync Run `Error` cell. Reports yield the existing section labels, headers, aggregate rows, and blank separators one record at a time. Report aggregate service calls complete before response headers are sent; their bounded aggregate results are retained in memory, but the rendered CSV is incremental.
+
+The byte stream encodes one CSV record at a time with `TextEncoder`. Its queue has `highWaterMark: 0`, so it does not intentionally prefetch serialized output. Row exports retain at most one database page (250 selected rows), the current row, and the current encoded chunk in the export pipeline. A single unusually large field/row may still require a large temporary string and encoded chunk before the byte cap can reject it.
+
+## 2. Batch and Cursor Strategy
+
+`src/services/export/keyset.ts` iterates count-bounded pages using keyset cursors, never `OFFSET`. Page size is 250, clamped to the initially counted remainder. Ordering and cursor columns are unique and deterministic:
+
+| Category | Order and cursor |
+|---|---|
+| Leads | `createdAt DESC, id DESC` |
+| Sync Runs | `startedAt DESC, id DESC` |
+| Users | `id ASC` |
+| Providers | `id ASC` |
+
+Lead/sync ordering fields and IDs are selected internally for cursor progression; they are not added to the CSV unless allowlisted. User/provider order is ID-based to ensure immutable keyset traversal; headers and row field order remain unchanged. Count and page reads use the same validated `where` predicate and explicit projection. Each query runs in its own short Prisma interactive transaction, and the transaction ends before the next page or while the network consumes the prior page. The database is not held in a transaction for the duration of a download.
+
+## 3. Limits and Enforcement
+
+`src/lib/export/output.ts` centralizes the contract values. `src/services/export/limits.ts` enforces the row preflight, and `src/services/export/csv-stream.ts` enforces emitted row/byte counts and the deadline during delivery.
+
+| Limit | Enforcement | Behavior |
+|---|---|---|
+| 50,000 data rows | Exact filtered count before response; emitted-row guard during stream. Report aggregate CSV row count is checked before response and again as rows emit. | Preflight overflow returns HTTP 413. A later overflow errors the stream; it is never silently presented as a complete CSV. |
+| 25,000,000 serialized bytes | UTF-8 `TextEncoder` byte length for each complete CSV record, including header/separators. | If the next record would cross the ceiling, it is not enqueued and the body errors. Since headers may already be sent, the client receives an incomplete/failed transfer, not an appended error row. |
+| 30 seconds | `ExportDeadline` starts at request execution and races pre-stream work; stream checks before/after each iterator pull and a timer errors the body. DB statements have a 15s PostgreSQL `statement_timeout`; interactive transaction timeout is 16s and pool wait is capped at 2s. | Pre-stream expiry returns 504. A later expiry errors the stream and stops further page iteration. An in-flight database call is not actively cancelled through Prisma and may run until PostgreSQL timeout. |
+
+The count itself is a database `COUNT`; it does not load all rows. Row preflight limits page retrieval. Report output is a fixed number of aggregate sections, and its expected CSV row count is checked before streaming. No truncation is returned as success. Exact byte accounting is for uncompressed UTF-8 response body bytes generated by the application.
+
+The repository/runtime configuration describes local Next.js hosting and PostgreSQL and does not configure a Next.js `maxDuration` or reverse-proxy timeout. The application deadline is enforced, but a local process, OS scheduler, browser, or proxy can terminate work earlier; no infrastructure-level 30-second guarantee has been verified. Compression/proxy wire bytes are outside this serialized-body limit.
+
+## 4. Consistency Policy and Limitations
+
+This implementation does **not** claim snapshot consistency. PostgreSQL through Prisma's `@prisma/adapter-pg` supports interactive transactions, but keeping a repeatable-read transaction open while a client downloads could retain old row versions and database resources. Instead, count and each page are separate short transactions at the database's default read-committed isolation.
+
+Keyset cursors avoid the offset-shift duplicate/skip failure when rows are inserted or deleted before a later page. The unique tie-breaker makes each unchanged dataset deterministic. The initial count caps total rows considered. Concurrent changes can still affect membership and values: inserts after the cursor may appear if room remains under the initial count; a row whose sort key changes can move across the cursor and be omitted or encountered in an unexpected position; deletes may cause fewer rows than the initial count. The export can therefore represent multiple committed moments. No database-backed concurrent-write test was run, and no stronger guarantee is claimed.
+
+If product requirements later demand a point-in-time export, use a database snapshot/transaction or materialized export job after measuring transaction impact. That would be a separately reviewed design.
+
+## 5. Accountability
+
+`src/services/export/operation-log.ts` validates operation events with the Phase 1 Zod schema and writes structured Pino events through `src/lib/logger.ts`. The route records actor ID and role, category, start time, duration, outcome, emitted row count, encoded byte count, and safe reason code. `safeMetadata.activeFilterGroups` contains only accepted parameter names, never values. Stream completion records `SUCCESS`, `EMPTY`, `FAILED`, `LIMIT_EXCEEDED`, `TIMEOUT`, or `CANCELLED`.
+
+Logging is best-effort. Schema/logger failure is swallowed and a minimal safe logging-failure event is attempted; it cannot corrupt or add content to the CSV. No export contents, search text, selected filters/IDs, note content, configuration, credentials, raw diagnostics, SQL, or Prisma errors are logged. There is no AuditLog model in the current schema, and the CRM ActivityEvent stream is not used for export accountability. Logs therefore depend on the configured application log sink/retention and are not guaranteed durable or tamper-resistant.
+
+## 6. Response, Cancellation, and Errors
+
+The route preserves `GET /api/export`, existing category IDs, legacy parameters, date-based filenames, CSV headers and response shape. It sets `Content-Type: text/csv; charset=utf-8`, safe fixed-category `Content-Disposition`, `Cache-Control: private, no-store, no-cache, must-revalidate`, `Pragma: no-cache`, and `X-Content-Type-Options: nosniff`.
+
+Validation errors remain 400, authorization errors 403, unavailable known categories 404, row preflight overflow 413, timeout before streaming 504, and unexpected pre-stream errors a generic 500. Once the body begins, failures error the stream; no error/stack/SQL/Prisma text is appended to CSV. `ReadableStream.cancel()` aborts the operation signal, records cancellation, and calls the current async iterator's `return()`. Keyset iteration checks the signal before/after page fetches and between rows. A database call already in flight is bounded by its PostgreSQL statement timeout rather than immediately cancelled.
+
+## 7. Test Coverage and Verification Boundaries
+
+`tests/export-delivery.test.ts` covers live-category headers/order, legacy Product and blank Error cells, CSV punctuation/newlines/Unicode/null/formula safety, incremental stream delivery, cancellation cleanup, serialization/query failure behavior, row/byte ceilings, output completion, operation-log validation, and log failure isolation. `tests/export-query.test.ts` covers cursor predicates and a keyset mutation simulation; this is unit-level logic only. Contract and query tests do not prove PostgreSQL snapshot or concurrent-write behavior.
+
+No browser test or database-backed concurrent export was performed. Unit tests with mock async iterables do not establish actual peak process memory, network disconnect propagation through a deployment proxy, PostgreSQL cancellation behavior, or production query performance. Those remain deployment/integration verification items.
+
+## 8. Known Limitations and Deferred Work
+
+- No snapshot guarantee; concurrent writes can affect row membership/value as described above.
+- Prisma does not receive a cancellation signal for an in-flight query in this implementation.
+- Row-at-a-time encoding can temporarily allocate an oversized single-row string/chunk before rejecting it.
+- Report aggregate queries retain aggregate result sets before streaming, though they do not load source records or a full CSV.
+- Pino accountability is best-effort rather than durable audit persistence.
+- The 30-second application deadline cannot guarantee that external process/proxy/browser layers remain connected for that duration.
+- No streaming/binary response integration test against a live Next.js server or PostgreSQL was run.
+- Planned Activities, Follow-ups, Notes, and Connector inventory remain unavailable; no preview API, async job, or new format was added. The later workspace UI is documented in Phase 4.

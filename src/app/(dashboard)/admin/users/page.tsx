@@ -1,6 +1,5 @@
 import { Navbar } from "@/components/shared/navbar";
 import { SignOutButton } from "@/components/shared/sign-out-button";
-import { ExportButton } from "@/components/shared/export-button";
 import { UsersPageContent, type SerializedUser } from "@/components/users/users-page-content";
 import { userService } from "@/services/user.service";
 import { parseListQuery, toSearchParams } from "@/lib/query-builder";
@@ -63,7 +62,6 @@ export default async function AdminUsersPage({
         showResync
         actions={
           <>
-            <ExportButton type="users" iconOnly />
             <SignOutButton />
           </>
         }
@@ -72,6 +70,7 @@ export default async function AdminUsersPage({
         users={serializedUsers}
         initial={tableInitial}
         pagination={result.pagination}
+        showExportShortcut
       />
     </>
   );

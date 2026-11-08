@@ -6,9 +6,12 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { ExportButton } from "@/components/shared/export-button";
 import { Filter, X, RotateCcw } from "lucide-react";
 import { useTableQuery, type TableQueryState } from "@/hooks/use-table-query";
 import { formatDate } from "@/lib/utils";
+import { getContextualExportParamsFromState } from "@/lib/export/ui";
+import { ACTIVITY_ACTION_OPTIONS, ACTIVITY_INTEREST_OPTIONS, ACTIVITY_RESPONSE_OPTIONS } from "@/lib/activity-options";
 import {
   LEAD_STATUSES,
   LEAD_PRIORITIES,
@@ -35,23 +38,6 @@ const SORT_OPTIONS = [
   { value: "nextFollowUpAt:desc", label: "Furthest Follow-up" },
 ] as const;
 
-const ACTIVITY_ACTIONS = [
-  { value: "CALL", label: "Call" },
-  { value: "WHATSAPP", label: "WhatsApp" },
-] as const;
-
-const ACTIVITY_RESPONSES = [
-  { value: "PICKED_UP", label: "Picked Up" },
-  { value: "REPLIED", label: "Replied" },
-  { value: "NO_RESPONSE", label: "No Response" },
-  { value: "INVALID_NUMBER", label: "Invalid Number" },
-] as const;
-
-const ACTIVITY_INTERESTS = [
-  { value: "INTERESTED", label: "Interested" },
-  { value: "NOT_INTERESTED", label: "Not Interested" },
-] as const;
-
 type SortValue = (typeof SORT_OPTIONS)[number]["value"];
 
 function dateToInput(value: string | undefined): string {
@@ -65,6 +51,7 @@ export function SalesTableControls({
   leadSources,
   assignableUsers,
   adminMode = false,
+  showExportShortcut = false,
   actions,
   startTransition,
 }: {
@@ -73,10 +60,12 @@ export function SalesTableControls({
   leadSources: Array<{ id: string; name: string }>;
   assignableUsers?: Array<{ id: string; name: string }>;
   adminMode?: boolean;
+  showExportShortcut?: boolean;
   actions?: React.ReactNode;
   startTransition?: TransitionStartFunction;
 }) {
   const query = useTableQuery(initial, 300, startTransition);
+  const exportContext = getContextualExportParamsFromState("leads", query);
   const [filterOpen, setFilterOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -218,15 +207,15 @@ export function SalesTableControls({
       });
     }
     if (query.filters.activityAction) {
-      const opt = ACTIVITY_ACTIONS.find((o) => o.value === query.filters.activityAction);
+      const opt = ACTIVITY_ACTION_OPTIONS.find((o) => o.value === query.filters.activityAction);
       labels.push({ key: "activityAction", label: `Action: ${opt?.label ?? query.filters.activityAction}` });
     }
     if (query.filters.activityResponse) {
-      const opt = ACTIVITY_RESPONSES.find((o) => o.value === query.filters.activityResponse);
+      const opt = ACTIVITY_RESPONSE_OPTIONS.find((o) => o.value === query.filters.activityResponse);
       labels.push({ key: "activityResponse", label: `Response: ${opt?.label ?? query.filters.activityResponse}` });
     }
     if (query.filters.activityInterest) {
-      const opt = ACTIVITY_INTERESTS.find((o) => o.value === query.filters.activityInterest);
+      const opt = ACTIVITY_INTEREST_OPTIONS.find((o) => o.value === query.filters.activityInterest);
       labels.push({ key: "activityInterest", label: `Interest: ${opt?.label ?? query.filters.activityInterest}` });
     }
     return labels;
@@ -276,6 +265,7 @@ export function SalesTableControls({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+        {showExportShortcut && <ExportButton type="leads" params={exportContext.params} disabledReason={exportContext.error} iconOnly />}
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         <div className="relative shrink-0">
           <button
@@ -390,7 +380,7 @@ export function SalesTableControls({
                     onChange={(e) => setFilter("activityAction", e.target.value)}
                   >
                     <option value="">All Actions</option>
-                    {ACTIVITY_ACTIONS.map((opt) => (
+                    {ACTIVITY_ACTION_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
                       </option>
@@ -408,7 +398,7 @@ export function SalesTableControls({
                     onChange={(e) => setFilter("activityResponse", e.target.value)}
                   >
                     <option value="">All Responses</option>
-                    {ACTIVITY_RESPONSES.map((opt) => (
+                    {ACTIVITY_RESPONSE_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
                       </option>
@@ -462,7 +452,7 @@ export function SalesTableControls({
                     onChange={(e) => setFilter("activityInterest", e.target.value)}
                   >
                     <option value="">All Interests</option>
-                    {ACTIVITY_INTERESTS.map((opt) => (
+                    {ACTIVITY_INTEREST_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
                       </option>

@@ -199,7 +199,14 @@ export function ProvidersPageContent({
         actions={
           <>
             <Button onClick={openCreate} className="h-10 whitespace-nowrap"><Plus size={16} />Create Provider</Button>
-            <ExportButton type="providers" iconOnly />
+            <ExportButton
+              type="providers"
+              label="Export active providers"
+              iconOnly
+              disabledReason={search || typeFilter || statusFilter === "inactive"
+                ? "Provider search, type, and inactive filters are not supported by the current CSV endpoint. Clear them before exporting."
+                : undefined}
+            />
             <SignOutButton />
           </>
         }

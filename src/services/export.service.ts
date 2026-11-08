@@ -1,213 +1,141 @@
-import { prisma } from "@/lib/prisma";
-import { Prisma } from "@/generated/prisma/client";
-import { STATUS_VALUES } from "@/lib/lead-constants";
+import type { ExportActor } from "@/lib/export/policy";
+import { LEGACY_EXPORT_COLUMNS } from "@/services/export/projections";
+import { exportQueryService } from "@/services/export/query.service";
+import type { ExportDateBounds } from "@/services/export/query-builders";
 import { reportService } from "@/services/report.service";
-import type { UserRole } from "@/generated/prisma/client";
-import { toCsvRow } from "@/lib/csv";
+import type { ReportExportFilters } from "@/lib/export/filters";
+import { EXPORT_LIMITS } from "@/lib/export/output";
+import { ServiceError } from "@/lib/service-errors";
+import { ExportDeliveryError, type CsvExportRecord } from "@/services/export/csv-stream";
+import { resolveExportDateRange } from "@/lib/export/dates";
+import { prisma } from "@/lib/prisma";
+import {
+  EXPORT_QUERY_MAX_WAIT_MS,
+  EXPORT_QUERY_STATEMENT_TIMEOUT_MS,
+  EXPORT_QUERY_TRANSACTION_TIMEOUT_MS,
+} from "@/services/export/limits";
+import {
+  EXPORT_CSV_HEADERS,
+  serializeCsvBlankLine,
+  serializeLeadCsvRow,
+  serializeProviderCsvRow,
+  serializeReportCsvRow,
+  serializeSyncRunCsvRow,
+  serializeUserCsvRow,
+} from "@/services/export/csv-serialization";
 export { escapeCsv, toCsvRow } from "@/lib/csv";
 
-type ExportActor = { id: string; role: UserRole };
-
-async function exportInChunks<T>(
-  fetchChunk: (skip: number, take: number) => Promise<T[]>,
-  toRow: (item: T) => string,
-  header: string[],
-  batchSize = 1000,
-) {
-  const chunks: string[] = [toCsvRow(header)];
-  let skip = 0;
-
-  while (true) {
-    const rows = await fetchChunk(skip, batchSize);
-    if (rows.length === 0) break;
-    for (const row of rows) {
-      chunks.push(toRow(row));
-    }
-    skip += rows.length;
-    if (rows.length < batchSize) break;
+function csv(values: unknown[], dataRows = 1): CsvExportRecord {
+  try {
+    return { csv: serializeReportCsvRow(values), dataRows };
+  } catch {
+    throw new ExportDeliveryError("SERIALIZATION_FAILED");
   }
+}
 
-  return chunks.join("");
+function emptyLine(): CsvExportRecord {
+  return { csv: serializeCsvBlankLine(), dataRows: 0 };
 }
 
 export class ExportService {
-  async exportLeads(params: {
-    status?: string[];
-    assignedUserId?: string;
-    from?: Date;
-    to?: Date;
-    search?: string;
-  }, actor: ExportActor): Promise<string> {
-    const where: Prisma.LeadWhereInput = { isDeleted: false };
-    if (actor?.role === "SALES") where.assignedUserId = actor.id;
-    if (params.status?.length) where.status = { in: params.status.filter((status) => STATUS_VALUES.includes(status as (typeof STATUS_VALUES)[number])) as (typeof STATUS_VALUES)[number][] };
-    if (actor?.role !== "SALES" && params.assignedUserId) where.assignedUserId = params.assignedUserId;
-    if (params.from || params.to) {
-      where.createdAt = {};
-      if (params.from) where.createdAt.gte = params.from;
-      if (params.to) where.createdAt.lte = params.to;
-    }
-    if (params.search) {
-      where.OR = [
-        { displayName: { contains: params.search, mode: "insensitive" } },
-        { company: { contains: params.search, mode: "insensitive" } },
-        { email: { contains: params.search, mode: "insensitive" } },
-        { phone: { contains: params.search, mode: "insensitive" } },
-        { leadNumber: { contains: params.search, mode: "insensitive" } },
-      ];
-    }
-
-    return exportInChunks(
-      (skip, take) => prisma.lead.findMany({
-        where,
-        select: {
-          leadNumber: true,
-          displayName: true,
-          company: true,
-          email: true,
-          phone: true,
-          status: true,
-          priority: true,
-          city: true,
-          state: true,
-          country: true,
-          product: true,
-          requirement: true,
-          createdAt: true,
-          assignedUser: { select: { name: true } },
-          source: { select: { name: true } },
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        skip,
-        take,
-      }),
-      (lead) => toCsvRow([lead.leadNumber, lead.displayName, lead.company, lead.email, lead.phone, lead.status, lead.priority, lead.city, lead.state, lead.country, lead.product, lead.requirement, lead.createdAt.toISOString(), lead.assignedUser?.name ?? "", lead.source?.name ?? ""]),
-      ["Lead Number", "Name", "Company", "Email", "Phone", "Status", "Priority", "City", "State", "Country", "Product", "Requirement", "Created At", "Assigned To", "Source"],
-    );
+  async openLeads(params: { filters: unknown; bounds?: ExportDateBounds }, actor: ExportActor, signal: AbortSignal) {
+    const result = await exportQueryService.openLeads(actor, params.filters, LEGACY_EXPORT_COLUMNS.leads, params.bounds, signal);
+    const records = async function* (): AsyncGenerator<CsvExportRecord> {
+      yield { csv: serializeReportCsvRow([...EXPORT_CSV_HEADERS.leads]), dataRows: 0 };
+      for await (const lead of result.rows) {
+        yield { csv: serializeLeadCsvRow(lead) };
+      }
+    };
+    return { count: result.count, records: records() };
   }
 
-  async exportUsers(): Promise<string> {
-    return exportInChunks(
-      (skip, take) => prisma.user.findMany({
-        where: { isDeleted: false },
-        select: { name: true, email: true, role: true, active: true, employeeCode: true, designation: true, phone: true, createdAt: true },
-        orderBy: [{ name: "asc" }, { id: "asc" }],
-        skip,
-        take,
-      }),
-      (user) => toCsvRow([user.name, user.email, user.role, user.active ? "Yes" : "No", user.employeeCode ?? "", user.designation ?? "", user.phone ?? "", user.createdAt.toISOString()]),
-      ["Name", "Email", "Role", "Active", "Employee Code", "Designation", "Phone", "Created At"],
-    );
+  async openUsers(actor: ExportActor, filters: unknown, signal: AbortSignal) {
+    const result = await exportQueryService.openUsers(actor, filters, LEGACY_EXPORT_COLUMNS.users, signal);
+    const records = async function* (): AsyncGenerator<CsvExportRecord> {
+      yield { csv: serializeReportCsvRow([...EXPORT_CSV_HEADERS.users]), dataRows: 0 };
+      for await (const user of result.rows) {
+        yield { csv: serializeUserCsvRow(user) };
+      }
+    };
+    return { count: result.count, records: records() };
   }
 
-  async exportProviders(): Promise<string> {
-    return exportInChunks(
-      (skip, take) => prisma.leadSource.findMany({
-        where: { active: true },
-        select: { name: true, slug: true, sourceType: true, active: true, createdAt: true },
-        orderBy: [{ name: "asc" }, { id: "asc" }],
-        skip,
-        take,
-      }),
-      (provider) => toCsvRow([provider.name, provider.slug, provider.sourceType, provider.active ? "Yes" : "No", provider.createdAt.toISOString()]),
-      ["Name", "Slug", "Type", "Active", "Created At"],
-    );
+  async openProviders(actor: ExportActor, filters: unknown, signal: AbortSignal) {
+    const result = await exportQueryService.openProviders(actor, filters, LEGACY_EXPORT_COLUMNS.providers, signal);
+    const records = async function* (): AsyncGenerator<CsvExportRecord> {
+      yield { csv: serializeReportCsvRow([...EXPORT_CSV_HEADERS.providers]), dataRows: 0 };
+      for await (const provider of result.rows) {
+        yield { csv: serializeProviderCsvRow(provider) };
+      }
+    };
+    return { count: result.count, records: records() };
   }
 
-  async exportSyncHistory(params?: {
-    from?: Date;
-    to?: Date;
-    connectorId?: string;
-  }): Promise<string> {
-    const where: Prisma.ConnectorSyncRunWhereInput = {};
-    if (params?.connectorId) where.connectorId = params.connectorId;
-    if (params?.from || params?.to) {
-      where.startedAt = {};
-      if (params.from) where.startedAt.gte = params.from;
-      if (params.to) where.startedAt.lte = params.to;
-    }
-
-    return exportInChunks(
-      (skip, take) => prisma.connectorSyncRun.findMany({
-        where,
-        select: {
-          id: true,
-          connector: { select: { name: true, type: true } },
-          status: true,
-          startedAt: true,
-          completedAt: true,
-          recordsSeen: true,
-          recordsCreated: true,
-          recordsUpdated: true,
-          recordsSkipped: true,
-          errorMessage: true,
-        },
-        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
-        skip,
-        take,
-      }),
-      (run) => toCsvRow([run.id, run.connector.name, run.connector.type, run.status, run.startedAt.toISOString(), run.completedAt?.toISOString() ?? "", run.recordsSeen, run.recordsCreated, run.recordsUpdated, run.recordsSkipped, run.errorMessage ?? ""]),
-      ["Run ID", "Connector", "Type", "Status", "Started At", "Completed At", "Records Seen", "Created", "Updated", "Skipped", "Error"],
-    );
+  async openSyncHistory(actor: ExportActor, params: { filters: unknown; bounds?: ExportDateBounds }, signal: AbortSignal) {
+    const result = await exportQueryService.openSyncHistory(actor, params.filters, LEGACY_EXPORT_COLUMNS["sync-history"], params.bounds, signal);
+    const records = async function* (): AsyncGenerator<CsvExportRecord> {
+      yield { csv: serializeReportCsvRow([...EXPORT_CSV_HEADERS["sync-history"]]), dataRows: 0 };
+      for await (const run of result.rows) {
+        yield { csv: serializeSyncRunCsvRow(run) };
+      }
+    };
+    return { count: result.count, records: records() };
   }
-  async exportReports(params?: { from?: Date; to?: Date }): Promise<string> {
-    const range = params?.from && params?.to ? { from: params.from, to: params.to } : undefined;
-    const dateLabel = range ? `${params!.from!.toISOString().split("T")[0]} to ${params!.to!.toISOString().split("T")[0]}` : "All time";
 
-    const [summary, sources, assignments, statusBreakdown, trends, activity] = await Promise.all([
-      reportService.leadSummary(range),
-      reportService.leadSources(range),
-      reportService.assignments(range),
-      reportService.statusBreakdown(range),
-      reportService.monthlyTrends(),
-      reportService.activity(),
-    ]);
+  async openReports(actor: ExportActor, filters: ReportExportFilters, signal: AbortSignal) {
+    const validated = exportQueryService.validateReports(actor, filters);
+    const range = validated.dateRange && validated.dateRange.preset !== "all-time"
+      ? resolveExportDateRange(validated.dateRange)
+      : undefined;
+    const reportRange = range?.from && range.toExclusive
+      ? { from: range.from, to: new Date(range.toExclusive.getTime() - 1) }
+      : undefined;
+    const dateLabel = reportRange ? `${reportRange.from.toISOString().split("T")[0]} to ${reportRange.to.toISOString().split("T")[0]}` : "All time";
+    const [summary, sources, assignments, statusBreakdown, trends, activity] = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT set_config('statement_timeout', ${`${EXPORT_QUERY_STATEMENT_TIMEOUT_MS}ms`}, true)`;
+      return Promise.all([
+        reportService.leadSummary(reportRange, validated, tx),
+        reportService.leadSources(reportRange, validated, tx),
+        reportService.assignments(reportRange, validated, tx),
+        reportService.statusBreakdown(reportRange, validated, tx),
+        reportService.monthlyTrends(validated, tx),
+        reportService.activity(validated, tx),
+      ]);
+    }, { maxWait: EXPORT_QUERY_MAX_WAIT_MS, timeout: EXPORT_QUERY_TRANSACTION_TIMEOUT_MS });
+    if (signal.aborted) throw new ServiceError("Export request timed out.", 504);
 
-    const rows: string[] = [];
-
-    rows.push(toCsvRow(["LeadBridge Report", dateLabel, "", "", ""]));
-    rows.push("");
-
-    rows.push(toCsvRow(["Metric", "Value", "", "", ""]));
-    rows.push(toCsvRow(["Total Leads", summary.total, "", "", ""]));
-    rows.push(toCsvRow(["Active", summary.active, "", "", ""]));
-    rows.push(toCsvRow(["Won", summary.won, "", "", ""]));
-    rows.push(toCsvRow(["Lost", summary.lost, "", "", ""]));
-    rows.push(toCsvRow(["Conversion Rate", `${summary.conversionRate}%`, "", "", ""]));
-    rows.push(toCsvRow(["Open Rate", `${summary.openRate}%`, "", "", ""]));
-    rows.push("");
-
-    rows.push(toCsvRow(["Lead Status", "Count", "", "", ""]));
-    for (const s of statusBreakdown) {
-      rows.push(toCsvRow([s.status, s.count, "", "", ""]));
-    }
-    rows.push("");
-
-    rows.push(toCsvRow(["Lead Source", "Leads", "", "", ""]));
-    for (const s of sources.byProvider) {
-      rows.push(toCsvRow([s.providerName, s.count, "", "", ""]));
-    }
-    rows.push("");
-
-    rows.push(toCsvRow(["Salesperson", "Assigned Leads", "", "", ""]));
-    for (const a of assignments.bySalesperson) {
-      rows.push(toCsvRow([a.userName, a.leadCount, "", "", ""]));
-    }
-    rows.push(toCsvRow(["Unassigned", assignments.unassigned, "", "", ""]));
-    rows.push("");
-
-    rows.push(toCsvRow(["Month", "Created", "Won", "Lost", ""]));
-    for (const t of trends) {
-      rows.push(toCsvRow([t.month, t.total, t.won, t.lost, ""]));
-    }
-    rows.push("");
-
-    rows.push(toCsvRow(["Activity", "Count", "", "", ""]));
-    rows.push(toCsvRow(["Today", activity.today, "", "", ""]));
-    rows.push(toCsvRow(["This Week", activity.thisWeek, "", "", ""]));
-    rows.push(toCsvRow(["This Month", activity.thisMonth, "", "", ""]));
-
-    return rows.join("");
+    const outputRows = 23 + statusBreakdown.length + sources.byProvider.length + assignments.bySalesperson.length + trends.length;
+    if (outputRows > EXPORT_LIMITS.maxRows) throw new ServiceError(`Report exceeds the ${EXPORT_LIMITS.maxRows.toLocaleString()} output row limit.`, 413);
+    const records = async function* (): AsyncGenerator<CsvExportRecord> {
+      yield csv(["LeadBridge Report", dateLabel, "", "", ""]);
+      yield emptyLine();
+      yield csv(["Metric", "Value", "", "", ""]);
+      yield csv(["Total Leads", summary.total, "", "", ""]);
+      yield csv(["Active", summary.active, "", "", ""]);
+      yield csv(["Won", summary.won, "", "", ""]);
+      yield csv(["Lost", summary.lost, "", "", ""]);
+      yield csv(["Conversion Rate", `${summary.conversionRate}%`, "", "", ""]);
+      yield csv(["Open Rate", `${summary.openRate}%`, "", "", ""]);
+      yield emptyLine();
+      yield csv(["Lead Status", "Count", "", "", ""]);
+      for (const status of statusBreakdown) yield csv([status.status, status.count, "", "", ""]);
+      yield emptyLine();
+      yield csv(["Lead Source", "Leads", "", "", ""]);
+      for (const source of sources.byProvider) yield csv([source.providerName, source.count, "", "", ""]);
+      yield emptyLine();
+      yield csv(["Salesperson", "Assigned Leads", "", "", ""]);
+      for (const assignment of assignments.bySalesperson) yield csv([assignment.userName, assignment.leadCount, "", "", ""]);
+      yield csv(["Unassigned", assignments.unassigned, "", "", ""]);
+      yield emptyLine();
+      yield csv(["Month", "Created", "Won", "Lost", ""]);
+      for (const trend of trends) yield csv([trend.month, trend.total, trend.won, trend.lost, ""]);
+      yield emptyLine();
+      yield csv(["Activity", "Count", "", "", ""]);
+      yield csv(["Today", activity.today, "", "", ""]);
+      yield csv(["This Week", activity.thisWeek, "", "", ""]);
+      yield csv(["This Month", activity.thisMonth, "", "", ""]);
+    };
+    return { count: outputRows, records: records() };
   }
 }
 

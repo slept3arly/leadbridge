@@ -8,6 +8,10 @@
 
 21 domain services in `src/services/`. Each exports a class and a singleton instance.
 
+`src/lib/export/` contains export category definitions, policy metadata, field allowlists, validation schemas, and date contracts. `src/services/export/` enforces category authorization and lead scope, builds typed Prisma filters/projections, counts records, retrieves row exports in bounded keyset pages, serializes CSV rows, and streams bounded UTF-8 response chunks. The legacy `/api/export` parameters are adapted in `src/lib/export/legacy-compatibility.ts`. Row/byte/application-time limits and best-effort structured operation logging apply to the five current categories; see [the delivery reliability design](experiments/21_EXPORT_DELIVERY_RELIABILITY.md).
+
+Lead exports also accept comma-separated status, source, action, response, priority, category, and interest values, archive state, search, ADMIN assignee selection, lead-created date bounds, and activity date bounds. Activity date uses `ActivityEvent.occurredAt`; all selected activity entry predicates are nested under the same event and same `ActivityEntry`, matching the Leads table relationship semantics. These predicates are ANDed with the authenticated lead-scope predicate. See [the advanced Lead export filter note](experiments/24_EXPORT_ADVANCED_LEAD_FILTERS.md).
+
 | Service | File | Purpose |
 |---|---|---|
 | `LeadWorkflowService` | `lead-workflow.service.ts` | Atomic manual lead creation with initial interaction; Record Progress orchestration |
@@ -25,7 +29,7 @@
 | `SchedulerService` | `scheduler.service.ts` | Discover due connectors and execute them |
 | `ParserService` | `parser.service.ts` | Parser registry access and management |
 | `ParserRequestService` | `parser-request.service.ts` | Parser request listing and status updates |
-| `ExportService` | `export.service.ts` | CSV export for leads, users, providers, sync history |
+| `ExportService` | `export.service.ts` | Incremental CSV record production for leads, users, providers, sync history, and reports, backed by the export query service |
 | `ReportService` | `report.service.ts` | Analytics: summary, sources, assignments, status, trends |
 | `SettingsService` | `settings.service.ts` | Global settings with caching and definitions |
 | `DuplicateService` | `duplicate.service.ts` | Potential duplicate detection by email/phone |
