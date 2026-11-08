@@ -85,16 +85,6 @@ try {
 
     Write-Log "PostgreSQL is running."
 
-    # Stop existing application task.
-    Write-Log "Stopping LeadBridge scheduled task if running."
-
-    $task = Get-ScheduledTask -TaskName "LeadBridge Server" -ErrorAction SilentlyContinue
-
-    if ($task -and $task.State -eq "Running") {
-        Stop-ScheduledTask -TaskName "LeadBridge Server"
-        Start-Sleep -Seconds 3
-    }
-
     # Stop only a process identified as this LeadBridge installation.
     $connections = @(
         Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
