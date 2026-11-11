@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { LeadStatusPriorityCell } from "../src/components/leads/lead-status-priority-cell";
 import { LEAD_CATEGORIES, LEAD_PRIORITIES, LEAD_STATUSES, FOLLOW_UP_PRIORITIES, FOLLOW_UP_STATUSES } from "../src/lib/lead-constants";
 import {
   ACTIVITY_ACTION_OPTIONS,
@@ -12,6 +15,33 @@ import { createLeadRequestSchema, followUpSchema, interactionActivitySchema, lea
 import { leadExportFiltersSchema, followUpExportFiltersSchema } from "../src/lib/export/filters";
 
 const schema = readFileSync("prisma/schema.prisma", "utf8");
+
+test("Admin and Sales share the compact Status / Priority presentation", () => {
+  const markup = renderToStaticMarkup(createElement(LeadStatusPriorityCell, {
+    status: "NEW",
+    priority: "MEDIUM",
+    category: "MEDICAL_REPRESENTATIVE",
+  }));
+  assert.match(markup, /New/);
+  assert.match(markup, /Medium/);
+  assert.match(markup, /Medical Representative/);
+  assert.match(markup, /w-\[82px\].*text-\[11px\]/);
+  assert.match(markup, /w-\[72px\].*text-\[11px\]/);
+  assert.match(markup, /w-\[158px\].*whitespace-normal.*break-words/);
+  assert.doesNotMatch(markup, /whitespace-nowrap[^\"]*Medical Representative/);
+
+  for (const path of [
+    "src/components/leads/admin-leads-page-content.tsx",
+    "src/components/sales/sales-my-leads-page-content.tsx",
+  ]) {
+    const page = readFileSync(path, "utf8");
+    const column = page.match(/key: "statusPriority",[\s\S]*?(?=\n\s*\},)/)?.[0];
+    assert.ok(column, `${path} has the Status / Priority column`);
+    assert.match(column, /LeadStatusPriorityCell/);
+    assert.match(column, /w-\[190px\] min-w-\[190px\]/);
+    assert.match(column, /align-middle/);
+  }
+});
 
 function enumValues(name: string): string[] {
   const body = schema.match(new RegExp(`enum ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1];

@@ -10,10 +10,9 @@ import { SalesTableControls } from "@/components/sales/sales-table-controls";
 import { LeadEditModal } from "@/components/leads/lead-edit-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { LeadStatusPriorityCell } from "@/components/leads/lead-status-priority-cell";
 import { IconActionButton } from "@/components/ui/icon-action-button";
 import { Plus, Archive, Trash2, ExternalLink } from "lucide-react";
-import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
 import { formatTimeAgo, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import type { TableQueryState } from "@/hooks/use-table-query";
@@ -257,17 +256,9 @@ export function SalesMyLeadsPageContent({
     {
       key: "statusPriority",
       header: "Status / Priority",
-      render: (lead: SalesLeadRow) => (
-        <div className="flex flex-col gap-1 w-fit">
-          <div className="flex items-center gap-1">
-            <Badge label={getStatusLabel(lead.status)} toneKey={lead.status} className="text-xs w-[80px] justify-center" />
-            <Badge label={getPriorityLabel(lead.priority)} toneKey={lead.priority} className="text-xs w-[76px] justify-center" />
-          </div>
-          {lead.category && (
-            <Badge label={getCategoryLabel(lead.category)} toneKey={lead.category} className="text-xs w-[150px] justify-center" />
-          )}
-        </div>
-      ),
+      headerClassName: "w-[190px] min-w-[190px]",
+      className: "w-[190px] min-w-[190px] align-middle",
+      render: (lead: SalesLeadRow) => <LeadStatusPriorityCell status={lead.status} priority={lead.priority} category={lead.category} />,
     },
     {
       key: "source",

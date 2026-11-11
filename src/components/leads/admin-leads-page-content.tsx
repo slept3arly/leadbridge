@@ -9,12 +9,11 @@ import { LeadEditModal } from "@/components/leads/lead-edit-modal";
 import { LeadSourceManagerModal } from "@/components/leads/lead-source-manager-modal";
 import { Button } from "@/components/ui/button";
 import { IconActionButton } from "@/components/ui/icon-action-button";
-import { Badge } from "@/components/ui/badge";
+import { LeadStatusPriorityCell } from "@/components/leads/lead-status-priority-cell";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LeadDetailsModal } from "@/components/sales/lead-details-modal";
 import { Archive, Trash2, Plus, RotateCcw } from "lucide-react";
-import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
 import { toast } from "sonner";
 import type { TableQueryState } from "@/hooks/use-table-query";
 import { useCrmSync } from "@/hooks/use-crm-sync";
@@ -159,15 +158,9 @@ export function AdminLeadsPageContent({
             {
               key: "statusPriority",
               header: "Status / Priority",
-              headerClassName: "w-[190px]",
-              className: "w-[190px]",
-              render: (lead: SerializedLead) => <div className="flex w-fit flex-col gap-1">
-                <div className="flex items-center gap-1">
-                  <Badge label={getStatusLabel(lead.status)} toneKey={lead.status} className="w-[82px] whitespace-nowrap px-1.5 py-1 text-[11px]" />
-                  <Badge label={getPriorityLabel(lead.priority)} toneKey={lead.priority} className="w-[72px] whitespace-nowrap px-1.5 py-1 text-[11px]" />
-                </div>
-                {lead.category && <Badge label={getCategoryLabel(lead.category)} toneKey={lead.category} className="w-[158px] whitespace-nowrap px-1.5 py-1 text-[11px]" />}
-              </div>,
+              headerClassName: "w-[190px] min-w-[190px]",
+              className: "w-[190px] min-w-[190px] align-middle",
+              render: (lead: SerializedLead) => <LeadStatusPriorityCell status={lead.status} priority={lead.priority} category={lead.category} />,
             },
             {
               key: "source",
