@@ -20,6 +20,7 @@ import type { TableQueryState } from "@/hooks/use-table-query";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
+import { ACTIVITY_ACTION_LABELS, ACTIVITY_RESPONSE_LABELS } from "@/lib/activity-options";
 
 export type SalesLeadRow = {
   id: string;
@@ -48,13 +49,6 @@ const ENTRY_DISPLAY_ORDER: Record<string, number> = {
   FOLLOW_UP_CANCELLED: 4,
 };
 
-const ACTION_LABELS: Record<string, string> = { CALL: "Call", WHATSAPP: "WhatsApp" };
-const RESPONSE_LABELS: Record<string, string> = {
-  PICKED_UP: "Picked Up",
-  NO_RESPONSE: "No Response",
-  INVALID_NUMBER: "Invalid Number",
-  REPLIED: "Replied",
-};
 const FOLLOW_UP_LABELS: Record<string, string> = {
   FOLLOW_UP_SCHEDULED: "Follow-up scheduled",
   FOLLOW_UP_RESCHEDULED: "Follow-up rescheduled",
@@ -64,8 +58,8 @@ const FOLLOW_UP_LABELS: Record<string, string> = {
 
 function formatLastActivityEntry(entry: { type: string; action: string | null; response: string | null }): string {
   if (entry.type === "CALL" || entry.type === "WHATSAPP") {
-    const actionLabel = ACTION_LABELS[entry.type] ?? entry.type;
-    const responseLabel = entry.response ? (RESPONSE_LABELS[entry.response] ?? entry.response) : null;
+    const actionLabel = ACTIVITY_ACTION_LABELS[entry.type as keyof typeof ACTIVITY_ACTION_LABELS] ?? entry.type;
+    const responseLabel = entry.response ? ACTIVITY_RESPONSE_LABELS[entry.response as keyof typeof ACTIVITY_RESPONSE_LABELS] ?? entry.response : null;
     return [actionLabel, responseLabel].filter(Boolean).join(" \u00B7 ");
   }
   return FOLLOW_UP_LABELS[entry.type] ?? entry.type;

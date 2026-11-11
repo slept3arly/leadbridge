@@ -39,7 +39,7 @@ test("dashboard activity aggregates preserve entry counts, distinct lead counts,
       dashboardService.sales(salesId),
     ]);
 
-    const addInteraction = (leadId: string, actorId: string, occurredAt: Date, type: "CALL" | "WHATSAPP", response: "PICKED_UP" | "NO_RESPONSE" | "REPLIED", interest?: "INTERESTED" | "NOT_INTERESTED") =>
+    const addInteraction = (leadId: string, actorId: string, occurredAt: Date, type: "CALL" | "WHATSAPP", response: "PICKED_UP" | "NOT_PICKED_UP" | "NO_RESPONSE" | "REPLIED" | "NOT_REPLIED", interest?: "INTERESTED" | "NOT_INTERESTED") =>
       prisma.activityEvent.create({
         data: {
           leadId,
@@ -59,9 +59,9 @@ test("dashboard activity aggregates preserve entry counts, distinct lead counts,
 
     await Promise.all([
       addInteraction(leadA.id, salesId, start, "CALL", "PICKED_UP", "INTERESTED"),
-      addInteraction(leadA.id, salesId, end, "CALL", "NO_RESPONSE", "INTERESTED"),
+      addInteraction(leadA.id, salesId, end, "CALL", "NOT_PICKED_UP", "INTERESTED"),
       addInteraction(leadA.id, salesId, end, "WHATSAPP", "REPLIED", "NOT_INTERESTED"),
-      addInteraction(leadB.id, otherSalesId, start, "CALL", "NO_RESPONSE"),
+      addInteraction(leadB.id, otherSalesId, start, "CALL", "NOT_PICKED_UP"),
       addInteraction(leadA.id, salesId, yesterday, "CALL", "PICKED_UP"),
       // Sales metrics have an inclusive lower bound only; Admin metrics are bounded to the current UTC day.
       addInteraction(leadC.id, salesId, tomorrow, "CALL", "PICKED_UP", "INTERESTED"),

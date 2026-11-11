@@ -32,6 +32,7 @@ if (!/test/i.test(parsedUrl.pathname)) {
 const testFiles = [
   "tests/execution-fencing.postgres.test.ts",
   "tests/follow-up-completion.postgres.test.ts",
+  "tests/follow-up-lifecycle.postgres.test.ts",
   "tests/dashboard-activity.postgres.test.ts",
   "tests/lead-creation.postgres.test.ts",
   "tests/lead-workflow.postgres.test.ts",

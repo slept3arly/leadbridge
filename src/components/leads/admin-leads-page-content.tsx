@@ -27,6 +27,7 @@ export type SerializedLead = {
   email: string | null;
   phone: string | null;
   city: string | null;
+  district: string | null;
   state: string | null;
   requirement: string | null;
   status: string;

@@ -1,0 +1,1 @@
+ALTER TYPE "LeadStatus" ADD VALUE 'OLD';

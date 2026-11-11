@@ -67,7 +67,7 @@ export function TableControls({
       <Input
         value={query.search}
         onChange={(event) => update({ search: event.target.value })}
-        placeholder="Search leads..."
+        placeholder="Search by name, company, email, phone, or lead number"
         className="max-w-xs"
       />
 

@@ -12,6 +12,11 @@ const optionalString = (max: number) =>
     .nullable()
     .transform((value) => value || null);
 
+const optionalLocationString = z.preprocess(
+  (value) => typeof value === "string" ? value.trim() || null : value,
+  z.string().max(80).nullable().optional(),
+);
+
 const normalizeOptionalString = (value: unknown) =>
   typeof value === "string" ? value.trim() || null : value;
 
@@ -84,14 +89,15 @@ export const createNoteSchema = noteSchema.extend({
   }
 });
 
-export const leadSchema = z.object({
+const leadFieldsSchema = z.object({
   name: z.string().trim().min(2).max(120),
   company: optionalString(120),
   email: leadEmailSchema,
   phone: leadPhoneSchema,
   alternatePhone: optionalString(30),
   address: optionalString(180),
-  city: optionalString(80),
+  city: optionalLocationString,
+  district: optionalLocationString,
   state: optionalString(80),
   country: optionalString(80),
   // Retained as an optional compatibility input for older API clients; manual lead forms omit it.
@@ -125,9 +131,12 @@ export const leadSchema = z.object({
   isArchived: z.boolean().optional(),
 });
 
+export const leadSchema = leadFieldsSchema;
+export const leadPatchSchema = leadFieldsSchema.partial();
+
 const interactionActivityFields = {
   action: z.enum(["CALL", "WHATSAPP"]),
-  response: z.enum(["PICKED_UP", "NO_RESPONSE", "INVALID_NUMBER", "REPLIED"]),
+  response: z.enum(["PICKED_UP", "NOT_PICKED_UP", "INVALID_NUMBER", "SWITCHED_OFF", "REPLIED", "NOT_REPLIED"]),
   interest: z.enum(["INTERESTED", "NOT_INTERESTED"]).nullable(),
   notes: z.string().trim().max(10000).nullable().optional().transform((value) => value || null),
   scheduleFollowUp: z.boolean().optional().default(false),
@@ -172,6 +181,7 @@ export const leadProgressRequestSchema = refineInteraction(z.object({
   status: leadStatusSchema.optional(),
   priority: leadPrioritySchema.optional(),
   category: leadCategorySchema.optional().nullable(),
+  requirement: optionalString(2000),
   completeFollowUpId: z.string().trim().min(1).optional(),
 }));
 
@@ -189,9 +199,18 @@ export function validateActivityOutcomePatch(
   const changesOutcome = patch.action !== undefined || patch.response !== undefined || patch.interest !== undefined;
   if (!changesOutcome) return null;
 
+  const response = patch.response ?? stored.response;
+  if (response === "NO_RESPONSE") {
+    if (patch.action !== undefined && patch.action !== stored.action) {
+      return interactionActivitySchema.safeParse({ action: patch.action, response, interest: patch.interest ?? stored.interest, notes: null, scheduleFollowUp: false });
+    }
+    if (patch.interest === undefined || patch.interest === null) return { success: true as const };
+    return interactionActivitySchema.safeParse({ action: "CALL", response: "NOT_PICKED_UP", interest: patch.interest, notes: null, scheduleFollowUp: false });
+  }
+
   return interactionActivitySchema.safeParse({
     action: patch.action ?? stored.action,
-    response: patch.response ?? stored.response,
+    response,
     interest: patch.interest !== undefined ? patch.interest : stored.interest,
     notes: null,
     scheduleFollowUp: false,
@@ -200,9 +219,11 @@ export function validateActivityOutcomePatch(
   });
 }
 
-export const manualLeadFieldsSchema = leadSchema.omit({ nextFollowUpAt: true });
+const manualLeadBaseSchema = leadFieldsSchema.omit({ nextFollowUpAt: true });
+export const manualLeadFieldsSchema = manualLeadBaseSchema;
+export const manualLeadPatchSchema = manualLeadBaseSchema.partial();
 
-export const createLeadRequestSchema = manualLeadFieldsSchema.extend({
+export const createLeadRequestSchema = leadFieldsSchema.omit({ nextFollowUpAt: true }).extend({
   initialActivity: interactionActivitySchema,
 }).superRefine((data, ctx) => {
   if (!data.email && !data.phone) {

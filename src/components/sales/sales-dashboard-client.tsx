@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
+import { getActivityInterestLabel, getActivityResponseLabel } from "@/lib/activity-options";
 import { Card, CardEmptyState } from "@/components/ui/card";
 import { KpiCard } from "@/components/shared/kpi-card";
 import { Badge } from "@/components/ui/badge";
@@ -60,9 +61,9 @@ interface SalesDashboardData {
   };
 }
 
-const PIPELINE_STATUSES = ["NEW", "ON_HOLD", "CONVERTED", "LOST", "SPAM"];
+const PIPELINE_STATUSES = ["NEW", "CONVERTED", "LOST", "SPAM", "ON_HOLD", "OLD"];
 
-const PRIORITY_ORDER = ["URGENT", "HIGH", "MEDIUM", "LOW"];
+const PRIORITY_ORDER = ["URGENT", "HIGH", "MEDIUM", "LOW", "COLD"];
 
 function AgendaRow({ item, onOpen }: { item: UpcomingFollowUp; onOpen: (leadId: string) => void }) {
   const [hydrated, setHydrated] = useState(false);
@@ -210,7 +211,7 @@ export function SalesDashboardClient({ data }: { data: SalesDashboardData }) {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
           <KpiCard
-            title="No Response"
+            title={getActivityResponseLabel("NO_RESPONSE")}
             count={data.insights.noResponse}
             description="Calls or WhatsApp contacts with no reply today"
             href="/sales/my-leads?filter.activityDate=today&filter.activityResponse=NO_RESPONSE"
@@ -222,7 +223,7 @@ export function SalesDashboardClient({ data }: { data: SalesDashboardData }) {
             href="/sales/my-leads?filter.activityDate=today&filter.activityInterest=INTERESTED"
           />
           <KpiCard
-            title="Not Interested"
+            title={getActivityInterestLabel("NOT_INTERESTED")}
             count={data.insights.notInterested}
             description="Leads marked not interested today"
             href="/sales/my-leads?filter.activityDate=today&filter.activityInterest=NOT_INTERESTED"

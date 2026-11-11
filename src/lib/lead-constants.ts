@@ -2,8 +2,9 @@ export const LEAD_STATUSES = [
   { value: "NEW", label: "New" },
   { value: "CONVERTED", label: "Converted" },
   { value: "LOST", label: "Lost" },
-  { value: "SPAM", label: "Spam" },
-  { value: "ON_HOLD", label: "On Hold" },
+  { value: "SPAM", label: "Junk" },
+  { value: "ON_HOLD", label: "Paused" },
+  { value: "OLD", label: "Old" },
 ] as const;
 
 export const LEAD_PRIORITIES = [
@@ -11,6 +12,7 @@ export const LEAD_PRIORITIES = [
   { value: "MEDIUM", label: "Medium" },
   { value: "HIGH", label: "High" },
   { value: "URGENT", label: "Urgent" },
+  { value: "COLD", label: "Cold" },
 ] as const;
 
 export const LEAD_CATEGORIES = [
@@ -48,3 +50,11 @@ export function getPriorityLabel(value: string): string {
 export function getCategoryLabel(value: string): string {
   return LEAD_CATEGORIES.find((c) => c.value === value)?.label ?? value;
 }
+
+export const FOLLOW_UP_STATUSES = [
+  { value: "PENDING", label: "To do" },
+  { value: "COMPLETED", label: "Done" },
+  { value: "CANCELLED", label: "Cancelled" },
+] as const;
+
+export const FOLLOW_UP_PRIORITIES = LEAD_PRIORITIES;

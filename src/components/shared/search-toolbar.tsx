@@ -6,7 +6,7 @@ import { Search } from "lucide-react";
 export function SearchToolbar({
   value,
   onChange,
-  placeholder = "Search leads...",
+  placeholder = "Search by name, company, email, phone, or lead number",
 }: {
   value: string;
   onChange: (value: string) => void;

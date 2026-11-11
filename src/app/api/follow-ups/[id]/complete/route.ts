@@ -12,7 +12,7 @@ const completeFollowUpSchema = z.object({
   }).nullable().optional(),
   activity: z.object({
     action: z.enum(["CALL", "WHATSAPP"]),
-    response: z.enum(["PICKED_UP", "NO_RESPONSE", "INVALID_NUMBER", "REPLIED"]),
+    response: z.enum(["PICKED_UP", "NOT_PICKED_UP", "INVALID_NUMBER", "SWITCHED_OFF", "REPLIED", "NOT_REPLIED"]),
     interest: z.enum(["INTERESTED", "NOT_INTERESTED"]).nullable(),
     notes: z.string().trim().max(10000).nullable().optional(),
   }).nullable().optional(),

@@ -59,7 +59,7 @@ test("lead contact validation accepts either method, trims email, and normalizes
 test("manual lead creation requires a valid initial contact interaction", () => {
   assert.equal(createLeadRequestSchema.safeParse({ name: "Missing activity", phone: "1234567890" }).success, false);
   assert.equal(manualLead({ name: "Invalid response", phone: "1234567890", initialActivity: { ...validActivity, response: "REPLIED" } }).success, false);
-  assert.equal(manualLead({ name: "No response", phone: "1234567890", initialActivity: { ...validActivity, response: "NO_RESPONSE", interest: null } }).success, true);
+  assert.equal(manualLead({ name: "No response", phone: "1234567890", initialActivity: { ...validActivity, response: "NOT_PICKED_UP", interest: null } }).success, true);
   assert.equal(manualLead({ name: "No interest", phone: "1234567890", initialActivity: { ...validActivity, interest: null } }).success, false);
 });
 
@@ -71,6 +71,18 @@ test("lead updates share email and phone validation without requiring contact de
   if (normalized.success) {
     assert.equal(normalized.data.email, "person@example.test");
     assert.equal(normalized.data.phone, null);
+  }
+});
+
+test("lead API schemas accept OLD and continue accepting historical lead statuses", () => {
+  for (const status of ["NEW", "CONVERTED", "LOST", "SPAM", "ON_HOLD", "OLD"]) {
+    assert.equal(manualLead({ name: `Create status ${status}`, phone: "1234567890", status }).success, true, `${status} is accepted by Create Lead API`);
+    assert.equal(leadSchema.safeParse({ name: "Status compatibility", status }).success, true, `${status} remains valid`);
+    assert.equal(leadProgressRequestSchema.safeParse({
+      ...validActivity,
+      status,
+      scheduleFollowUp: false,
+    }).success, true, `${status} is accepted by Record Progress`);
   }
 });
 
@@ -156,7 +168,7 @@ test("activity validation enforces action-specific response and conditional inte
   assert.equal(interactionActivitySchema.safeParse({ ...validActivity, action: "CALL", response: "REPLIED" }).success, false);
   assert.equal(interactionActivitySchema.safeParse({ ...validActivity, action: "WHATSAPP", response: "PICKED_UP" }).success, false);
   assert.equal(interactionActivitySchema.safeParse({ ...validActivity, interest: null }).success, false);
-  assert.equal(interactionActivitySchema.safeParse({ ...validActivity, response: "NO_RESPONSE", interest: null }).success, true);
+  assert.equal(interactionActivitySchema.safeParse({ ...validActivity, response: "NOT_PICKED_UP", interest: null }).success, true);
   assert.equal(interactionActivitySchema.safeParse({ ...validActivity, action: "WHATSAPP", response: "REPLIED" }).success, true);
   const clientIdentity = interactionActivitySchema.parse({ ...validActivity, actorId: "forged-actor", assignedUserId: "forged-assignee" });
   assert.equal("actorId" in clientIdentity, false);

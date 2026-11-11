@@ -12,7 +12,7 @@ import { ExportButton } from "@/components/shared/export-button";
 import { SignOutButton } from "@/components/shared/sign-out-button";
 import { SkeletonCard, SkeletonTable } from "@/components/ui/loading";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { getStatusLabel } from "@/lib/lead-constants";
+import { getStatusLabel, LEAD_STATUSES } from "@/lib/lead-constants";
 import { Users, Target, TrendingUp, BarChart3, Activity, Award, Flame, Star } from "lucide-react";
 
 interface SummaryData {
@@ -191,7 +191,7 @@ export function AdminReports({ initialRange }: { initialRange: { from: string; t
 
   const ins = deriveInsights(sources, assignments, trends);
 
-  const pipelineStatuses = statusBreakdown.filter((s) => ["NEW", "CONTACTED", "QUALIFIED", "CONVERTED", "LOST"].includes(s.status));
+  const pipelineStatuses = statusBreakdown.filter((s) => LEAD_STATUSES.some((status) => status.value === s.status));
   const pipelineMax = Math.max(...pipelineStatuses.map((s) => s.count), 1);
 
   const sortedSales = [...assignments].sort((a, b) => b.leadCount - a.leadCount);

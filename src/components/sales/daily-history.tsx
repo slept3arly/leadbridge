@@ -5,24 +5,13 @@ import { IconActionButton } from "@/components/ui/icon-action-button";
 import { Badge } from "@/components/ui/badge";
 import { Edit, Calendar, CheckCircle2, Trash2, ArrowUpRight, RefreshCw, Phone, MessageSquare } from "lucide-react";
 import { formatDate, formatTimeValue, formatTime } from "@/lib/utils";
+import { ACTIVITY_ACTION_LABELS, ACTIVITY_INTEREST_LABELS, ACTIVITY_RESPONSE_LABELS } from "@/lib/activity-options";
 import type { ActivityEventItem, ActivityEventEntry } from "@/hooks/use-lead-details";
 
 type DayGroup = {
   dateKey: string;
   label: string;
   events: ActivityEventItem[];
-};
-
-const ACTION_LABELS: Record<string, string> = { CALL: "Call", WHATSAPP: "WhatsApp" };
-const RESPONSE_LABELS: Record<string, string> = {
-  PICKED_UP: "Picked Up",
-  NO_RESPONSE: "No Response",
-  INVALID_NUMBER: "Invalid Number",
-  REPLIED: "Replied",
-};
-const INTEREST_LABELS: Record<string, string> = {
-  INTERESTED: "Interested",
-  NOT_INTERESTED: "Not Interested",
 };
 
 function groupByDay(events: ActivityEventItem[]): DayGroup[] {
@@ -49,9 +38,9 @@ function groupByDay(events: ActivityEventItem[]): DayGroup[] {
 
 function InteractionEntry({ entry }: { entry: ActivityEventEntry }) {
   const action = entry.action ?? (entry.type === "CALL" || entry.type === "WHATSAPP" ? entry.type : null);
-  const actionLabel = action ? (ACTION_LABELS[action] ?? action) : null;
-  const responseLabel = entry.response ? (RESPONSE_LABELS[entry.response] ?? entry.response) : null;
-  const interestLabel = entry.interest ? INTEREST_LABELS[entry.interest] ?? entry.interest : null;
+  const actionLabel = action ? (ACTIVITY_ACTION_LABELS[action as keyof typeof ACTIVITY_ACTION_LABELS] ?? action) : null;
+  const responseLabel = entry.response ? (ACTIVITY_RESPONSE_LABELS[entry.response as keyof typeof ACTIVITY_RESPONSE_LABELS] ?? entry.response) : null;
+  const interestLabel = entry.interest ? ACTIVITY_INTEREST_LABELS[entry.interest as keyof typeof ACTIVITY_INTEREST_LABELS] ?? entry.interest : null;
   const isCall = action === "CALL";
   const generatedMessage = action && entry.response
     ? [`${action} - ${entry.response.replaceAll("_", " ")}`, entry.interest ? `(${entry.interest.replaceAll("_", " ")})` : ""].filter(Boolean).join(" ").toLowerCase()
@@ -189,7 +178,7 @@ function changedFieldSummary(entry: ActivityEventEntry): string[] {
   if (!Array.isArray(changes)) return [];
   const labels: Record<string, string> = {
     displayName: "Name", company: "Company", email: "Email", phone: "Phone",
-    city: "City", state: "State", product: "Product", requirement: "Requirement",
+    city: "City", district: "District", state: "State", product: "Product", requirement: "Requirement",
     status: "Status", priority: "Priority", category: "Category", sourceId: "Lead source",
   };
   return changes.flatMap((value) => {

@@ -3,43 +3,37 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const modal = readFileSync("src/components/leads/record-progress-modal.tsx", "utf8");
-const accordion = readFileSync("src/components/ui/accordion-section.tsx", "utf8");
 
-test("Record Progress renders three controlled accordion sections collapsed by default", () => {
-  assert.match(modal, /interaction: false,[\s\S]*classification: false,[\s\S]*followUps: false/);
-  assert.match(modal, /title="Customer Interaction"[\s\S]*status="Required"[\s\S]*expanded=\{expandedSections\.interaction\}/);
-  assert.match(modal, /title="Update Lead Classification"[\s\S]*status="Optional"[\s\S]*expanded=\{expandedSections\.classification\}/);
-  assert.match(modal, /title="Manage Follow-ups"[\s\S]*status="Optional"[\s\S]*expanded=\{expandedSections\.followUps\}/);
+test("Record Progress uses a full-screen responsive two-column modal without accordions", () => {
+  assert.match(modal, /fixed inset-0 z-\[60\]/);
+  assert.match(modal, /grid-cols-1 lg:grid-cols-2/);
+  assert.match(modal, /overflow-y-auto/);
+  assert.doesNotMatch(modal, /AccordionSection|accordion-section/);
 });
 
-test("accordion uses a full-width semantic button and a separate accessible content region", () => {
-  assert.match(accordion, /<button[\s\S]*type="button"[\s\S]*aria-expanded=\{expanded\}[\s\S]*aria-controls=\{panelId\}/);
-  assert.match(accordion, /className={cn\([\s\S]*"flex w-full items-center justify-between/);
-  assert.match(accordion, /<\/button>\s*<div/);
-  assert.match(accordion, /<div[\s\S]*id=\{panelId\}[\s\S]*role="region"[\s\S]*aria-labelledby=\{triggerId\}[\s\S]*hidden={!expanded}/);
-  assert.match(accordion, /focus-visible:ring-2/);
-  assert.match(accordion, /<ChevronDown[\s\S]*aria-hidden="true"/);
+test("fields are arranged in the specified order with action and response together", () => {
+  const action = modal.indexOf('htmlFor="record-progress-action"');
+  const response = modal.indexOf('htmlFor="record-progress-response"');
+  const status = modal.indexOf('htmlFor="progress-status"');
+  const priority = modal.indexOf('htmlFor="progress-priority"');
+  const interest = modal.indexOf('htmlFor="record-progress-interest"');
+  const notes = modal.indexOf('id="progress-notes-title"');
+  const followUps = modal.indexOf('id="progress-follow-ups-title"');
+  assert.ok(action < response && response < status && status < priority && priority < interest);
+  assert.ok(notes >= 0 && notes < followUps);
+  assert.equal((modal.match(/id="record-progress-notes"/g) ?? []).length, 1);
+  assert.match(modal, /className="min-h-\[60px\] resize-y"/);
+  assert.match(modal, /grid grid-cols-1 gap-4 sm:grid-cols-2/);
+  assert.doesNotMatch(modal, /Lead Category|Latest Requirement|progress-category|progress-requirement/);
 });
 
-test("collapse preserves modal-owned form values and validation expands affected sections", () => {
-  for (const state of ["action", "response", "interest", "notes", "status", "priority", "category", "selectedFollowUpId", "scheduleFollowUp", "followUpDate", "followUpTime"]) {
-    assert.match(modal, new RegExp(`const \\[${state}, set[A-Za-z]+\\] = useState`), `${state} remains owned by the modal`);
-  }
-  assert.match(modal, /expandSectionsWithErrors\(invalidFields\)/);
-  assert.match(modal, /interest: "interaction"[\s\S]*status: "classification"[\s\S]*category: "classification"[\s\S]*followUpDate: "followUps"/);
-  assert.match(modal, /setExpandedSections\(\(current\) => \(\{[\s\S]*interaction: current\.interaction \|\| sections\.has\("interaction"\)/);
-  assert.match(modal, /focusAfterExpansion/);
-  assert.match(modal, /<form noValidate onSubmit={handleSubmit}/);
-  assert.match(modal, /setFieldErrors\(\(current\) => \{[\s\S]*delete next\[field\]/);
+test("the modal omits descriptive subtitles and visible required or optional tags", () => {
+  assert.doesNotMatch(modal, /Customer Interaction Required|Manage Follow-ups Optional|Record a genuine customer interaction|Record what happened with the customer|Leave values unchanged when no update is needed|Choose what should happen to the current task/);
+  assert.doesNotMatch(modal, />Required<|>Optional</);
 });
 
-test("accordion redesign retains task-context and single-request submission contracts", () => {
-  assert.match(modal, /useState\(\(\) => getValidProposedFollowUpId\(initialFollowUpId, initialPendingFollowUps\)\)/);
-  assert.match(modal, /initialFollowUpId && selectedFollowUp/);
-  assert.match(modal, /const completeFollowUpId = getCompletionFollowUpId\(selectedFollowUpId, pendingFollowUps\)/);
-  assert.match(modal, /\.\.\.\(completeFollowUpId \? \{ completeFollowUpId \} : \{\}\)/);
-  assert.match(modal, /axios\.post\(`\/api\/leads\/\$\{leadId\}\/activities`, parsed\.data\)/);
-  assert.equal((modal.match(/axios\.post\(/g) ?? []).length, 1);
-  assert.match(modal, /setError\("The lead or follow-up changed while you were working/);
-  assert.match(modal, /setError\("You no longer have permission to record progress/);
+test("existing required validation remains in place", () => {
+  assert.match(modal, /id="record-progress-action"[^>]*required/);
+  assert.match(modal, /id="record-progress-response"[^>]*required/);
+  assert.match(modal, /id="record-progress-interest"[^>]*required/);
 });

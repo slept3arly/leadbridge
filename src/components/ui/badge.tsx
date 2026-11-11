@@ -7,6 +7,7 @@ const tones: Record<string, string> = {
   CONVERTED: "bg-[var(--color-success)]/10 text-[var(--color-success)]",
   LOST: "bg-[var(--color-danger)]/10 text-[var(--color-danger)]",
   SPAM: "bg-[var(--color-danger)]/10 text-[var(--color-danger)]",
+  OLD: "bg-slate-100 text-slate-600",
   ON_HOLD: "bg-[var(--color-warning)]/10 text-[var(--color-ink)]",
   LOW: "bg-[var(--color-brand)]/10 text-[var(--color-brand)]",
   MEDIUM: "bg-[var(--color-surface-raised)] text-[var(--color-muted)]",

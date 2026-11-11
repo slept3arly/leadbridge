@@ -49,7 +49,7 @@ test("PostgreSQL follow-up completion is an atomic pending-to-completed transiti
       const fixture = await createFixture("normal");
       const result = await followUpService.complete(fixture.followUpId, {
         note: "Completion note",
-        activity: { action: "CALL", response: "NO_RESPONSE", interest: null, notes: "No answer" },
+        activity: { action: "CALL", response: "NOT_PICKED_UP", interest: null, notes: "No answer" },
       }, fixture.actor);
 
       assert.equal(result.completedFollowUp.status, "COMPLETED");
@@ -71,7 +71,7 @@ test("PostgreSQL follow-up completion is an atomic pending-to-completed transiti
       try {
         await followUpService.complete(fixture.followUpId, {
           nextFollowUp: { dueDate: "2030-02-01T10:00:00.000Z" },
-          activity: { action: "WHATSAPP", response: "NO_RESPONSE", interest: null },
+          activity: { action: "WHATSAPP", response: "NOT_REPLIED", interest: null },
         }, fixture.actor);
       } catch (error) {
         duplicateError = error;

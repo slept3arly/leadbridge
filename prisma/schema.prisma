@@ -23,6 +23,7 @@ enum LeadStatus {
   LOST
   SPAM
   ON_HOLD
+  OLD
 }
 
 enum LeadPriority {
@@ -30,6 +31,7 @@ enum LeadPriority {
   MEDIUM
   HIGH
   URGENT
+  COLD
 }
 
 enum FollowUpStatus {
@@ -43,6 +45,7 @@ enum FollowUpPriority {
   MEDIUM
   HIGH
   URGENT
+  COLD
 }
 
 enum ActionType {
@@ -55,6 +58,9 @@ enum ResponseType {
   NO_RESPONSE
   INVALID_NUMBER
   REPLIED
+  NOT_PICKED_UP
+  SWITCHED_OFF
+  NOT_REPLIED
 }
 
 enum InterestType {
@@ -266,6 +272,7 @@ model Lead {
   alternatePhone    String?
   address           String?
   city              String?
+  district          String?
   state             String?
   country           String?
   product           String?
@@ -411,6 +418,7 @@ model FollowUp {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   activityEntries ActivityEntry[]
+  cancelledAt DateTime?
 
   @@index([leadId, dueDate, status])
   @@index([assignedUserId, status, dueDate])

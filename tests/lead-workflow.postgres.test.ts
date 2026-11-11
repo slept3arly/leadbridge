@@ -60,7 +60,7 @@ test("lead workflow service persists creation and progress atomically", { skip: 
         email: email("created-call"),
         assignedUserId: salesId,
         initialActivity: {
-          action: "CALL", response: "NO_RESPONSE", interest: null, notes: "  ",
+          action: "CALL", response: "NOT_PICKED_UP", interest: null, notes: "  ",
           scheduleFollowUp: true, followUpDate: "2032-02-03T10:00:00.000Z", followUpTime: "10:00",
         },
       }, actorAdmin);
@@ -113,25 +113,24 @@ test("lead workflow service persists creation and progress atomically", { skip: 
       await assert.rejects(
         leadWorkflowService.createLeadWithInitialActivity({
           name: "Workflow Junior create", email: email("junior-create"),
-          initialActivity: { action: "CALL", response: "NO_RESPONSE", interest: null, notes: null },
+          initialActivity: { action: "CALL", response: "NOT_PICKED_UP", interest: null, notes: null },
         }, { id: juniorId, role: "SALES", salesPrivilege: "JUNIOR" }),
         (error: unknown) => error instanceof ServiceError && error.status === 403,
       );
       await assert.rejects(
         leadWorkflowService.createLeadWithInitialActivity({
           name: "Workflow Sales cannot assign", email: email("sales-other-assignee"), assignedUserId: juniorId,
-          initialActivity: { action: "CALL", response: "NO_RESPONSE", interest: null, notes: null },
+          initialActivity: { action: "CALL", response: "NOT_PICKED_UP", interest: null, notes: null },
         }, actorSales),
         (error: unknown) => error instanceof ServiceError && error.status === 403,
       );
     });
 
-    await t.test("Record Progress updates changed fields, completes only the selected task, and schedules an owner-assigned replacement", async () => {
+    await t.test("Record Progress updates changed fields, completes the selected task, and schedules an owner-assigned task", async () => {
       const lead = await createLead("progress");
       const selected = await createPendingFollowUp(lead.id, "selected");
-      const untouched = await createPendingFollowUp(lead.id, "untouched");
       const result = await leadWorkflowService.recordLeadProgress(lead.id, {
-        action: "CALL", response: "NO_RESPONSE", interest: null, notes: "No answer",
+        action: "CALL", response: "NOT_PICKED_UP", interest: null, notes: "No answer",
         status: "ON_HOLD", priority: "HIGH", category: "RETAILER",
         completeFollowUpId: selected.id,
         scheduleFollowUp: true, followUpDate: "2032-03-01T09:30:00-05:00", followUpTime: "09:30",
@@ -143,14 +142,13 @@ test("lead workflow service persists creation and progress atomically", { skip: 
       assert.ok(result.affectedUserIds.includes(salesId));
       assert.equal(result.completedFollowUp && (result.completedFollowUp as { id: string }).id, selected.id);
       assert.equal((await prisma.followUp.findUniqueOrThrow({ where: { id: selected.id } })).status, "COMPLETED");
-      assert.equal((await prisma.followUp.findUniqueOrThrow({ where: { id: untouched.id } })).status, "PENDING");
-      const next = await prisma.followUp.findFirstOrThrow({ where: { leadId: lead.id, id: { notIn: [selected.id, untouched.id] } } });
+      const next = await prisma.followUp.findFirstOrThrow({ where: { leadId: lead.id, id: { not: selected.id } } });
       followUpIds.push(next.id);
       assert.equal(next.assignedUserId, salesId);
       assert.equal(next.description, null);
       assert.equal(await prisma.note.count({ where: { leadId: lead.id } }), 0);
       assert.equal(next.dueDate?.toISOString(), "2032-03-01T14:30:00.000Z");
-      assert.equal(result.lead.nextFollowUpAt?.getTime(), untouched.dueDate?.getTime());
+      assert.equal(result.lead.nextFollowUpAt?.getTime(), next.dueDate?.getTime());
       assert.equal(result.lead.lastFollowUpAt?.getTime(), (result.completedFollowUp as { completedAt: Date }).completedAt.getTime());
       const entries = result.interaction.entries;
       assert.deepEqual(entries.map((entry) => entry.type).sort(), ["CALL", "FOLLOW_UP_COMPLETED", "FOLLOW_UP_SCHEDULED", "STATUS_CHANGED", "UPDATED"].sort());
@@ -161,10 +159,10 @@ test("lead workflow service persists creation and progress atomically", { skip: 
       const lead = await createLead("repeat");
       const before = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
       const first = await leadWorkflowService.recordLeadProgress(lead.id, {
-        action: "WHATSAPP", response: "NO_RESPONSE", interest: null, notes: null,
+        action: "WHATSAPP", response: "NOT_REPLIED", interest: null, notes: null,
       }, actorSales);
       const second = await leadWorkflowService.recordLeadProgress(lead.id, {
-        action: "WHATSAPP", response: "NO_RESPONSE", interest: null, notes: null,
+        action: "WHATSAPP", response: "NOT_REPLIED", interest: null, notes: null,
       }, actorSales);
       assert.notEqual(first.interaction.id, second.interaction.id);
       assert.equal(await prisma.activityEvent.count({ where: { leadId: lead.id, type: "INTERACTION" } }), 2);
@@ -180,17 +178,57 @@ test("lead workflow service persists creation and progress atomically", { skip: 
       assert.equal(afterPatch.updatedAt.getTime(), before.updatedAt.getTime());
     });
 
-    await t.test("scheduling without completion leaves existing pending tasks untouched", async () => {
+    await t.test("Record Progress completes the existing task even without scheduling a replacement", async () => {
+      const lead = await createLead("progress-complete-only");
+      const existing = await createPendingFollowUp(lead.id, "progress-complete-only-existing");
+      const result = await leadWorkflowService.recordLeadProgress(lead.id, {
+        action: "CALL", response: "NOT_PICKED_UP", interest: null,
+      }, actorSales);
+
+      const existingAfter = await prisma.followUp.findUniqueOrThrow({ where: { id: existing.id } });
+      assert.equal(existingAfter.status, "COMPLETED");
+      assert.ok(existingAfter.completedAt);
+      assert.equal(result.completedFollowUp && (result.completedFollowUp as { id: string }).id, existing.id);
+      assert.equal(result.nextFollowUp, null);
+      assert.equal(await prisma.followUp.count({ where: { leadId: lead.id, status: "PENDING" } }), 0);
+      assert.equal(result.lead.nextFollowUpAt, null);
+      assert.equal(result.lead.lastFollowUpAt?.getTime(), existingAfter.completedAt.getTime());
+      const completion = result.interaction.entries.find((entry) => entry.type === "FOLLOW_UP_COMPLETED");
+      assert.equal(completion?.followUpId, existing.id);
+      assert.equal((completion?.metadata as { autoCompleted?: boolean }).autoCompleted, true);
+      assert.equal((completion?.metadata as { completionReason?: string }).completionReason, "RECORD_PROGRESS");
+    });
+
+    await t.test("Record Progress without an existing pending follow-up records the interaction normally", async () => {
+      const lead = await createLead("progress-no-follow-up");
+      const result = await leadWorkflowService.recordLeadProgress(lead.id, {
+        action: "CALL", response: "NOT_PICKED_UP", interest: null,
+      }, actorSales);
+
+      assert.equal(result.completedFollowUp, null);
+      assert.equal(result.nextFollowUp, null);
+      assert.equal(await prisma.followUp.count({ where: { leadId: lead.id } }), 0);
+      assert.equal(await prisma.activityEvent.count({ where: { leadId: lead.id, type: "INTERACTION" } }), 1);
+    });
+
+    await t.test("scheduling a replacement completes the existing task and leaves exactly one new pending task", async () => {
       const lead = await createLead("schedule-only");
       const existing = await createPendingFollowUp(lead.id, "schedule-only-existing");
       const result = await leadWorkflowService.recordLeadProgress(lead.id, {
-        action: "WHATSAPP", response: "INVALID_NUMBER", interest: null,
+        action: "WHATSAPP", response: "NOT_REPLIED", interest: null,
         scheduleFollowUp: true, followUpDate: "2032-04-01T08:00:00Z",
       }, actorSales);
       const existingAfter = await prisma.followUp.findUniqueOrThrow({ where: { id: existing.id } });
-      assert.equal(existingAfter.status, "PENDING");
+      assert.equal(existingAfter.status, "COMPLETED");
+      assert.ok(existingAfter.completedAt);
       assert.equal(existingAfter.dueDate?.getTime(), existing.dueDate?.getTime());
       assert.ok(result.nextFollowUp);
+      assert.equal(await prisma.followUp.count({ where: { leadId: lead.id, status: "PENDING" } }), 1);
+      assert.notEqual((result.nextFollowUp as { id: string }).id, existing.id);
+      const autoCompletion = await prisma.activityEntry.findFirstOrThrow({ where: { followUpId: existing.id, type: "FOLLOW_UP_COMPLETED" } });
+      assert.equal((autoCompletion.metadata as { autoCompleted?: boolean }).autoCompleted, true);
+      assert.equal((autoCompletion.metadata as { completionReason?: string }).completionReason, "SUPERSEDED_BY_NEW_FOLLOW_UP");
+      assert.equal((autoCompletion.metadata as { supersededByFollowUpId?: string }).supersededByFollowUpId, (result.nextFollowUp as { id: string }).id);
       assert.equal(result.interaction.entries.filter((entry) => entry.type === "WHATSAPP").length, 1);
     });
 
@@ -200,14 +238,14 @@ test("lead workflow service persists creation and progress atomically", { skip: 
       const taskB = await createPendingFollowUp(leadB.id, "other-lead");
       await assert.rejects(
         leadWorkflowService.recordLeadProgress(leadA.id, {
-          action: "CALL", response: "NO_RESPONSE", interest: null, completeFollowUpId: taskB.id,
+          action: "CALL", response: "NOT_PICKED_UP", interest: null, completeFollowUpId: taskB.id,
         }, actorSales),
         (error: unknown) => error instanceof ServiceError && error.status === 404,
       );
       await prisma.followUp.update({ where: { id: taskB.id }, data: { status: "COMPLETED", completedAt: new Date() } });
       await assert.rejects(
         leadWorkflowService.recordLeadProgress(leadB.id, {
-          action: "CALL", response: "NO_RESPONSE", interest: null, completeFollowUpId: taskB.id,
+          action: "CALL", response: "NOT_PICKED_UP", interest: null, completeFollowUpId: taskB.id,
         }, actorSales),
         (error: unknown) => error instanceof ServiceError && error.status === 409,
       );
@@ -218,7 +256,7 @@ test("lead workflow service persists creation and progress atomically", { skip: 
       const lead = await createLead("other-owner", juniorId);
       await assert.rejects(
         leadWorkflowService.recordLeadProgress(lead.id, {
-          action: "CALL", response: "NO_RESPONSE", interest: null,
+          action: "CALL", response: "NOT_PICKED_UP", interest: null,
         }, actorSales),
         (error: unknown) => error instanceof ServiceError && error.status === 404,
       );
@@ -229,7 +267,7 @@ test("lead workflow service persists creation and progress atomically", { skip: 
       const lead = await createLead("concurrent-completion");
       const task = await createPendingFollowUp(lead.id, "concurrent-completion");
       const submit = () => leadWorkflowService.recordLeadProgress(lead.id, {
-        action: "CALL", response: "NO_RESPONSE", interest: null, completeFollowUpId: task.id,
+        action: "CALL", response: "NOT_PICKED_UP", interest: null, completeFollowUpId: task.id,
       }, actorSales);
       const outcomes = await Promise.allSettled([submit(), submit()]);
       assert.equal(outcomes.filter((outcome) => outcome.status === "fulfilled").length, 1);
@@ -240,19 +278,22 @@ test("lead workflow service persists creation and progress atomically", { skip: 
       assert.equal(await prisma.activityEvent.count({ where: { leadId: lead.id, type: "INTERACTION" } }), 1);
     });
 
-    await t.test("event failure rolls back a selected completion and no stale lead write overwrites newer fields", async () => {
+    await t.test("event failure rolls back automatic completion and replacement creation", async () => {
       const lead = await createLead("rollback");
       const task = await createPendingFollowUp(lead.id, "rollback");
       const originalCreateEvent = activityEventService.createEvent;
       activityEventService.createEvent = async () => { throw new Error("forced event failure"); };
       try {
         await assert.rejects(leadWorkflowService.recordLeadProgress(lead.id, {
-          action: "CALL", response: "NO_RESPONSE", interest: null, completeFollowUpId: task.id,
+          action: "CALL", response: "NOT_PICKED_UP", interest: null,
+          scheduleFollowUp: true, followUpDate: "2032-05-01T10:00:00Z",
         }, actorSales), /forced event failure/);
       } finally {
         activityEventService.createEvent = originalCreateEvent;
       }
       assert.equal((await prisma.followUp.findUniqueOrThrow({ where: { id: task.id } })).status, "PENDING");
+      assert.equal(await prisma.followUp.count({ where: { leadId: lead.id, status: "PENDING" } }), 1);
+      assert.equal(await prisma.followUp.count({ where: { leadId: lead.id } }), 1);
       assert.equal(await prisma.activityEvent.count({ where: { leadId: lead.id } }), 0);
 
       const stale = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });

@@ -8,6 +8,7 @@ type LeadCustomer = Record<string, unknown> & {
   alternatePhone: string | null;
   address: string | null;
   city: string | null;
+  district: string | null;
   state: string | null;
   country: string | null;
   industry: string | null;
@@ -50,6 +51,7 @@ export function LeadInfoSection({ lead }: { lead: LeadCustomer }) {
     { label: "Phone", value: lead.phone, kind: "phone" },
     { label: "Email", value: lead.email, kind: "email" },
     { label: "Alternate phone", value: lead.alternatePhone, kind: "phone" },
+    { label: "District", value: lead.district },
     { label: "City", value: lead.city },
     { label: "State", value: lead.state },
     { label: "Country", value: lead.country },

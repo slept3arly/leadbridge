@@ -130,11 +130,11 @@ export class DashboardService {
         unassigned,
       },
       charts: {
-        statusBreakdown: ["NEW", "ON_HOLD", "CONVERTED", "LOST", "SPAM"].map((status) => ({
+        statusBreakdown: ["NEW", "CONVERTED", "LOST", "SPAM", "ON_HOLD", "OLD"].map((status) => ({
           status,
           count: statusBreakdown.find((item) => item.status === status)?.count ?? 0,
         })),
-        priorityBreakdown: ["URGENT", "HIGH", "MEDIUM", "LOW"].map((priority) => ({
+        priorityBreakdown: ["URGENT", "HIGH", "MEDIUM", "LOW", "COLD"].map((priority) => ({
           priority,
           count: priorityBreakdown.find((item) => item.priority === priority)?._count.id ?? 0,
         })),
@@ -272,8 +272,8 @@ export class DashboardService {
                OR (entry."type" = 'WHATSAPP' AND entry."action" = 'WHATSAPP' AND entry."response" = 'REPLIED')
           ) AS "responded",
           COUNT(DISTINCT event."leadId") FILTER (
-            WHERE (entry."type" = 'CALL' AND entry."action" = 'CALL' AND entry."response" = 'NO_RESPONSE')
-               OR (entry."type" = 'WHATSAPP' AND entry."action" = 'WHATSAPP' AND entry."response" = 'NO_RESPONSE')
+            WHERE (entry."type" = 'CALL' AND entry."action" = 'CALL' AND entry."response" IN ('NOT_PICKED_UP', 'SWITCHED_OFF', 'NO_RESPONSE'))
+               OR (entry."type" = 'WHATSAPP' AND entry."action" = 'WHATSAPP' AND entry."response" IN ('NOT_REPLIED', 'NO_RESPONSE'))
           ) AS "noResponse",
           COUNT(DISTINCT event."leadId") FILTER (WHERE entry."interest" = 'INTERESTED') AS "interested",
           COUNT(DISTINCT event."leadId") FILTER (WHERE entry."interest" = 'NOT_INTERESTED') AS "notInterested"

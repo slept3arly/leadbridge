@@ -1,0 +1,2 @@
+ALTER TABLE "Lead"
+ADD COLUMN "district" TEXT;

@@ -31,6 +31,7 @@ export type LeadDetail = {
   alternatePhone: string | null;
   address: string | null;
   city: string | null;
+  district: string | null;
   state: string | null;
   country: string | null;
   industry: string | null;
@@ -98,7 +99,7 @@ export type ActivityEventEntry = {
   id: string;
   type: string;
   action: "CALL" | "WHATSAPP" | null;
-  response: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED" | null;
+  response: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED" | "NOT_PICKED_UP" | "SWITCHED_OFF" | "NOT_REPLIED" | null;
   interest: "INTERESTED" | "NOT_INTERESTED" | null;
   message: string | null;
   metadata: Record<string, unknown> | null;

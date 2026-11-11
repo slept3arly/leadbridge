@@ -11,11 +11,11 @@ import { FormField } from "@/components/ui/form-field";
 import { LEAD_STATUSES, LEAD_PRIORITIES, LEAD_CATEGORIES } from "@/lib/lead-constants";
 import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 import { ActivityFormFields } from "@/components/sales/activity-fields";
-import { AccordionSection } from "@/components/ui/accordion-section";
-import { createLeadRequestSchema, leadEmailSchema, leadPhoneSchema, leadSchema } from "@/lib/validation";
+import { createLeadRequestSchema, leadEmailSchema, leadPhoneSchema, leadPatchSchema } from "@/lib/validation";
 import { isSuccessfulActivityResponse } from "@/lib/activity-options";
 import { followUpFormDate } from "@/lib/follow-up-form-date";
-import { getLeadCreateValidationTarget, type LeadCreateAccordionSection } from "@/lib/lead-create-accordion";
+import { getLeadCreateValidationTarget } from "@/lib/lead-create-accordion";
+import { CREATE_LEAD_FIELD_ORDER, findNextCreateLeadFieldId, isEnterNavigationInput, shouldAdvanceFromSelect } from "@/lib/create-lead-enter-navigation";
 
 export type LeadFormData = {
   id: string;
@@ -24,6 +24,7 @@ export type LeadFormData = {
   email: string | null;
   phone: string | null;
   city: string | null;
+  district?: string | null;
   state: string | null;
   requirement: string | null;
   status: string;
@@ -33,6 +34,16 @@ export type LeadFormData = {
   source?: { id: string; name: string } | null;
   assignedUserId: string | null;
 };
+
+function isNavigableField(id: string) {
+  const element = document.getElementById(id);
+  if (!element) return false;
+  if (element.matches(":disabled")) return false;
+  if (element.getAttribute("aria-hidden") === "true") return false;
+  if (element.closest("[inert]")) return false;
+  if (element.getClientRects().length === 0) return false;
+  return true;
+}
 
 export function LeadEditModal({
   open,
@@ -61,6 +72,7 @@ export function LeadEditModal({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [city, setCity] = useState("");
+  const [district, setDistrict] = useState("");
   const [state, setState] = useState("");
   const [requirement, setRequirement] = useState("");
   const [status, setStatus] = useState("NEW");
@@ -72,6 +84,8 @@ export function LeadEditModal({
   const [nameError, setNameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [districtError, setDistrictError] = useState<string | null>(null);
+  const [cityError, setCityError] = useState<string | null>(null);
   const [activityAction, setActivityAction] = useState("CALL");
   const [activityResponse, setActivityResponse] = useState("");
   const [activityInterest, setActivityInterest] = useState("");
@@ -80,23 +94,16 @@ export function LeadEditModal({
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpTime, setFollowUpTime] = useState("");
   const [activityErrors, setActivityErrors] = useState<{ action?: string; response?: string; interest?: string; followUpDate?: string }>({});
-  const [expandedSections, setExpandedSections] = useState<Record<LeadCreateAccordionSection, boolean>>({
-    leadInformation: false,
-    classification: false,
-    interaction: false,
-  });
-  const focusAfterExpansion = useRef<string | null>(null);
+  const focusAfterValidation = useRef<string | null>(null);
   const [previousLead, setPreviousLead] = useState(lead);
   const [previousOpen, setPreviousOpen] = useState(open);
   const dialogRef = useAccessibleDialog<HTMLDivElement>({ open, onClose, canClose: !pending });
 
   useEffect(() => {
-    const elementId = focusAfterExpansion.current;
+    const elementId = focusAfterValidation.current;
     if (!elementId) return;
-    const element = document.getElementById(elementId);
-    if (element && !element.closest("[hidden]")) element.focus();
-    focusAfterExpansion.current = null;
-  }, [expandedSections]);
+    document.getElementById(elementId)?.focus();
+  }, [nameError, emailError, phoneError, districtError, cityError, activityErrors]);
 
   if (open && (!previousOpen || previousLead !== lead)) {
     setPreviousOpen(open);
@@ -107,6 +114,7 @@ export function LeadEditModal({
       setEmail(lead.email ?? "");
       setPhone(lead.phone ?? "");
       setCity(lead.city ?? "");
+      setDistrict(lead.district ?? "");
       setState(lead.state ?? "");
       setRequirement(lead.requirement ?? "");
       setStatus(lead.status);
@@ -120,6 +128,7 @@ export function LeadEditModal({
       setEmail("");
       setPhone("");
       setCity("");
+      setDistrict("");
       setState("");
       setRequirement("");
       setStatus("NEW");
@@ -133,11 +142,12 @@ export function LeadEditModal({
     setNameError(null);
     setEmailError(null);
     setPhoneError(null);
+    setDistrictError(null);
+    setCityError(null);
     setActivityAction("CALL");
     setActivityResponse("");
     setActivityInterest("");
     setActivityNotes("");
-    setExpandedSections({ leadInformation: false, classification: false, interaction: false });
     setScheduleFollowUp(false);
     setFollowUpDate("");
     setFollowUpTime("");
@@ -163,25 +173,34 @@ export function LeadEditModal({
       company: company || null,
       email: email || null,
       phone: phone || null,
-      city: city || null,
       state: state || null,
-      requirement: requirement || null,
       status,
       priority,
       category: category || null,
       sourceId: sourceId || null,
     };
 
+    if (isEdit) {
+      payload.requirement = requirement || null;
+      if (city !== (lead?.city ?? "")) payload.city = city || null;
+      if (district !== (lead?.district ?? "")) payload.district = district || null;
+    } else {
+      if (city) payload.city = city;
+      if (district) payload.district = district;
+    }
+
     if (!isEdit && initialActivity) payload.initialActivity = initialActivity;
     if (assignableUsers) payload.assignedUserId = assignedUserId || null;
 
     const parsed = isEdit
-      ? leadSchema.partial().safeParse(payload)
+      ? leadPatchSchema.safeParse(payload)
       : createLeadRequestSchema.safeParse(payload);
 
     setNameError(null);
     setEmailError(null);
     setPhoneError(null);
+    setDistrictError(null);
+    setCityError(null);
     setContactError(null);
     setActivityErrors({});
     setError(null);
@@ -190,9 +209,13 @@ export function LeadEditModal({
       const nameIssue = issues.find((issue) => issue.path[0] === "name");
       const emailIssue = issues.find((issue) => issue.path[0] === "email");
       const phoneIssue = issues.find((issue) => issue.path[0] === "phone");
+      const districtIssue = issues.find((issue) => issue.path[0] === "district");
+      const cityIssue = issues.find((issue) => issue.path[0] === "city");
       setNameError(nameIssue?.message ?? null);
       setEmailError(email.trim() ? emailIssue?.message ?? null : null);
       setPhoneError(phoneIssue?.message ?? null);
+      setDistrictError(districtIssue?.message ?? null);
+      setCityError(cityIssue?.message ?? null);
       if (!isEdit && !email.trim() && !phone.trim()) {
         setContactError("Provide an email address or phone number.");
       }
@@ -207,14 +230,9 @@ export function LeadEditModal({
       }
       if (!isEdit) {
         const target = getLeadCreateValidationTarget(issues);
-        setExpandedSections((current) => ({
-          leadInformation: current.leadInformation || target.sections.includes("leadInformation"),
-          classification: current.classification || target.sections.includes("classification"),
-          interaction: current.interaction || target.sections.includes("interaction"),
-        }));
-        focusAfterExpansion.current = target.firstElementId;
+        focusAfterValidation.current = target.firstElementId;
       }
-      if (!nameIssue && !emailIssue && !phoneIssue && !activityIssue) {
+      if (!nameIssue && !emailIssue && !phoneIssue && !districtIssue && !cityIssue && !activityIssue) {
         setError(issues[0]?.message ?? "Review the highlighted fields.");
       }
       return;
@@ -233,8 +251,28 @@ export function LeadEditModal({
       router.refresh();
       if (onSaved) onSaved();
     } catch (err) {
-      const message = axios.isAxiosError(err) ? err.response?.data?.error : undefined;
-      setError(typeof message === "string" ? message : (isEdit ? "Failed to update lead." : "Unable to create the lead right now."));
+      const response = axios.isAxiosError(err) ? err.response : undefined;
+      const message = response?.data?.error;
+      if (!isEdit && response?.status === 409) {
+        setError(typeof message === "string" ? message : "A lead conflict was detected. Review the lead details and try again.");
+      } else if (message && typeof message === "object" && "fieldErrors" in message) {
+        const fields = (message as { fieldErrors?: Record<string, unknown> }).fieldErrors ?? {};
+        const fieldMessage = (key: string) => Array.isArray(fields[key]) && typeof fields[key][0] === "string" ? fields[key][0] as string : null;
+        setNameError(fieldMessage("name"));
+        setEmailError(fieldMessage("email"));
+        setPhoneError(fieldMessage("phone"));
+        setDistrictError(fieldMessage("district"));
+        setCityError(fieldMessage("city"));
+        const activityMessage = fieldMessage("initialActivity");
+        setError(activityMessage ?? "The server rejected part of this submission. Review the highlighted fields and try again.");
+        const firstInvalid = ["lead-name", "lead-email", "lead-phone", "lead-district", "lead-city"].find((id) => {
+          const key = id.replace("lead-", "");
+          return fieldMessage(key) !== null;
+        });
+        if (firstInvalid) focusAfterValidation.current = firstInvalid;
+      } else {
+        setError(typeof message === "string" ? message : (isEdit ? "Failed to update lead." : "Unable to create the lead right now."));
+      }
     } finally {
       setPending(false);
     }
@@ -242,15 +280,48 @@ export function LeadEditModal({
 
   const formRef = useRef<HTMLFormElement>(null);
 
+  const handleCreateLeadKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
+    if (isEdit || event.key !== "Enter" || event.defaultPrevented) return;
+    if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.nativeEvent.isComposing) return;
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    if (target.getAttribute("role") === "combobox") {
+      if (!CREATE_LEAD_FIELD_ORDER.includes(target.id)) return;
+      const selectionCommitted = target.getAttribute("data-select-value-committed") === "true";
+      if (!shouldAdvanceFromSelect(false, selectionCommitted)) return;
+      target.removeAttribute("data-select-value-committed");
+      event.preventDefault();
+      const nextId = findNextCreateLeadFieldId(target.id, isNavigableField);
+      if (nextId) document.getElementById(nextId)?.focus();
+      return;
+    }
+
+    if (!isEnterNavigationInput({ tagName: target.tagName, type: (target as HTMLInputElement).type })) return;
+    if (!CREATE_LEAD_FIELD_ORDER.includes(target.id)) return;
+
+    event.preventDefault();
+    const nextId = findNextCreateLeadFieldId(target.id, isNavigableField);
+    if (nextId) document.getElementById(nextId)?.focus();
+  };
+
+  const handleCreateLeadBlur = (event: React.FocusEvent<HTMLFormElement>) => {
+    if (isEdit) return;
+    const target = event.target;
+    if (target.getAttribute("role") === "combobox") target.removeAttribute("data-select-value-committed");
+  };
+
   const basicInformationFields = (
     <div>
       <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Basic Information</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Name" htmlFor="lead-name" labelSuffix="Required" error={nameError} errorId="lead-name-error">
-          <Input id="lead-name" data-autofocus value={name} onChange={(e) => { setName(e.target.value); setNameError(e.target.value.trim().length >= 2 ? null : "Enter at least 2 characters."); }} required aria-invalid={!!nameError} aria-describedby={nameError ? "lead-name-error" : undefined} />
+          <Input id="lead-name" data-autofocus value={name} placeholder="Full name" onChange={(e) => { setName(e.target.value); setNameError(e.target.value.trim().length >= 2 ? null : "Enter at least 2 characters."); }} required aria-invalid={!!nameError} aria-describedby={nameError ? "lead-name-error" : undefined} />
         </FormField>
-        <FormField label="Company" htmlFor="lead-company" labelSuffix="Optional">
-          <Input id="lead-company" value={company} onChange={(e) => setCompany(e.target.value)} />
+        <FormField label="Company" htmlFor="lead-company">
+          <Input id="lead-company" value={company} placeholder="Company or organization" onChange={(e) => setCompany(e.target.value)} />
         </FormField>
       </div>
     </div>
@@ -260,30 +331,30 @@ export function LeadEditModal({
     <div>
       <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Classification &amp; Assignment</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Status" htmlFor="lead-status" labelSuffix="Optional">
+        <FormField label="Status" htmlFor="lead-status">
           <Select id="lead-status" value={status} onChange={(e) => setStatus(e.target.value)}>
             {LEAD_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </Select>
         </FormField>
-        <FormField label="Priority" htmlFor="lead-priority" labelSuffix="Optional">
+        <FormField label="Priority" htmlFor="lead-priority">
           <Select id="lead-priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
             {LEAD_PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
           </Select>
         </FormField>
-        <FormField label="Category" htmlFor="lead-category" labelSuffix="Optional">
+        <FormField label="Category" htmlFor="lead-category">
           <Select id="lead-category" value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">None</option>
+            <option value="">Select category</option>
             {LEAD_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </Select>
         </FormField>
-        <FormField label="Lead Source" htmlFor="lead-source" labelSuffix="Optional">
+        <FormField label="Lead Source" htmlFor="lead-source">
           <Select id="lead-source" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
-            <option value="">None</option>
+            <option value="">Select source</option>
             {leadSources?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </Select>
         </FormField>
         {assignableUsers && (
-          <FormField label="Assigned To" htmlFor="lead-assigned" labelSuffix="Optional" className="sm:col-span-2">
+          <FormField label="Assigned To" htmlFor="lead-assigned" className="sm:col-span-2">
             <Select id="lead-assigned" value={assignedUserId} onChange={(e) => setAssignedUserId(e.target.value)}>
               <option value="">Unassigned</option>
               {assignableUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -298,18 +369,21 @@ export function LeadEditModal({
     <div>
       <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Contact Details</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Email" htmlFor="lead-email" labelSuffix="Optional" error={emailError} errorId="lead-email-error">
-          <Input id="lead-email" type="email" value={email} autoComplete="email" onChange={(e) => { const value = e.target.value; const parsedEmail = leadEmailSchema.safeParse(value); setEmail(value); setEmailError(parsedEmail.success ? null : parsedEmail.error.issues[0]?.message ?? "Enter a valid email address."); if (parsedEmail.success && parsedEmail.data) setContactError(null); }} aria-invalid={!!emailError || !!contactError} aria-describedby={emailError ? "lead-email-error" : contactError ? "lead-contact-error" : undefined} />
+        <FormField label="Email" htmlFor="lead-email" error={emailError} errorId="lead-email-error">
+          <Input id="lead-email" type="email" value={email} placeholder="name@example.com" autoComplete="email" onChange={(e) => { const value = e.target.value; const parsedEmail = leadEmailSchema.safeParse(value); setEmail(value); setEmailError(parsedEmail.success ? null : parsedEmail.error.issues[0]?.message ?? "Enter a valid email address."); if (parsedEmail.success && parsedEmail.data) setContactError(null); }} aria-invalid={!!emailError || !!contactError} aria-describedby={emailError ? "lead-email-error" : contactError ? "lead-contact-error" : undefined} />
         </FormField>
-        <FormField label="Phone" htmlFor="lead-phone" labelSuffix="Optional" error={phoneError} errorId="lead-phone-error">
-          <Input id="lead-phone" type="tel" inputMode="numeric" autoComplete="tel" value={phone} onChange={(e) => { const value = e.target.value; const parsedPhone = leadPhoneSchema.safeParse(value); setPhone(value); setPhoneError(parsedPhone.success ? null : parsedPhone.error.issues[0]?.message ?? "Enter exactly 10 digits using numbers only."); if (parsedPhone.success && parsedPhone.data) setContactError(null); }} aria-invalid={!!phoneError || !!contactError} aria-describedby={phoneError ? "lead-phone-error" : contactError ? "lead-contact-error" : undefined} />
+        <FormField label="Phone" htmlFor="lead-phone" error={phoneError} errorId="lead-phone-error">
+          <Input id="lead-phone" type="tel" inputMode="numeric" autoComplete="tel" value={phone} placeholder="10-digit phone number" onChange={(e) => { const value = e.target.value; const parsedPhone = leadPhoneSchema.safeParse(value); setPhone(value); setPhoneError(parsedPhone.success ? null : parsedPhone.error.issues[0]?.message ?? "Enter exactly 10 digits using numbers only."); if (parsedPhone.success && parsedPhone.data) setContactError(null); }} aria-invalid={!!phoneError || !!contactError} aria-describedby={phoneError ? "lead-phone-error" : contactError ? "lead-contact-error" : undefined} />
         </FormField>
         {contactError && <p id="lead-contact-error" className="sm:col-span-2 -mt-2 text-xs text-[var(--color-danger)]" role="alert">{contactError}</p>}
-        <FormField label="City" htmlFor="lead-city" labelSuffix="Optional">
-          <Input id="lead-city" value={city} onChange={(e) => setCity(e.target.value)} />
+        <FormField label="District" htmlFor="lead-district">
+          <Input id="lead-district" value={district} placeholder="e.g. Andheri West" onChange={(e) => setDistrict(e.target.value)} />
         </FormField>
-        <FormField label="State" htmlFor="lead-state" labelSuffix="Optional">
-          <Input id="lead-state" value={state} onChange={(e) => setState(e.target.value)} />
+        <FormField label="City (legacy)" htmlFor="lead-city">
+          <Input id="lead-city" value={city} placeholder="e.g. Pune" onChange={(e) => setCity(e.target.value)} />
+        </FormField>
+        <FormField label="State" htmlFor="lead-state">
+          <Input id="lead-state" value={state} placeholder="e.g. Maharashtra" onChange={(e) => setState(e.target.value)} />
         </FormField>
       </div>
     </div>
@@ -319,20 +393,89 @@ export function LeadEditModal({
     <div>
       <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Requirements</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Requirement" htmlFor="lead-requirement" labelSuffix="Optional" className="sm:col-span-2">
+        <FormField label="Requirement" htmlFor="lead-requirement" className="sm:col-span-2">
           <Textarea id="lead-requirement" value={requirement} onChange={(e) => setRequirement(e.target.value)} rows={3} />
         </FormField>
       </div>
     </div>
   );
 
-  const initialInteractionFields = (
-    <>
-      <p className="mb-4 text-xs text-[var(--color-muted)]">Record the genuine call or WhatsApp interaction that led to this entry.</p>
+  const createLeadInformationFields = (
+    <section aria-labelledby="create-lead-information-title" className="space-y-4">
+      <div>
+        <h3 id="create-lead-information-title" className="text-base font-semibold text-[var(--color-ink)]">Lead Information</h3>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <FormField label="Name" htmlFor="lead-name" error={nameError} errorId="lead-name-error">
+          <Input id="lead-name" data-autofocus value={name} placeholder="Full name" onChange={(e) => { setName(e.target.value); setNameError(e.target.value.trim().length >= 2 ? null : "Enter at least 2 characters."); }} required aria-invalid={!!nameError} aria-describedby={nameError ? "lead-name-error" : undefined} />
+        </FormField>
+        <FormField label="Company" htmlFor="lead-company">
+          <Input id="lead-company" value={company} placeholder="Company or organization" onChange={(e) => setCompany(e.target.value)} />
+        </FormField>
+        <FormField label="City" htmlFor="lead-city" error={cityError} errorId="lead-city-error">
+          <Input id="lead-city" value={city} placeholder="e.g. Pune" onChange={(e) => { setCity(e.target.value); setCityError(null); }} aria-invalid={!!cityError} aria-describedby={cityError ? "lead-city-error" : undefined} />
+        </FormField>
+        <FormField label="District" htmlFor="lead-district" error={districtError} errorId="lead-district-error">
+          <Input id="lead-district" value={district} placeholder="e.g. Andheri West" onChange={(e) => { setDistrict(e.target.value); setDistrictError(null); }} aria-invalid={!!districtError} aria-describedby={districtError ? "lead-district-error" : undefined} />
+        </FormField>
+        <FormField label="State" htmlFor="lead-state">
+          <Input id="lead-state" value={state} placeholder="e.g. Maharashtra" onChange={(e) => setState(e.target.value)} />
+        </FormField>
+        <FormField label="Phone" htmlFor="lead-phone" error={phoneError} errorId="lead-phone-error">
+          <Input id="lead-phone" type="tel" inputMode="numeric" autoComplete="tel" value={phone} placeholder="10-digit phone number" onChange={(e) => { const value = e.target.value; const parsedPhone = leadPhoneSchema.safeParse(value); setPhone(value); setPhoneError(parsedPhone.success ? null : parsedPhone.error.issues[0]?.message ?? "Enter exactly 10 digits using numbers only."); if (parsedPhone.success && parsedPhone.data) setContactError(null); }} aria-invalid={!!phoneError || !!contactError} aria-describedby={phoneError ? "lead-phone-error" : contactError ? "lead-contact-error" : undefined} />
+        </FormField>
+        <FormField label="Email" htmlFor="lead-email" className="sm:col-span-2" error={emailError} errorId="lead-email-error">
+          <Input id="lead-email" type="email" value={email} placeholder="name@example.com" autoComplete="email" onChange={(e) => { const value = e.target.value; const parsedEmail = leadEmailSchema.safeParse(value); setEmail(value); setEmailError(parsedEmail.success ? null : parsedEmail.error.issues[0]?.message ?? "Enter a valid email address."); if (parsedEmail.success && parsedEmail.data) setContactError(null); }} aria-invalid={!!emailError || !!contactError} aria-describedby={emailError ? "lead-email-error" : contactError ? "lead-contact-error" : undefined} />
+        </FormField>
+        {contactError && <p id="lead-contact-error" className="sm:col-span-2 -mt-2 text-xs text-[var(--color-danger)]" role="alert">{contactError}</p>}
+        <FormField label="Category" htmlFor="lead-category">
+          <Select id="lead-category" value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">Select category</option>
+            {LEAD_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </Select>
+        </FormField>
+        <FormField label="Lead Source" htmlFor="lead-source">
+          <Select id="lead-source" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+            <option value="">Select source</option>
+            {leadSources?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </Select>
+        </FormField>
+        {assignableUsers && <FormField label="Assigned To" htmlFor="lead-assigned" className="sm:col-span-2">
+          <Select id="lead-assigned" value={assignedUserId} onChange={(e) => setAssignedUserId(e.target.value)}>
+            <option value="">Unassigned</option>
+            {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </Select>
+        </FormField>}
+      </div>
+    </section>
+  );
+
+  const createLeadInteractionFields = (
+    <section aria-labelledby="create-lead-interaction-title" className="space-y-4">
+      <div>
+        <h3 id="create-lead-interaction-title" className="text-base font-semibold text-[var(--color-ink)]">Initial Interaction &amp; Classification</h3>
+      </div>
       <div className="grid grid-cols-1 gap-4">
         <ActivityFormFields
           idPrefix="initial-activity"
-          showFieldGuidance
+          actionResponseInline
+          scheduleToggle
+          compactNotes
+          centralizedInterestLabels
+          betweenResponseAndInterest={
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField label="Status" htmlFor="lead-status">
+                <Select id="lead-status" value={status} onChange={(e) => setStatus(e.target.value)}>
+                  {LEAD_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </Select>
+              </FormField>
+              <FormField label="Priority" htmlFor="lead-priority">
+                <Select id="lead-priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
+                  {LEAD_PRIORITIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </Select>
+              </FormField>
+            </div>
+          }
           errors={activityErrors}
           action={activityAction}
           response={activityResponse}
@@ -350,14 +493,14 @@ export function LeadEditModal({
           onFollowUpTimeChange={setFollowUpTime}
         />
       </div>
-    </>
+    </section>
   );
 
   if (!open) return null;
 
   return (
-    <div className={`fixed inset-0 z-50 flex justify-center overflow-hidden ${isEdit ? "items-start" : "items-center p-3 sm:p-5"}`}>
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={pending ? undefined : onClose} />
+    <div className={isEdit ? "fixed inset-0 z-50 flex items-start justify-center overflow-hidden" : "fixed inset-0 z-50"}>
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={pending ? undefined : onClose} aria-hidden="true" />
 
       <div
         ref={dialogRef}
@@ -366,28 +509,39 @@ export function LeadEditModal({
         aria-modal="true"
         aria-labelledby="lead-edit-title"
         tabIndex={-1}
-        className={`relative z-10 flex w-[90%] max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-2xl ${isEdit ? "mt-6 mb-6" : "max-h-[90dvh]"}`}
+        className={isEdit ? "relative z-10 mt-6 mb-6 flex h-[88vh] max-h-[88vh] w-[90%] max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-2xl" : "absolute inset-0 z-10 flex h-[100dvh] flex-col bg-white"}
         style={isEdit ? { height: "88vh", maxHeight: "88vh" } : undefined}
       >
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-4 shrink-0">
-          <h2 id="lead-edit-title" className="text-lg font-semibold text-[var(--color-ink)]">
+        <header className={`flex shrink-0 items-center justify-between border-b border-[var(--color-border)] py-4 ${isEdit ? "px-6" : "px-5 sm:px-8"}`}>
+          <div>
+          <h2 id="lead-edit-title" className={`${isEdit ? "text-lg" : "text-xl"} font-semibold text-[var(--color-ink)]`}>
             {isEdit ? "Edit Lead" : "Create Lead"}
           </h2>
+          </div>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
+            variant={isEdit ? "ghost" : "secondary"}
+            size={isEdit ? "sm" : undefined}
             onClick={onClose}
             aria-label="Close lead form"
             disabled={pending}
-            className="h-8 w-8 p-1.5"
+            className={isEdit ? "h-8 w-8 p-1.5" : "h-9 px-3"}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            {isEdit ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> : "Close"}
           </Button>
-        </div>
+        </header>
 
-        <div className={`flex-1 overflow-y-auto p-6 ${isEdit ? "" : "min-h-0"}`}>
-          <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-6">
+        {!isEdit && error && <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:mx-8" role="alert">{error}</div>}
+
+        <div className={isEdit ? "flex-1 overflow-y-auto p-6" : "min-h-0 flex-1"}>
+          <form
+            ref={formRef}
+            onSubmit={handleSubmit}
+            onKeyDown={handleCreateLeadKeyDown}
+            onBlur={handleCreateLeadBlur}
+            noValidate
+            className={isEdit ? "space-y-6" : "flex h-full min-h-0 flex-col"}
+          >
             {isEdit ? (
               <>
                 {basicInformationFields}
@@ -399,62 +553,34 @@ export function LeadEditModal({
                 {requirementFields}
               </>
             ) : (
-              <div className="space-y-4">
-                <AccordionSection
-                  id="create-lead-information"
-                  title="Lead Information"
-                  status="Required"
-                  expanded={expandedSections.leadInformation}
-                  autoFocus
-                  onToggle={() => setExpandedSections((current) => ({ ...current, leadInformation: !current.leadInformation }))}
-                >
-                  <div className="space-y-6">
-                    {basicInformationFields}
-                    <hr className="border-[var(--color-border)]" />
-                    {contactFields}
-                    <hr className="border-[var(--color-border)]" />
-                    {requirementFields}
-                  </div>
-                </AccordionSection>
-
-                <AccordionSection
-                  id="create-lead-classification"
-                  title="Lead Classification"
-                  status="Optional"
-                  expanded={expandedSections.classification}
-                  onToggle={() => setExpandedSections((current) => ({ ...current, classification: !current.classification }))}
-                >
-                  {classificationFields}
-                </AccordionSection>
-
-                <AccordionSection
-                  id="create-lead-initial-interaction"
-                  title="Initial Customer Interaction"
-                  status="Required"
-                  expanded={expandedSections.interaction}
-                  onToggle={() => setExpandedSections((current) => ({ ...current, interaction: !current.interaction }))}
-                >
-                  {initialInteractionFields}
-                </AccordionSection>
-              </div>
+              <main className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
+                <div className="min-h-0 space-y-6 overflow-y-auto border-b border-[var(--color-border)] p-5 sm:p-8 lg:border-b-0 lg:border-r">
+                  {createLeadInformationFields}
+                </div>
+                <div className="min-h-0 space-y-6 overflow-y-auto p-5 sm:p-8">
+                  {createLeadInteractionFields}
+                </div>
+              </main>
             )}
 
-            {error ? (
+            {isEdit && error ? (
               <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>
             ) : null}
 
-            <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true" />
+            {isEdit && <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true" />}
           </form>
         </div>
 
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)] shrink-0">
+        <footer className={`flex shrink-0 items-center border-t border-[var(--color-border)] py-4 ${isEdit ? "justify-end gap-3 px-6" : "justify-between px-5 sm:px-8"}`}>
+          <div className={isEdit ? "flex items-center gap-3" : "ml-auto flex items-center gap-3"}>
           <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
             Cancel
           </Button>
-          <Button type="button" variant="black" isLoading={pending} onClick={() => formRef.current?.requestSubmit()}>
-            {pending ? "Saving..." : isEdit ? "Save Changes" : submitLabel ?? "Save"}
+          <Button id={isEdit ? undefined : "create-lead-submit"} type="button" variant="black" isLoading={pending} onClick={() => formRef.current?.requestSubmit()}>
+            {pending ? "Saving..." : isEdit ? "Save Changes" : submitLabel ?? "Create Lead"}
           </Button>
-        </div>
+          </div>
+        </footer>
       </div>
     </div>
   );

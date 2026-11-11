@@ -45,7 +45,7 @@ function historyValue(value: unknown): unknown {
 
 const leadListSelect = {
   id: true, leadNumber: true, displayName: true, company: true,
-  email: true, phone: true, city: true, state: true,
+  email: true, phone: true, city: true, district: true, state: true,
   requirement: true,
   status: true, priority: true, category: true, createdAt: true, updatedAt: true,
   nextFollowUpAt: true, lastFollowUpAt: true, isArchived: true,
@@ -61,7 +61,7 @@ const leadListSelect = {
 const leadDetailSelect = {
   id: true, leadNumber: true, displayName: true, company: true,
   email: true, phone: true, alternatePhone: true, address: true,
-  city: true, state: true, country: true, industry: true,
+  city: true, district: true, state: true, country: true, industry: true,
   website: true, jobTitle: true, budget: true, expectedValue: true,
   currency: true, campaign: true, campaignId: true,
   utmSource: true, utmMedium: true, utmCampaign: true, utmContent: true, utmTerm: true,
@@ -199,6 +199,14 @@ export class LeadService {
         })()
       : {};
 
+    const districtFilter = query.filters.district?.length
+      ? {
+          AND: [{
+            OR: query.filters.district.map((value) => ({ district: { contains: value, mode: "insensitive" as const } })),
+          }],
+        }
+      : {};
+
     const activityDateVal = query.filters.activityDate?.[0];
 
     const activityFilterActive = Boolean(
@@ -238,7 +246,7 @@ export class LeadService {
                 some: {
                   type: { in: ["CALL", "WHATSAPP"] as ("CALL" | "WHATSAPP")[] },
                   ...(query.filters.activityAction?.length ? { action: { in: query.filters.activityAction as ("CALL" | "WHATSAPP")[] } } : {}),
-                  ...(query.filters.activityResponse?.length ? { response: { in: query.filters.activityResponse as ("PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED")[] } } : {}),
+                  ...(query.filters.activityResponse?.length ? { response: { in: query.filters.activityResponse as ("PICKED_UP" | "NOT_PICKED_UP" | "SWITCHED_OFF" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED" | "NOT_REPLIED")[] } } : {}),
                   ...(query.filters.activityInterest?.length ? { interest: { in: query.filters.activityInterest as ("INTERESTED" | "NOT_INTERESTED")[] } } : {}),
                 },
               },
@@ -261,6 +269,7 @@ export class LeadService {
       ...(query.filters.source?.length ? { sourceId: { in: query.filters.source } } : {}),
       ...assignedUserFilter,
       ...followUpFilter,
+      ...districtFilter,
       ...activityFilter,
       ...containsSearch(["displayName", "company", "email", "phone", "leadNumber"], query.search),
       ...leadDateFilter,
@@ -432,22 +441,17 @@ export class LeadService {
       }];
 
       if (initialActivity.scheduleFollowUp && initialActivity.followUpDate) {
-        const followUpResult = await followUpService.create({
+        const followUpResult = await followUpService.scheduleInTransaction(tx, {
           leadId: lead.id,
           title: `${initialActivity.action === "CALL" ? "Call" : "WhatsApp"} follow-up`,
           description: null,
           dueDate: initialActivity.followUpDate,
           dueTime: initialActivity.followUpTime,
           assignedUserId: assignedUserId ?? actor.id,
-        }, actor, tx, false);
+        }, actor);
 
         createdFollowUp = followUpResult.followUp;
-        entries.push({
-          type: "FOLLOW_UP_SCHEDULED",
-          followUpId: followUpResult.followUp.id,
-          message: "Follow-up scheduled",
-          metadata: { dueDate: initialActivity.followUpDate, dueTime: initialActivity.followUpTime ?? null },
-        });
+        entries.push(...followUpResult.entries);
       }
 
       const interactionEvent = await activityEventService.createEvent({

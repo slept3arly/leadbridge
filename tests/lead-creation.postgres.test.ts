@@ -49,6 +49,17 @@ test("LeadService preserves import and legacy initial-activity creation behavior
       assert.equal(events[0]?.entries.filter((entry) => entry.type === "CREATED").length, 1);
     });
 
+    await t.test("OLD status persists and historical statuses remain untouched", async () => {
+      const result = await leadService.create(leadSchema.parse({ ...leadInput("old-status"), status: "OLD" }), { id: salesId, role: "SALES", salesPrivilege: "SENIOR" });
+      assert.equal(result.status, "created");
+      if (result.status !== "created") return;
+      leadIds.push(result.lead.id);
+      const persisted = await prisma.lead.findUnique({ where: { id: result.lead.id }, select: { status: true } });
+      assert.equal(persisted?.status, "OLD");
+      const historicalStatuses = await prisma.lead.groupBy({ by: ["status"], where: { id: { not: result.lead.id } }, _count: { id: true } });
+      assert.ok(historicalStatuses.every(({ status }) => ["NEW", "CONVERTED", "LOST", "SPAM", "ON_HOLD", "OLD"].includes(status)));
+    });
+
     await t.test("imported Product values persist and remain after an edit that omits Product", async () => {
       const result = await leadService.create(leadSchema.parse({
         ...leadInput("product-import"),
@@ -128,7 +139,7 @@ test("LeadService preserves import and legacy initial-activity creation behavior
       try {
         await assert.rejects(leadService.create(parsedLead({
           ...leadInput("rollback-activity"), initialActivity: {
-            action: "CALL", response: "NO_RESPONSE", interest: null, notes: null,
+            action: "CALL", response: "NOT_PICKED_UP", interest: null, notes: null,
             scheduleFollowUp: false, followUpDate: null, followUpTime: null,
           },
         }), { id: salesId, role: "SALES", salesPrivilege: "SENIOR" }), /forced interaction failure/);
@@ -142,7 +153,7 @@ test("LeadService preserves import and legacy initial-activity creation behavior
       try {
         await assert.rejects(leadService.create(parsedLead({
           ...leadInput("rollback-follow-up"), initialActivity: {
-            action: "WHATSAPP", response: "NO_RESPONSE", interest: null, notes: null,
+            action: "WHATSAPP", response: "NOT_REPLIED", interest: null, notes: null,
             scheduleFollowUp: true, followUpDate: "2026-12-03T10:00:00.000Z", followUpTime: null,
           },
         }), { id: salesId, role: "SALES", salesPrivilege: "SENIOR" }), /forced follow-up failure/);

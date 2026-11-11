@@ -1,7 +1,7 @@
 import { STATUS_VALUES } from "@/lib/lead-constants";
 
 export type LeadStatus = (typeof STATUS_VALUES)[number];
-export type LeadPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type LeadPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT" | "COLD";
 
 export type NormalizedLead = {
   name: string;
@@ -11,6 +11,7 @@ export type NormalizedLead = {
   alternatePhone?: string;
   address?: string;
   city?: string;
+  district?: string;
   state?: string;
   country?: string;
   product?: string;

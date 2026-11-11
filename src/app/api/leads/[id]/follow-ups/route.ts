@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { withApiAuthorization, apiError } from "@/lib/api";
+import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
 import { followUpSchema } from "@/lib/validation";
 import { followUpService } from "@/services/follow-up.service";
 import { invalidateAfterMutation } from "@/lib/cache-tags";
@@ -17,7 +17,11 @@ export const POST = withApiAuthorization<{ params: Promise<{ id: string }> }>(un
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const result = await followUpService.create(parsed.data, session.user);
-  invalidateAfterMutation(session.user.id, result.affectedUserIds);
-  return NextResponse.json(result.followUp, { status: 201 });
+  try {
+    const result = await followUpService.create(parsed.data, session.user);
+    invalidateAfterMutation(session.user.id, result.affectedUserIds);
+    return NextResponse.json(result.followUp, { status: 201 });
+  } catch (error) {
+    return handleApiError(error, "Failed to schedule follow-up");
+  }
 });

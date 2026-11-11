@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { validateActivityOutcomePatch } from "../src/lib/validation";
 
-test("activity PATCH validates action-only changes against the stored response", () => {
-  const valid = validateActivityOutcomePatch(
-    { action: "CALL", response: "NO_RESPONSE", interest: null },
+test("activity PATCH rejects action-only changes that make the stored response incompatible", () => {
+  const incompatible = validateActivityOutcomePatch(
+    { action: "CALL", response: "NOT_PICKED_UP", interest: null },
     { action: "WHATSAPP" },
   );
-  assert.equal(valid?.success, true);
+  assert.equal(incompatible?.success, false);
 
   const invalid = validateActivityOutcomePatch(
     { action: "CALL", response: "PICKED_UP", interest: "INTERESTED" },
@@ -18,13 +18,13 @@ test("activity PATCH validates action-only changes against the stored response",
 
 test("activity PATCH validates response-only changes against the stored action", () => {
   const valid = validateActivityOutcomePatch(
-    { action: "CALL", response: "NO_RESPONSE", interest: null },
+    { action: "CALL", response: "NOT_PICKED_UP", interest: null },
     { response: "INVALID_NUMBER" },
   );
   assert.equal(valid?.success, true);
 
   const invalid = validateActivityOutcomePatch(
-    { action: "WHATSAPP", response: "NO_RESPONSE", interest: null },
+    { action: "WHATSAPP", response: "NOT_REPLIED", interest: null },
     { response: "PICKED_UP" },
   );
   assert.equal(invalid?.success, false);
@@ -32,7 +32,7 @@ test("activity PATCH validates response-only changes against the stored action",
 
 test("a successful response requires interest in the resulting state", () => {
   const missingInterest = validateActivityOutcomePatch(
-    { action: "CALL", response: "NO_RESPONSE", interest: null },
+    { action: "CALL", response: "NOT_PICKED_UP", interest: null },
     { response: "PICKED_UP" },
   );
   assert.equal(missingInterest?.success, false);

@@ -84,29 +84,16 @@ export class NoteService {
           ));
         }
 
-        const followUp = await tx.followUp.create({
-          data: {
-            title: `Follow-up: ${(data.whatIDid ?? "Note").slice(0, 80)}`,
-            description: data.whatCustomerSaid?.slice(0, 500) ?? null,
-            dueDate,
-            dueTime: data.followUpTime ?? null,
-            priority: "MEDIUM" as const,
-            status: "PENDING",
-            assignedUserId: actor.id,
-            leadId,
-            noteId: note.id,
-            createdById: actor.id,
-          },
-        });
-
-        eventEntries.push({
-          type: "FOLLOW_UP_SCHEDULED",
-          followUpId: followUp.id,
-          message: "Follow-up scheduled",
-          metadata: { dueDate: dueDate.toISOString(), dueTime: data.followUpTime ?? null },
-        });
-
-        await followUpService.recalculateLeadFollowUpFields(leadId, tx);
+        const scheduled = await followUpService.scheduleInTransaction(tx, {
+          title: `Follow-up: ${(data.whatIDid ?? "Note").slice(0, 80)}`,
+          description: data.whatCustomerSaid?.slice(0, 500) ?? null,
+          dueDate,
+          dueTime: data.followUpTime ?? null,
+          priority: "MEDIUM",
+          leadId,
+          noteId: note.id,
+        }, actor);
+        eventEntries.push(...scheduled.entries);
       }
 
       await activityEventService.createEvent({

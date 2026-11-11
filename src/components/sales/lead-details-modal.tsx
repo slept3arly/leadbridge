@@ -22,24 +22,7 @@ import { formatDate, formatTime } from "@/lib/utils";
 import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 import { followUpFormDate } from "@/lib/follow-up-form-date";
 import { buildLeadWorkspaceTimeline, organizeLeadWorkspaceFollowUps } from "@/lib/lead-workspace";
-
-const ACTION_OPTIONS = [
-  { value: "CALL", label: "Call" },
-  { value: "WHATSAPP", label: "WhatsApp" },
-] as const;
-
-const RESPONSE_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
-  CALL: [
-    { value: "PICKED_UP", label: "Picked Up" },
-    { value: "NO_RESPONSE", label: "No Response" },
-    { value: "INVALID_NUMBER", label: "Invalid Number" },
-  ],
-  WHATSAPP: [
-    { value: "REPLIED", label: "Replied" },
-    { value: "NO_RESPONSE", label: "No Response" },
-    { value: "INVALID_NUMBER", label: "Invalid Number" },
-  ],
-};
+import { ACTIVITY_ACTION_OPTIONS, getActivityResponseOptions, getActivityResponseLabel } from "@/lib/activity-options";
 
 function isResponded(response: string) {
   return response === "PICKED_UP" || response === "REPLIED";
@@ -261,14 +244,15 @@ function EditActivityModal({
           <div className="space-y-2">
             <label htmlFor="edit-activity-action" className="text-sm font-medium text-[var(--color-ink)]">Action</label>
             <Select id="edit-activity-action" data-autofocus value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
-              {ACTION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {ACTIVITY_ACTION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
             <label htmlFor="edit-activity-response" className="text-sm font-medium text-[var(--color-ink)]">Response</label>
             <Select id="edit-activity-response" value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
               <option value="">Select response</option>
-              {(RESPONSE_OPTIONS[action] ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {response === "NO_RESPONSE" && <option value="NO_RESPONSE">{getActivityResponseLabel("NO_RESPONSE")} (historical)</option>}
+              {getActivityResponseOptions(action).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </div>
           {interestVisible && (
@@ -283,7 +267,7 @@ function EditActivityModal({
           )}
           <div className="space-y-2">
             <label htmlFor="edit-activity-notes" className="text-sm font-medium text-[var(--color-ink)]">Notes</label>
-            <Textarea id="edit-activity-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Add notes..." className="resize-none" />
+            <Textarea id="edit-activity-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Add a note about the interaction" className="resize-none" />
           </div>
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700" role="alert">
@@ -531,9 +515,8 @@ export function LeadDetailsModal({
 
             <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 p-3 sm:p-5 lg:overflow-hidden">
               <div className="mx-auto grid max-w-7xl grid-cols-1 items-start gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-5">
-                <aside className="order-2 min-w-0 space-y-4 lg:order-2 lg:h-full lg:overflow-y-auto lg:pb-2" aria-label="Lead owner and follow-ups">
-                  <section className="rounded-2xl border border-[var(--color-border)] bg-white p-4" aria-labelledby="workspace-ownership-title">
-                    <h3 id="workspace-ownership-title" className="text-sm font-semibold text-[var(--color-ink)]">Lead owner</h3>
+                <aside className="order-2 min-w-0 space-y-4 lg:order-2 lg:h-full lg:overflow-y-auto lg:pb-2" aria-label="Assignment and follow-ups">
+                  <section className="rounded-2xl border border-[var(--color-border)] bg-white p-4" aria-label="Assigned salesperson">
                     <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
                       <dt className="text-[var(--color-muted)]">Assigned to</dt><dd className="text-right font-medium text-[var(--color-ink)]">{lead.assignedUser?.name ?? "Unassigned"}</dd>
                     </dl>
@@ -636,6 +619,7 @@ export function LeadDetailsModal({
             email: lead.email as string | null,
             phone: lead.phone as string | null,
             city: lead.city as string | null,
+            district: lead.district as string | null,
             state: lead.state as string | null,
             requirement: lead.requirement as string | null,
             status: lead.status,

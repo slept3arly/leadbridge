@@ -68,6 +68,9 @@ export class LeadWorkflowService {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         return { status: "skipped" as const, reason: "Duplicate lead detected (concurrent insert)." };
       }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        throw new ServiceError("Lead or follow-up data changed concurrently. Refresh and retry the operation.", 409);
+      }
       throw error;
     }
     if (result.status === "skipped") return result;
@@ -81,7 +84,9 @@ export class LeadWorkflowService {
   async recordLeadProgress(leadId: string, input: unknown, actor: Actor) {
     const data = parseOrThrow(leadProgressRequestSchema.safeParse(input));
 
-    return prisma.$transaction(async (tx) => {
+    try {
+      return await prisma.$transaction(async (tx) => {
+      const { pending } = await followUpService.lockLeadForLifecycle(tx, leadId, actor);
       const lead = await tx.lead.findFirst({
         where: {
           id: leadId,
@@ -90,7 +95,6 @@ export class LeadWorkflowService {
         },
       });
       if (!lead) throw new ServiceError("Lead not found or access denied.", 404);
-
       let selectedFollowUp: {
         id: string;
         title: string;
@@ -99,9 +103,11 @@ export class LeadWorkflowService {
         assignedUserId: string | null;
       } | null = null;
       let completedFollowUp: unknown | null = null;
+      let completionEntry: ActivityEntryInput | null = null;
 
-      if (data.completeFollowUpId) {
-        const transition = await followUpService.completePendingInTransaction(tx, data.completeFollowUpId, leadId);
+      const followUpIdToComplete = data.completeFollowUpId ?? pending[0]?.id;
+      if (followUpIdToComplete) {
+        const transition = await followUpService.completePendingInTransaction(tx, followUpIdToComplete, leadId);
         selectedFollowUp = transition.followUp;
         completedFollowUp = transition.completedFollowUp;
       }
@@ -110,13 +116,14 @@ export class LeadWorkflowService {
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.priority !== undefined ? { priority: data.priority } : {}),
         ...(data.category !== undefined ? { category: data.category } : {}),
+        ...(data.requirement !== undefined ? { requirement: data.requirement } : {}),
       };
       const { changes } = await leadService.updateFieldsInTransaction(tx, lead, patch, actor.id);
 
       let nextFollowUp: unknown | null = null;
       const entries: ActivityEntryInput[] = [interactionEntry(data)];
       if (selectedFollowUp && completedFollowUp) {
-        entries.push({
+        completionEntry = {
           type: "FOLLOW_UP_COMPLETED",
           followUpId: selectedFollowUp.id,
           message: "Follow-up completed",
@@ -124,30 +131,31 @@ export class LeadWorkflowService {
             followUpTitle: selectedFollowUp.title,
             scheduledDate: selectedFollowUp.dueDate?.toISOString() ?? null,
             scheduledTime: selectedFollowUp.dueTime,
+            ...(data.completeFollowUpId ? {} : {
+              autoCompleted: true,
+              completionReason: data.scheduleFollowUp ? "SUPERSEDED_BY_NEW_FOLLOW_UP" : "RECORD_PROGRESS",
+            }),
           },
-        });
+        };
+        entries.push(completionEntry);
       }
 
       if (data.scheduleFollowUp && data.followUpDate) {
-        const assignedUserId = lead.assignedUserId ?? actor.id;
-        const created = await followUpService.create({
+        const created = await followUpService.scheduleInTransaction(tx, {
           leadId,
           title: `${data.action === "CALL" ? "Call" : "WhatsApp"} follow-up`,
           description: null,
           dueDate: data.followUpDate,
           dueTime: data.followUpTime ?? null,
-          assignedUserId,
-        }, actor, tx, false, false);
+        }, actor);
         nextFollowUp = created.followUp;
-        entries.push({
-          type: "FOLLOW_UP_SCHEDULED",
-          followUpId: created.followUp.id,
-          message: "Follow-up scheduled",
-          metadata: {
-            dueDate: created.followUp.dueDate?.toISOString() ?? null,
-            dueTime: created.followUp.dueTime,
-          },
-        });
+        if (completionEntry) {
+          completionEntry.metadata = {
+            ...completionEntry.metadata,
+            supersededByFollowUpId: created.followUp.id,
+          };
+        }
+        entries.push(...created.entries);
       }
 
       entries.push(...asEntries(changes));
@@ -195,7 +203,13 @@ export class LeadWorkflowService {
           (nextFollowUp as { assignedUserId?: string | null } | null)?.assignedUserId,
         ].filter((id): id is string => Boolean(id)))),
       };
-    });
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        throw new ServiceError("Lead or follow-up data changed concurrently. Refresh and retry the operation.", 409);
+      }
+      throw error;
+    }
   }
 }
 

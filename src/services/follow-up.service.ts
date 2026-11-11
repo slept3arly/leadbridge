@@ -9,6 +9,71 @@ import { resolveFollowUpAssignee, salesFollowUpLeadScope } from "@/services/foll
 type Actor = { id: string; role: UserRole };
 
 export class FollowUpService {
+  private async transaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    try {
+      return await prisma.$transaction(work);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        throw new ServiceError("Follow-up data changed concurrently. Refresh and retry the operation.", 409);
+      }
+      throw error;
+    }
+  }
+  /** Lock one lead row so concurrent schedulers for that lead serialize. */
+  async lockLeadForLifecycle(tx: Prisma.TransactionClient, leadId: string, actor: Actor) {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "Lead" WHERE "id" = ${leadId} FOR UPDATE`;
+    if (locked.length === 0) throw new ServiceError("Lead not found or access denied.", 404);
+    const lead = await this.assertLeadAccess(leadId, actor, tx);
+    const pending = await tx.followUp.findMany({ where: { leadId, status: "PENDING" }, select: { id: true } });
+    if (pending.length > 1) throw new ServiceError("Multiple pending follow-ups exist for this lead. Resolve the data integrity conflict before continuing.", 409);
+    return { lead, pending };
+  }
+
+  async scheduleInTransaction(tx: Prisma.TransactionClient, data: {
+    title: string; description?: string | null; dueDate?: Date | string | null; dueTime?: string | null;
+    priority?: string; assignedUserId?: string | null; leadId: string; noteId?: string | null;
+  }, actor: Actor) {
+    const { lead, pending } = await this.lockLeadForLifecycle(tx, data.leadId, actor);
+    // Retain existing role validation for caller-supplied assignment fields, but
+    // derive the actual assignment exclusively from the lead owner or actor.
+    await this.assertAssignee(data.assignedUserId, actor);
+    const assignedUserId = lead.assignedUserId ?? actor.id;
+    const now = new Date();
+    const entries: import("@/services/activity-event.service").ActivityEntryInput[] = [];
+    if (pending[0]) {
+      const old = await tx.followUp.findUniqueOrThrow({ where: { id: pending[0].id } });
+      const transition = await tx.followUp.updateMany({ where: { id: old.id, status: "PENDING" }, data: { status: "COMPLETED", completedAt: now } });
+      if (transition.count !== 1) throw new ServiceError("Follow-up changed concurrently. Retry the operation.", 409);
+      // The replacement ID is filled once the new row exists.
+      entries.push({ type: "FOLLOW_UP_COMPLETED", followUpId: old.id, message: "Follow-up completed", metadata: {
+        followUpTitle: old.title, scheduledDate: old.dueDate?.toISOString() ?? null, scheduledTime: old.dueTime ?? null,
+        autoCompleted: true, completionReason: "SUPERSEDED_BY_NEW_FOLLOW_UP",
+      } });
+    }
+    let followUp;
+    try {
+      followUp = await tx.followUp.create({ data: {
+        title: data.title, description: data.description ?? null,
+        dueDate: data.dueDate ? parseFollowUpDate(data.dueDate) : null, dueTime: data.dueTime ?? null,
+        priority: (data.priority as FollowUpPriority) ?? "MEDIUM", status: "PENDING", assignedUserId,
+        leadId: data.leadId, createdById: actor.id, ...(data.noteId ? { noteId: data.noteId } : {}),
+      }, include: { assignedUser: { select: { id: true, name: true } }, createdBy: { select: { id: true, name: true } } } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ServiceError("A pending follow-up already exists for this lead. Retry after refreshing.", 409);
+      }
+      throw error;
+    }
+    if (pending[0]) {
+      const oldEntry = entries[0];
+      oldEntry.metadata = { ...oldEntry.metadata, supersededByFollowUpId: followUp.id };
+    }
+    entries.push({ type: "FOLLOW_UP_SCHEDULED", followUpId: followUp.id, message: "Follow-up scheduled", metadata: {
+      dueDate: followUp.dueDate?.toISOString() ?? null, dueTime: followUp.dueTime,
+    } });
+    await this.recalculateLeadFollowUpFields(data.leadId, tx);
+    return { followUp, lead, entries, affectedUserIds: [lead.assignedUserId, assignedUserId] };
+  }
   private async assertAssignee(assignedUserId: string | null | undefined, actor: Actor) {
     const resolved = resolveFollowUpAssignee(actor, assignedUserId);
     if (actor.role === "SALES") return resolved;
@@ -112,97 +177,11 @@ export class FollowUpService {
     status?: string;
     assignedUserId?: string | null;
     leadId: string;
-  }, actor: Actor, client?: Pick<typeof prisma, "followUp" | "lead" | "activityEvent" | "activityEntry" | "$transaction">, recordLifecycleEvent = true, recalculate = true) {
-    const db = client ?? prisma;
-    const lead = await this.assertLeadAccess(data.leadId, actor, client ?? prisma);
-    const assignedUserId = await this.assertAssignee(data.assignedUserId, actor);
-
-    const followUp = await db.followUp.create({
-      data: {
-        title: data.title,
-        description: data.description ?? null,
-        dueDate: data.dueDate ? parseFollowUpDate(data.dueDate) : null,
-        dueTime: data.dueTime ?? null,
-        priority: (data.priority as FollowUpPriority) ?? "MEDIUM",
-        status: "PENDING",
-        assignedUserId,
-        leadId: data.leadId,
-        createdById: actor.id,
-      },
-      include: {
-        assignedUser: { select: { id: true, name: true } },
-        createdBy: { select: { id: true, name: true } },
-      },
-    });
-
-    if (recordLifecycleEvent && followUp.dueDate) {
-      await activityEventService.createEvent({
-        leadId: data.leadId,
-        type: "FOLLOW_UP",
-        actorId: actor.id,
-        entries: [
-          {
-            type: "FOLLOW_UP_SCHEDULED",
-            followUpId: followUp.id,
-            message: "Follow-up scheduled",
-            metadata: {
-              dueDate: data.dueDate instanceof Date
-                ? data.dueDate.toISOString()
-                : data.dueDate,
-              dueTime: data.dueTime ?? null,
-            },
-          },
-        ],
-      }, db);
-    }
-
-    if (followUp.dueDate && recalculate) {
-      await this.recalculateLeadFollowUpFields(data.leadId, client);
-    }
-
-    return { followUp, affectedUserIds: [lead.assignedUserId, assignedUserId] };
-  }
-
-  async createScheduled(data: {
-    leadId: string;
-    dueDate: string;
-    dueTime?: string | null;
-    actorId: string;
-  }) {
-    return prisma.$transaction(async (tx) => {
-      const followUp = await tx.followUp.create({
-        data: {
-          title: "Follow-up",
-          dueDate: parseFollowUpDate(data.dueDate),
-          dueTime: data.dueTime ?? null,
-          priority: "MEDIUM",
-          status: "PENDING",
-          assignedUserId: data.actorId,
-          leadId: data.leadId,
-          createdById: data.actorId,
-        },
-        include: {
-          assignedUser: { select: { id: true, name: true } },
-          createdBy: { select: { id: true, name: true } },
-        },
-      });
-
-      await activityEventService.createEvent({
-        leadId: data.leadId,
-        type: "FOLLOW_UP",
-        actorId: data.actorId,
-        entries: [
-          {
-            type: "FOLLOW_UP_SCHEDULED",
-            followUpId: followUp.id,
-            message: "Follow-up scheduled",
-            metadata: { dueDate: data.dueDate, dueTime: data.dueTime ?? null },
-          },
-        ],
-      }, tx);
-
-      await this.recalculateLeadFollowUpFields(data.leadId, tx);
-      return followUp;
+  }, actor: Actor) {
+    return this.transaction(async (tx) => {
+      const result = await this.scheduleInTransaction(tx, data, actor);
+      await activityEventService.createEvent({ leadId: data.leadId, type: "FOLLOW_UP", actorId: actor.id, entries: result.entries }, tx);
+      return { followUp: result.followUp, affectedUserIds: result.affectedUserIds };
     });
   }
 
@@ -243,7 +222,7 @@ export class FollowUpService {
 
     const leadFieldsChanged = data.dueDate !== undefined;
     if (leadFieldsChanged) {
-      const updated = await prisma.$transaction(async (tx) => {
+      const updated = await this.transaction(async (tx) => {
         const updated = await tx.followUp.update({
           where: { id },
           data: {
@@ -299,21 +278,25 @@ export class FollowUpService {
       throw new ServiceError("Only pending follow-ups can be rescheduled.", 400);
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const previousDueDate = followUp.dueDate?.toISOString() ?? null;
-      const previousDueTime = followUp.dueTime ?? null;
+    const updated = await this.transaction(async (tx) => {
+      await this.lockLeadForLifecycle(tx, followUp.leadId, actor);
+      const current = await tx.followUp.findUnique({ where: { id }, select: { status: true, dueDate: true, dueTime: true } });
+      if (!current || current.status !== "PENDING") throw new ServiceError("Only pending follow-ups can be rescheduled.", 409);
+      const previousDueDate = current.dueDate?.toISOString() ?? null;
+      const previousDueTime = current.dueTime ?? null;
 
-      const updated = await tx.followUp.update({
-        where: { id },
+      const transition = await tx.followUp.updateMany({
+        where: { id, status: "PENDING" },
         data: {
           dueDate: parseFollowUpDate(data.dueDate),
           dueTime: data.dueTime ?? null,
         },
-        include: {
+      });
+      if (transition.count !== 1) throw new ServiceError("Follow-up changed concurrently. Retry the operation.", 409);
+      const updated = await tx.followUp.findUniqueOrThrow({ where: { id }, include: {
           assignedUser: { select: { id: true, name: true } },
           createdBy: { select: { id: true, name: true } },
-        },
-      });
+        } });
 
       await activityEventService.createEvent({
         leadId: followUp.leadId,
@@ -353,11 +336,12 @@ export class FollowUpService {
     if (!followUp) throw new ServiceError("Follow-up not found for this lead.", 404);
     if (followUp.status !== "PENDING") throw new ServiceError("Follow-up is no longer pending.", 409);
 
+    const completedAt = new Date();
     const transition = await tx.followUp.updateMany({
       where: { id, leadId, status: "PENDING" },
       data: {
         status: "COMPLETED",
-        completedAt: new Date(),
+        completedAt,
         ...(options.description !== undefined ? { description: options.description } : {}),
       },
     });
@@ -370,7 +354,7 @@ export class FollowUpService {
         createdBy: { select: { id: true, name: true } },
       },
     });
-    return { followUp, completedFollowUp };
+    return { followUp, completedFollowUp, completedAt };
   }
 
   async complete(id: string, data: {
@@ -381,7 +365,7 @@ export class FollowUpService {
     } | null;
     activity?: {
       action: "CALL" | "WHATSAPP";
-      response: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED";
+      response: "PICKED_UP" | "NOT_PICKED_UP" | "SWITCHED_OFF" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED" | "NOT_REPLIED";
       interest?: "INTERESTED" | "NOT_INTERESTED" | null;
       notes?: string | null;
     } | null;
@@ -397,7 +381,8 @@ export class FollowUpService {
       throw new ServiceError("Follow-up is no longer pending.", 409);
     }
 
-    return prisma.$transaction(async (tx) => {
+    return this.transaction(async (tx) => {
+      await this.lockLeadForLifecycle(tx, followUp.leadId, actor);
       const transition = await this.completePendingInTransaction(tx, id, followUp.leadId, { description: data.note });
       const completedFollowUp = transition.completedFollowUp;
 
@@ -434,28 +419,17 @@ export class FollowUpService {
         });
       }
 
-      let nextFollowUp: Awaited<ReturnType<FollowUpService["create"]>> | null = null;
+      let nextFollowUp: { followUp: { id: string; assignedUserId: string | null } } | null = null;
       if (data.nextFollowUp?.dueDate) {
-        nextFollowUp = await this.create({
+        const scheduled = await this.scheduleInTransaction(tx, {
           leadId: followUp.leadId,
           title: "Follow-up",
           description: null,
           dueDate: data.nextFollowUp.dueDate,
           dueTime: data.nextFollowUp.dueTime ?? null,
-          assignedUserId: actor.id,
-        }, actor, tx, false);
-
-        entries.push({
-          type: "FOLLOW_UP_SCHEDULED",
-          followUpId: nextFollowUp.followUp.id,
-          message: "Follow-up scheduled",
-          metadata: {
-            dueDate: data.nextFollowUp.dueDate instanceof Date
-              ? data.nextFollowUp.dueDate.toISOString()
-              : data.nextFollowUp.dueDate,
-            dueTime: data.nextFollowUp.dueTime ?? null,
-          },
-        });
+        }, actor);
+        nextFollowUp = scheduled;
+        entries.push(...scheduled.entries);
       }
 
       await activityEventService.createEvent({
@@ -488,7 +462,8 @@ export class FollowUpService {
       throw new ServiceError("You can only delete your own follow-ups.", 403);
     }
 
-    await prisma.$transaction(async (tx) => {
+    await this.transaction(async (tx) => {
+      await this.lockLeadForLifecycle(tx, followUp.leadId, actor);
       if (followUp.status === "PENDING") {
         await activityEventService.createEvent({
           leadId: followUp.leadId,
@@ -509,7 +484,12 @@ export class FollowUpService {
         }, tx);
       }
 
-      await tx.followUp.delete({ where: { id } });
+      const now = new Date();
+      const cancelled = await tx.followUp.updateMany({
+        where: { id, status: "PENDING" },
+        data: { status: "CANCELLED", cancelledAt: now },
+      });
+      if (cancelled.count !== 1) throw new ServiceError("Only pending follow-ups can be cancelled.", 409);
       await this.recalculateLeadFollowUpFields(followUp.leadId, tx);
     });
     return { leadId: followUp.leadId, affectedUserIds: [lead.assignedUserId, followUp.assignedUserId] };

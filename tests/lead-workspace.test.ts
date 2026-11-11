@@ -94,14 +94,17 @@ test("Lead Details exposes View Details while keeping Record Progress and permis
   assert.match(workspace, /title="Delete lead\?"/);
 });
 
-test("Activity and History leads the workspace while owner and timestamps are separated", () => {
+test("Activity and History leads the workspace while assignment and timestamps are separated", () => {
   const workspace = readFileSync("src/components/sales/lead-details-modal.tsx", "utf8");
   const info = readFileSync("src/components/sales/lead-info-section.tsx", "utf8");
 
   assert.match(workspace, /<main className="order-1[\s\S]*<h3 id="workspace-history-title"[^>]*>Activity and history/);
   assert.doesNotMatch(workspace, /<main[\s\S]*?<LeadInfoSection/);
-  assert.match(workspace, />Lead owner</);
-  assert.doesNotMatch(workspace.slice(workspace.indexOf("workspace-ownership-title"), workspace.indexOf("<FollowUpsColumn")), /firstContactedAt|lastContactedAt|closedAt/);
+  const assignment = workspace.slice(workspace.indexOf("aria-label=\"Assigned salesperson\""), workspace.indexOf("<FollowUpsColumn"));
+  assert.doesNotMatch(assignment, />Lead owner</);
+  assert.match(assignment, />Assigned to</);
+  assert.match(assignment, /lead\.assignedUser\?\.name \?\? "Unassigned"/);
+  assert.doesNotMatch(assignment, /firstContactedAt|lastContactedAt|closedAt/);
   assert.match(info, /Lead timing/);
   assert.match(info, /First contacted/);
   assert.match(info, /Last contacted/);

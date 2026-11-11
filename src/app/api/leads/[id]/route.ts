@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, withPermissionAuthorization, apiError, handleApiError } from "@/lib/api";
-import { manualLeadFieldsSchema } from "@/lib/validation";
+import { manualLeadPatchSchema } from "@/lib/validation";
 import { leadService } from "@/services/lead.service";
 import { Permission } from "@/lib/permissions";
 import { mutateAndInvalidate } from "@/lib/cache-tags";
@@ -13,7 +13,7 @@ export const GET = withApiAuthorization<{ params: Promise<{ id: string }> }>(und
 export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(undefined, async (request, context, session) => {
   let body: unknown;
   try { body = await request.json(); } catch { return apiError("Invalid JSON body.", 400); }
-  const parsed = manualLeadFieldsSchema.partial().safeParse(body);
+  const parsed = manualLeadPatchSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });

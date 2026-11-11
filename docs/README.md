@@ -37,6 +37,12 @@ These documents contain useful analysis and estimates but are **NOT** canonical 
 | [experiments/09_PERFORMANCE_BASELINE_AUDIT.md](./experiments/09_PERFORMANCE_BASELINE_AUDIT.md) | Code-level performance baseline audit (EXPERIMENTAL) |
 | [experiments/11_LOCAL_MAX_PERFORMANCE_AUDIT.md](./experiments/11_LOCAL_MAX_PERFORMANCE_AUDIT.md) | Local deployment performance audit (EXPERIMENTAL) |
 | [experiments/12_V1_PRODUCTION_READINESS_AUDIT.md](./experiments/12_V1_PRODUCTION_READINESS_AUDIT.md) | V1 production readiness assessment (EXPERIMENTAL) |
+| [experiments/26_LEAD_WORKFLOW_BUSINESS_CONTRACTS.md](./experiments/26_LEAD_WORKFLOW_BUSINESS_CONTRACTS.md) | Approved lead workflow business contracts and Phase 5 backend lifecycle status |
+| [experiments/27_DISTRICT_COMPATIBILITY_ASSESSMENT.md](./experiments/27_DISTRICT_COMPATIBILITY_ASSESSMENT.md) | Read-only District compatibility and city-value assessment |
+| [experiments/28_WORKFLOW_ENUMS_AND_FORM_UX_AUDIT.md](./experiments/28_WORKFLOW_ENUMS_AND_FORM_UX_AUDIT.md) | Phase 9 read-only workflow enum, dropdown, default, and form-hint audit with proposals |
+| [experiments/29_PLACEHOLDERS_AND_DEFAULTS_REVIEW.md](./experiments/29_PLACEHOLDERS_AND_DEFAULTS_REVIEW.md) | Phase 11 read-only inventory and owner recommendations for lead form placeholders, prompts, and defaults |
+| [experiments/30_PLACEHOLDERS_AND_DEFAULTS_IMPLEMENTATION.md](./experiments/30_PLACEHOLDERS_AND_DEFAULTS_IMPLEMENTATION.md) | Phase 12 implementation record for approved lead placeholders and retained defaults |
+| [experiments/31_LEAD_STATUS_AND_CUSTOM_DROPDOWNS.md](./experiments/31_LEAD_STATUS_AND_CUSTOM_DROPDOWNS.md) | Phase 13 Lead Status OLD addition and site-wide Radix dropdown migration |
 | [experiments/HOSTING_COMPARISON_2026.md](./experiments/HOSTING_COMPARISON_2026.md) | Hosting platform comparison (EXPERIMENTAL) |
 
 ## Archived (superseded by canonical docs)

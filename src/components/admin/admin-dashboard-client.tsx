@@ -10,6 +10,7 @@ import { KpiCard } from "@/components/shared/kpi-card";
 import { formatDateTime, formatTimeAgo } from "@/lib/utils";
 import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
+import { getPriorityLabel, getStatusLabel } from "@/lib/lead-constants";
 
 type StatusMetric = { status: string; count: number };
 type PriorityMetric = { priority: string; count: number };
@@ -60,21 +61,6 @@ interface DashboardData {
   renderedAt: string;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  NEW: "New",
-  ON_HOLD: "On Hold",
-  CONVERTED: "Converted",
-  LOST: "Lost",
-  SPAM: "Spam",
-};
-
-const PRIORITY_LABELS: Record<string, string> = {
-  URGENT: "Urgent",
-  HIGH: "High",
-  MEDIUM: "Medium",
-  LOW: "Low",
-};
-
 const ACTIVITY_COLUMNS: Column<RecentActivity>[] = [
   {
     key: "time",
@@ -103,7 +89,7 @@ const ACTIVITY_COLUMNS: Column<RecentActivity>[] = [
 
 const SYNC_COLUMNS: Column<RecentSync>[] = [
   { key: "connector", header: "Connector", className: "font-medium", render: (row) => row.connectorName },
-  { key: "status", header: "Status", render: (row) => <Badge label={row.status} /> },
+  { key: "status", header: "Status", render: (row) => <Badge label={getStatusLabel(row.status)} toneKey={row.status} /> },
   { key: "seen", header: "Records Seen", render: (row) => row.recordsSeen },
   { key: "created", header: "Leads Added", render: (row) => row.recordsCreated },
   {
@@ -203,17 +189,17 @@ export function AdminDashboardClient({ data }: { data: DashboardData }) {
           href="/admin/leads"
           linkLabel="View All Leads"
         />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {data.charts.statusBreakdown.map(({ status, count }) => (
             <KpiCard
               key={status}
-              title={STATUS_LABELS[status] ?? status}
+              title={getStatusLabel(status)}
               count={count}
               description={status === "NEW"
                 ? "Leads not yet moved to another status"
                 : status === "ON_HOLD"
                   ? "Leads waiting for a decision"
-                  : `Leads marked ${STATUS_LABELS[status]?.toLowerCase() ?? status.toLowerCase()}`}
+                  : `Leads marked ${getStatusLabel(status).toLowerCase()}`}
               href={`/admin/leads?filter.status=${status}`}
             />
           ))}
@@ -222,11 +208,11 @@ export function AdminDashboardClient({ data }: { data: DashboardData }) {
           {data.charts.priorityBreakdown.map(({ priority, count }) => (
             <KpiCard
               key={priority}
-              title={PRIORITY_LABELS[priority] ?? priority}
+              title={getPriorityLabel(priority)}
               count={count}
               description={priority === "URGENT"
                 ? "Leads needing quick action"
-                : `${PRIORITY_LABELS[priority]} priority leads`}
+                : `${getPriorityLabel(priority)} priority leads`}
               href={`/admin/leads?filter.priority=${priority}`}
             />
           ))}

@@ -37,11 +37,11 @@ The runtime uses Prisma's `@prisma/adapter-pg` driver adapter and the Node Postg
 | `UserRole` | `ADMIN`, `SALES` |
 | `SalesPrivilege` | `JUNIOR`, `SENIOR` |
 | `LeadStatus` | `NEW`, `CONVERTED`, `LOST`, `SPAM`, `ON_HOLD` |
-| `LeadPriority` | `LOW`, `MEDIUM`, `HIGH`, `URGENT` |
+| `LeadPriority` | `LOW`, `MEDIUM`, `HIGH`, `URGENT`, `COLD` |
 | `FollowUpStatus` | `PENDING`, `COMPLETED`, `CANCELLED` |
-| `FollowUpPriority` | `LOW`, `MEDIUM`, `HIGH`, `URGENT` |
+| `FollowUpPriority` | `LOW`, `MEDIUM`, `HIGH`, `URGENT`, `COLD` |
 | `ActionType` | `CALL`, `WHATSAPP` |
-| `ResponseType` | `PICKED_UP`, `NO_RESPONSE`, `INVALID_NUMBER`, `REPLIED` |
+| `ResponseType` | `PICKED_UP`, `NO_RESPONSE` (legacy), `INVALID_NUMBER`, `REPLIED`, `NOT_PICKED_UP`, `SWITCHED_OFF`, `NOT_REPLIED` |
 | `InterestType` | `INTERESTED`, `NOT_INTERESTED` |
 | `LeadCategory` | 17 values including `MEDICAL_REPRESENTATIVE`, `RETAILER`, `WHOLESALER`, etc. |
 | `ConnectorStatus` | `INACTIVE`, `ACTIVE`, `ERROR` |
@@ -67,7 +67,7 @@ The runtime uses Prisma's `@prisma/adapter-pg` driver adapter and the Node Postg
 
 | Model | Table | Purpose |
 |---|---|---|
-| `Lead` | `Lead` | Core lead record with contact details, status, priority, category; nullable `product` remains for imported and historical data |
+| `Lead` | `Lead` | Core lead record with contact details, status, priority, category, nullable `city` and additive nullable `district`; nullable `product` remains for imported and historical data |
 | `LeadSource` | `LeadSource` | Vendor/provider registry (e.g., "IndiaMART", "Website") |
 | `Note` | `Note` | Interaction notes attached to leads |
 | `FollowUp` | `FollowUp` | Scheduled follow-up tasks linked to leads |
@@ -232,6 +232,21 @@ Total: 43 `@@index` declarations + 2 `@@unique` declarations + 12 field-level `@
 - `DELETE /api/leads/[id]` requires `DELETE_LEAD` permission and hard-deletes the lead. Schema `onDelete: Cascade` removes its `ActivityEvent` (and `ActivityEntry`), `Note`, `FollowUp`, and `Attachment` records. Recovery depends on a verified database backup/restore process; no in-app undelete exists.
 
 ## Migrations
+
+### Pending follow-up lifecycle migration
+
+`20261109100000_followup_one_pending_per_lead` is a pending migration and has not been applied. It adds nullable `FollowUp.cancelledAt`, runs a preflight that aborts and reports lead IDs/counts/task IDs when multiple PENDING rows exist, then creates the PostgreSQL partial unique index `FollowUp_one_pending_per_lead` on `leadId` for PENDING rows. Prisma schema validation does not model this partial index; retain it in the raw SQL migration and verify it using `pg_indexes` after deployment. Before applying, run the documented conflict query and review every result; never auto-resolve conflicts. The configured external Neon database was inspected and has no such index; no migration was applied. Deployment must first apply the earlier Phase 4 District migration in migration order, which also remains unapplied on that database.
+
+Read-only pending-conflict preflight:
+
+```sql
+SELECT "leadId", count(*) AS pending_count,
+       array_agg("id" ORDER BY "createdAt", "id") AS follow_up_ids
+FROM "FollowUp"
+WHERE "status" = 'PENDING'
+GROUP BY "leadId"
+HAVING count(*) > 1;
+```
 
 17 migrations from initial schema through connector execution fencing. Key migrations:
 
