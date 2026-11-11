@@ -104,6 +104,10 @@ test("Activity and History leads the workspace while assignment and timestamps a
   assert.doesNotMatch(assignment, />Lead owner</);
   assert.match(assignment, />Assigned to</);
   assert.match(assignment, /lead\.assignedUser\?\.name \?\? "Unassigned"/);
+  assert.match(assignment, /dl className="flex items-center justify-between gap-3 text-sm"/);
+  assert.match(assignment, /dt className="shrink-0/);
+  assert.match(assignment, /dd className="min-w-0 break-words text-right/);
+  assert.doesNotMatch(assignment, /<dl className="mt-3/);
   assert.doesNotMatch(assignment, /firstContactedAt|lastContactedAt|closedAt/);
   assert.match(info, /Lead timing/);
   assert.match(info, /First contacted/);

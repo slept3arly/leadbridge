@@ -54,6 +54,7 @@ export function UserTableControls({
   useEffect(() => {
     if (!filterOpen) return;
     const handleClick = (e: MouseEvent) => {
+      if (e.target instanceof Element && e.target.closest("[data-leadbridge-select-portal]")) return;
       if (
         panelRef.current &&
         !panelRef.current.contains(e.target as Node) &&

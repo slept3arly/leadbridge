@@ -103,6 +103,7 @@ export function Select({
           position="popper"
           sideOffset={4}
           collisionPadding={8}
+          data-leadbridge-select-portal="true"
           className="z-[100] max-h-[var(--radix-select-content-available-height)] min-w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border border-[var(--color-border)] bg-white text-[var(--color-ink)] shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
         >
           <RadixSelect.Viewport className="max-h-[var(--radix-select-content-available-height)] p-1">

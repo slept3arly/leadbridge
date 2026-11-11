@@ -517,8 +517,8 @@ export function LeadDetailsModal({
               <div className="mx-auto grid max-w-7xl grid-cols-1 items-start gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-5">
                 <aside className="order-2 min-w-0 space-y-4 lg:order-2 lg:h-full lg:overflow-y-auto lg:pb-2" aria-label="Assignment and follow-ups">
                   <section className="rounded-2xl border border-[var(--color-border)] bg-white p-4" aria-label="Assigned salesperson">
-                    <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
-                      <dt className="text-[var(--color-muted)]">Assigned to</dt><dd className="text-right font-medium text-[var(--color-ink)]">{lead.assignedUser?.name ?? "Unassigned"}</dd>
+                    <dl className="flex items-center justify-between gap-3 text-sm">
+                      <dt className="shrink-0 text-[var(--color-muted)]">Assigned to</dt><dd className="min-w-0 break-words text-right font-medium text-[var(--color-ink)]">{lead.assignedUser?.name ?? "Unassigned"}</dd>
                     </dl>
                   </section>
                   <FollowUpsColumn
