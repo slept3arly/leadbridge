@@ -133,10 +133,11 @@ export function AdminLeadsPageContent({
           emptyDescription="Try changing your search or filters."
           rowKey={(lead: SerializedLead) => lead.id}
           onRowClick={(lead: SerializedLead) => setDetailsLeadId(lead.id)}
+          getRowAccessibleLabel={(lead: SerializedLead) => `Open details for ${lead.name}`}
           columns={[
             {
               key: "number",
-              header: "#",
+              header: "Row",
               headerClassName: "w-16",
               className: "w-16 whitespace-nowrap text-xs tabular-nums text-[var(--color-muted)]",
               render: (_lead: SerializedLead, index: number) =>
@@ -206,16 +207,16 @@ export function AdminLeadsPageContent({
                   {!lead.isArchived && <div className="w-8 shrink-0">
                     <IconActionButton
                       icon={Archive}
-                      label="Archive lead"
+                      label={`Archive ${lead.name}`}
                       onClick={() => { setMutationError(null); setConfirmAction({ id: lead.id, kind: "archive" }); }}
                       className="w-full"
                     />
                   </div>}
-                  {lead.isArchived && <div className="w-8 shrink-0"><IconActionButton icon={RotateCcw} label="Restore lead" onClick={() => { setMutationError(null); setConfirmAction({ id: lead.id, kind: "restore" }); }} className="w-full" /></div>}
+                  {lead.isArchived && <div className="w-8 shrink-0"><IconActionButton icon={RotateCcw} label={`Restore ${lead.name}`} onClick={() => { setMutationError(null); setConfirmAction({ id: lead.id, kind: "restore" }); }} className="w-full" /></div>}
                   <div className="w-8 shrink-0">
                     <IconActionButton
                       icon={Trash2}
-                      label="Delete lead"
+                      label={`Delete ${lead.name}`}
                       onClick={() => { setMutationError(null); setConfirmAction({ id: lead.id, kind: "delete" }); }}
                       className="w-full"
                     />

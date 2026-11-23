@@ -43,6 +43,7 @@ These documents contain useful analysis and estimates but are **NOT** canonical 
 | [experiments/29_PLACEHOLDERS_AND_DEFAULTS_REVIEW.md](./experiments/29_PLACEHOLDERS_AND_DEFAULTS_REVIEW.md) | Phase 11 read-only inventory and owner recommendations for lead form placeholders, prompts, and defaults |
 | [experiments/30_PLACEHOLDERS_AND_DEFAULTS_IMPLEMENTATION.md](./experiments/30_PLACEHOLDERS_AND_DEFAULTS_IMPLEMENTATION.md) | Phase 12 implementation record for approved lead placeholders and retained defaults |
 | [experiments/31_LEAD_STATUS_AND_CUSTOM_DROPDOWNS.md](./experiments/31_LEAD_STATUS_AND_CUSTOM_DROPDOWNS.md) | Phase 13 Lead Status OLD addition and site-wide Radix dropdown migration |
+| [experiments/32_EXPORT_SYSTEM_UX_AND_CAPABILITY_AUDIT.md](./experiments/32_EXPORT_SYSTEM_UX_AND_CAPABILITY_AUDIT.md) | Phase 1 read-only audit of export UX, filters, columns, CSV/XLSX options, backend safeguards, and permissions |
 | [experiments/HOSTING_COMPARISON_2026.md](./experiments/HOSTING_COMPARISON_2026.md) | Hosting platform comparison (EXPERIMENTAL) |
 
 ## Archived (superseded by canonical docs)

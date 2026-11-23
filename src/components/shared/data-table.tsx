@@ -22,6 +22,7 @@ export function DataTable<T>({
   compact = false,
   rowKey,
   onRowClick,
+  getRowAccessibleLabel,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -34,6 +35,7 @@ export function DataTable<T>({
   compact?: boolean;
   rowKey?: (row: T, index: number) => string | number;
   onRowClick?: (row: T) => void;
+  getRowAccessibleLabel?: (row: T, index: number) => string;
 }) {
   if (isLoading) {
     return <SkeletonTable rows={5} cols={columns.length} compact={compact} />;
@@ -90,6 +92,7 @@ export function DataTable<T>({
                 className={`transition-colors duration-150 ${onRowClick ? "cursor-pointer hover:bg-slate-50/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand)]" : "hover:bg-slate-50/50"}`}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 tabIndex={onRowClick ? 0 : undefined}
+                aria-label={onRowClick ? getRowAccessibleLabel?.(row, index) : undefined}
                 onKeyDown={onRowClick ? (event) => {
                   if (event.target !== event.currentTarget) return;
                   if (event.key === "Enter" || event.key === " ") {

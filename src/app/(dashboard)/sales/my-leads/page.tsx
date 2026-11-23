@@ -18,7 +18,6 @@ export default async function SalesMyLeadsPage({
   const resolvedSearchParams = await searchParams;
   const defaultPageSize = (await settingsService.get<number>("default_page_size")) ?? 25;
   const query = parseListQuery(toSearchParams(resolvedSearchParams), { defaultPageSize });
-  const autoOpenLeadId = (resolvedSearchParams.leadId as string) || null;
 
   const canDelete = can(user, Permission.DELETE_LEAD);
   const canArchive = can(user, Permission.ARCHIVE_LEAD);
@@ -67,7 +66,6 @@ export default async function SalesMyLeadsPage({
         initial={tableInitial}
         pagination={result.pagination}
         leadSources={leadSources}
-        autoOpenLeadId={autoOpenLeadId}
         user={user}
         canExport={canExport}
         canDelete={canDelete}

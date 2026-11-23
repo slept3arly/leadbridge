@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo, type TransitionStartFunction } from "react";
+import { useState, useEffect, useMemo, type TransitionStartFunction } from "react";
 import { SearchToolbar } from "@/components/shared/search-toolbar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { FilterPopover } from "@/components/ui/filter-popover";
 import { ExportButton } from "@/components/shared/export-button";
 import { Filter, X, RotateCcw } from "lucide-react";
 import { useTableQuery, type TableQueryState } from "@/hooks/use-table-query";
@@ -68,30 +69,11 @@ export function SalesTableControls({
   const exportContext = getContextualExportParamsFromState("leads", query);
   const [filterOpen, setFilterOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setHydrated(true), 0);
     return () => window.clearTimeout(timer);
   }, []);
-
-  useEffect(() => {
-    if (!filterOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (e.target instanceof Element && e.target.closest("[data-leadbridge-select-portal]")) return;
-      if (
-        panelRef.current &&
-        !panelRef.current.contains(e.target as Node) &&
-        triggerRef.current &&
-        !triggerRef.current.contains(e.target as Node)
-      ) {
-        setFilterOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [filterOpen]);
 
   const followUp = query.filters.followUp ?? "";
   const assignedQuickFilter = query.filters.assignedUserId === "unassigned"
@@ -254,6 +236,21 @@ export function SalesTableControls({
     : "createdAt:desc";
 
   const activeFilterCount = activeFilterLabels.length;
+  const filterTrigger = (
+    <button
+      type="button"
+      aria-label={activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : "Filters"}
+      className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-4 py-1.5 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
+    >
+      <Filter size={16} />
+      Filters
+      {activeFilterCount > 0 && (
+        <span className="inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] text-white min-w-5 h-5 px-1.5 text-[11px] font-bold">
+          {activeFilterCount}
+        </span>
+      )}
+    </button>
+  );
 
   return (
     <div className="space-y-4">
@@ -262,38 +259,28 @@ export function SalesTableControls({
         <div className="flex-1 min-w-0">
           <SearchToolbar
             value={query.search}
+            ariaLabel="Search leads"
             onChange={(value) => query.update({ search: value })}
           />
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
         {showExportShortcut && <ExportButton type="leads" params={exportContext.params} disabledReason={exportContext.error} iconOnly />}
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-        <div className="relative shrink-0">
-          <button
-            ref={triggerRef}
-            type="button"
-            onClick={() => setFilterOpen(!filterOpen)}
-            className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-4 py-1.5 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
+        <div className="shrink-0">
+          <FilterPopover
+            open={filterOpen}
+            onOpenChange={setFilterOpen}
+            contentClassName="mt-0 w-[90vw] sm:w-[640px] lg:w-[720px]"
+            trigger={filterTrigger}
           >
-            <Filter size={16} />
-            Filters
-            {activeFilterCount > 0 && (
-              <span className="inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] text-white min-w-5 h-5 px-1.5 text-[11px] font-bold">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
 
-          {filterOpen && (
-            <div
-              ref={panelRef}
-              className="absolute right-0 top-full z-50 mt-2 w-[90vw] sm:w-[640px] lg:w-[720px] max-w-[calc(100vw-1rem)] rounded-2xl border border-[var(--color-border)] bg-white p-5 shadow-xl"
-            >
+            <>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-[var(--color-ink)]">Filters</h3>
                 <button
                   type="button"
                   onClick={() => setFilterOpen(false)}
+                  aria-label="Close filters"
                   className="text-[var(--color-muted)] hover:text-[var(--color-ink)] transition"
                 >
                   <X size={16} />
@@ -303,10 +290,12 @@ export function SalesTableControls({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-4">
                 {/* SORT */}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-sort-label" htmlFor="leads-filter-sort" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Sort
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-sort"
+                    aria-labelledby="leads-filter-sort-label"
                     value={currentSortValue}
                     onChange={(e) => handleSortChange(e.target.value)}
                   >
@@ -320,10 +309,12 @@ export function SalesTableControls({
 
                 {/* STATUS */}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-status-label" htmlFor="leads-filter-status" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Status
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-status"
+                    aria-labelledby="leads-filter-status-label"
                     value={query.filters.status ?? ""}
                     onChange={(e) => setFilter("status", e.target.value)}
                   >
@@ -338,10 +329,12 @@ export function SalesTableControls({
 
                 {/* LEAD SOURCE */}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-source-label" htmlFor="leads-filter-source" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Lead Source
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-source"
+                    aria-labelledby="leads-filter-source-label"
                     value={leadSources.length > 0 ? (query.filters.source ?? "") : ""}
                     onChange={(e) => setFilter("source", e.target.value)}
                     disabled={leadSources.length === 0}
@@ -357,10 +350,12 @@ export function SalesTableControls({
 
                 {/* ACTIVITY DATE */}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-activity-date-label" htmlFor="leads-filter-activity-date" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Activity Date
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-activity-date"
+                    aria-labelledby="leads-filter-activity-date-label"
                     value={query.filters.activityDate ?? ""}
                     onChange={(e) => handleActivityDateChange(e.target.value)}
                   >
@@ -373,10 +368,12 @@ export function SalesTableControls({
 
                 {/* ACTION */}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-action-label" htmlFor="leads-filter-action" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Action
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-action"
+                    aria-labelledby="leads-filter-action-label"
                     value={query.filters.activityAction ?? ""}
                     onChange={(e) => setFilter("activityAction", e.target.value)}
                   >
@@ -391,10 +388,12 @@ export function SalesTableControls({
 
                 {/* RESPONSE */}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-response-label" htmlFor="leads-filter-response" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Response
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-response"
+                    aria-labelledby="leads-filter-response-label"
                     value={query.filters.activityResponse ?? ""}
                     onChange={(e) => setFilter("activityResponse", e.target.value)}
                   >
@@ -409,10 +408,12 @@ export function SalesTableControls({
 
                 {/* PRIORITY */}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-priority-label" htmlFor="leads-filter-priority" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Priority
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-priority"
+                    aria-labelledby="leads-filter-priority-label"
                     value={query.filters.priority ?? ""}
                     onChange={(e) => setFilter("priority", e.target.value)}
                   >
@@ -427,10 +428,12 @@ export function SalesTableControls({
 
                 {/* CATEGORY */}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-category-label" htmlFor="leads-filter-category" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Category
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-category"
+                    aria-labelledby="leads-filter-category-label"
                     value={query.filters.category ?? ""}
                     onChange={(e) => setFilter("category", e.target.value)}
                   >
@@ -445,10 +448,12 @@ export function SalesTableControls({
 
                 {/* INTEREST */}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-interest-label" htmlFor="leads-filter-interest" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Interest
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-interest"
+                    aria-labelledby="leads-filter-interest-label"
                     value={query.filters.activityInterest ?? ""}
                     onChange={(e) => setFilter("activityInterest", e.target.value)}
                   >
@@ -463,10 +468,12 @@ export function SalesTableControls({
 
                 {/* ARCHIVED */}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-archived-label" htmlFor="leads-filter-archived" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Archived
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-archived"
+                    aria-labelledby="leads-filter-archived-label"
                     value={query.filters.archived === "true" ? "true" : ""}
                     onChange={(e) => setFilter("archived", e.target.value)}
                   >
@@ -476,10 +483,12 @@ export function SalesTableControls({
                 </div>
 
                 {adminMode && <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-assigned-label" htmlFor="leads-filter-assigned" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Assigned To
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-assigned"
+                    aria-labelledby="leads-filter-assigned-label"
                     value={query.filters.assignedUserId ?? ""}
                     onChange={(e) => setFilter("assignedUserId", e.target.value)}
                   >
@@ -490,10 +499,12 @@ export function SalesTableControls({
                 </div>}
 
                 {adminMode && <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                  <label id="leads-filter-follow-up-label" htmlFor="leads-filter-follow-up" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                     Follow-up
-                  </p>
+                  </label>
                   <Select
+                    id="leads-filter-follow-up"
+                    aria-labelledby="leads-filter-follow-up-label"
                     value={followUp}
                     onChange={(e) => setFilter("followUp", e.target.value)}
                   >
@@ -509,10 +520,11 @@ export function SalesTableControls({
                 {(adminMode || query.filters.activityDate === "custom") && (
                   <>
                     <div>
-                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                      <label htmlFor="leads-filter-date-from" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                         {adminMode && query.filters.activityDate !== "custom" ? "Created From" : "From"}
-                      </p>
+                      </label>
                       <input
+                        id="leads-filter-date-from"
                         type="date"
                         value={dateToInput(query.dateFrom)}
                         onChange={(e) => handleDateChange("dateFrom", e.target.value)}
@@ -521,10 +533,11 @@ export function SalesTableControls({
                     </div>
 
                     <div>
-                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+                      <label htmlFor="leads-filter-date-to" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)]">
                         {adminMode && query.filters.activityDate !== "custom" ? "Created To" : "To"}
-                      </p>
+                      </label>
                       <input
+                        id="leads-filter-date-to"
                         type="date"
                         value={dateToInput(query.dateTo)}
                         onChange={(e) => handleDateChange("dateTo", e.target.value)}
@@ -534,8 +547,8 @@ export function SalesTableControls({
                   </>
                 )}
               </div>
-            </div>
-          )}
+            </>
+          </FilterPopover>
         </div>
         </div>
       </div>

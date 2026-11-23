@@ -10,6 +10,7 @@ import { SalesTableControls } from "@/components/sales/sales-table-controls";
 import { LeadEditModal } from "@/components/leads/lead-edit-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { GoToTopButton } from "@/components/sales/go-to-top-button";
 import { LeadStatusPriorityCell } from "@/components/leads/lead-status-priority-cell";
 import { IconActionButton } from "@/components/ui/icon-action-button";
 import { Plus, Archive, Trash2, ExternalLink } from "lucide-react";
@@ -82,7 +83,7 @@ function LastActivityCell({ lastActivity }: { lastActivity: SalesLeadRow["lastAc
   }
 
   return (
-    <div className="leading-tight whitespace-nowrap">
+    <div className="min-w-0 leading-tight [overflow-wrap:anywhere]">
       {display.lines.map((line, i) => (
         <div key={i} className="text-sm text-[var(--color-ink)]">{line}</div>
       ))}
@@ -137,15 +138,15 @@ function NextFollowUpCell({ nextFollowUpAt }: { nextFollowUpAt: Date | null }) {
   }
 
   return (
-    <div className="leading-tight whitespace-nowrap">
+    <div className="min-w-0 leading-tight [overflow-wrap:anywhere]">
       <div className="text-sm text-[var(--color-ink)]">{display.dateLabel}</div>
       <div className="flex items-center gap-1.5 mt-0.5">
         {display.isOverdue ? (
-          <span className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+          <span className="inline-flex max-w-full items-center whitespace-normal break-words rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
             {display.urgencyLabel}
           </span>
         ) : (
-          <span className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+          <span className="inline-flex max-w-full items-center whitespace-normal break-words rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
             {display.urgencyLabel}
           </span>
         )}
@@ -159,7 +160,6 @@ export function SalesMyLeadsPageContent({
   initial,
   pagination,
   leadSources,
-  autoOpenLeadId,
   user,
   canExport,
   canDelete,
@@ -170,7 +170,6 @@ export function SalesMyLeadsPageContent({
   initial: Partial<TableQueryState>;
   pagination?: { page: number; pageSize: number; total: number; totalPages: number };
   leadSources: Array<{ id: string; name: string }>;
-  autoOpenLeadId: string | null;
   user: { id: string; role: string };
   canExport: boolean;
   canDelete: boolean;
@@ -231,7 +230,7 @@ export function SalesMyLeadsPageContent({
   const columns: Column<SalesLeadRow>[] = [
     {
       key: "number",
-      header: "#",
+      header: "Row",
       headerClassName: "w-12",
       className: "w-12",
       render: (_lead: SalesLeadRow, index: number) => (
@@ -242,13 +241,13 @@ export function SalesMyLeadsPageContent({
       key: "lead",
       header: "Lead",
       render: (lead: SalesLeadRow) => (
-        <div className="min-w-0 max-w-[220px]">
-          <p className="text-sm font-semibold truncate">{lead.name}</p>
+        <div className="min-w-0 max-w-[220px] [overflow-wrap:anywhere]">
+          <p className="text-sm font-semibold">{lead.name}</p>
           {lead.company && (
-            <p className="text-sm text-[var(--color-muted)] truncate">{lead.company}</p>
+            <p className="text-sm text-[var(--color-muted)]">{lead.company}</p>
           )}
           {lead.phone && (
-            <p className="text-sm text-[var(--color-muted)] truncate">{lead.phone}</p>
+            <p className="text-sm text-[var(--color-muted)]">{lead.phone}</p>
           )}
         </div>
       ),
@@ -264,7 +263,7 @@ export function SalesMyLeadsPageContent({
       key: "source",
       header: "Source",
       render: (lead: SalesLeadRow) => (
-        <span className="text-sm">
+        <span className="block min-w-0 text-sm [overflow-wrap:anywhere]">
           {lead.source?.name ?? <span className="text-sm text-[var(--color-muted)]">-</span>}
         </span>
       ),
@@ -304,7 +303,7 @@ export function SalesMyLeadsPageContent({
             {canArchive ? (
               <IconActionButton
                 icon={Archive}
-                label="Archive lead"
+                label={`Archive ${lead.name}`}
                 isLoading={archiving && archiveTarget === lead.id}
                 onClick={() => {
                   setArchiveError(null);
@@ -315,7 +314,7 @@ export function SalesMyLeadsPageContent({
             {canDelete ? (
               <IconActionButton
                 icon={Trash2}
-                label="Delete lead"
+                label={`Delete ${lead.name}`}
                 isLoading={deleting && deleteTarget === lead.id}
                 onClick={() => {
                   setDeleteError(null);
@@ -325,7 +324,7 @@ export function SalesMyLeadsPageContent({
             ) : null}
             <IconActionButton
               icon={ExternalLink}
-              label="View lead details"
+              label={`View details for ${lead.name}`}
               onClick={() => setDetailLeadId(lead.id)}
             />
           </div>
@@ -351,13 +350,21 @@ export function SalesMyLeadsPageContent({
           ) : null
         }
       />
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {isPending
+          ? "Updating leads."
+          : `${pagination?.total ?? leads.length} ${(pagination?.total ?? leads.length) === 1 ? "lead" : "leads"} found.`}
+      </div>
       {leads.length > 0 || isPending ? (
-        <DataTable
-          rows={leads}
-          columns={columns}
-          isLoading={isPending}
-          onRowClick={(row) => setDetailLeadId(row.id)}
-        />
+        <div aria-busy={isPending}>
+          <DataTable
+            rows={leads}
+            columns={columns}
+            isLoading={isPending}
+            onRowClick={(row) => setDetailLeadId(row.id)}
+            getRowAccessibleLabel={(row) => `Open details for ${row.name}`}
+          />
+        </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-[var(--color-border)] bg-slate-50 px-6 py-10 text-center">
           <h3 className="text-lg font-semibold">No leads found</h3>
@@ -374,8 +381,8 @@ export function SalesMyLeadsPageContent({
           )}
         </div>
       )}
+      <GoToTopButton />
       <LeadDetailDialog
-        leadId={autoOpenLeadId}
         currentUserId={user.id}
         isAdmin={user.role === "ADMIN"}
         canArchive={canArchive}

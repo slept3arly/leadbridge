@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo, type ReactNode, type TransitionStartFunction } from "react";
+import { useState, useEffect, useMemo, type ReactNode, type TransitionStartFunction } from "react";
 import { SearchToolbar } from "@/components/shared/search-toolbar";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { FilterPopover } from "@/components/ui/filter-popover";
 import { ExportButton } from "@/components/shared/export-button";
 import { ActiveFilters } from "@/components/shared/active-filters";
 import { Filter, X } from "lucide-react";
@@ -43,30 +44,11 @@ export function UserTableControls({
   const exportContext = getContextualExportParamsFromState("users", query);
   const [filterOpen, setFilterOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setHydrated(true), 0);
     return () => window.clearTimeout(timer);
   }, []);
-
-  useEffect(() => {
-    if (!filterOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (e.target instanceof Element && e.target.closest("[data-leadbridge-select-portal]")) return;
-      if (
-        panelRef.current &&
-        !panelRef.current.contains(e.target as Node) &&
-        triggerRef.current &&
-        !triggerRef.current.contains(e.target as Node)
-      ) {
-        setFilterOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [filterOpen]);
 
   const setFilter = (key: string, value: string) => {
     if (value) {
@@ -137,6 +119,20 @@ export function UserTableControls({
     : "createdAt:desc";
 
   const activeFilterCount = activeFilterLabels.length;
+  const filterTrigger = (
+    <button
+      type="button"
+      className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-4 py-1.5 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 h-10"
+    >
+      <Filter size={16} />
+      Filters
+      {activeFilterCount > 0 && (
+        <span className="inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] text-white min-w-5 h-5 px-1.5 text-[11px] font-bold">
+          {activeFilterCount}
+        </span>
+      )}
+    </button>
+  );
 
   return (
     <div className="space-y-4">
@@ -151,27 +147,15 @@ export function UserTableControls({
         <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
         {showExportShortcut && <ExportButton type="users" params={exportContext.params} disabledReason={exportContext.error} iconOnly />}
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-        <div className="relative shrink-0">
-          <button
-            ref={triggerRef}
-            type="button"
-            onClick={() => setFilterOpen(!filterOpen)}
-            className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--color-border)] bg-white px-4 py-1.5 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 h-10"
+        <div className="shrink-0">
+          <FilterPopover
+            open={filterOpen}
+            onOpenChange={setFilterOpen}
+            contentClassName="mt-0 w-[90vw] sm:w-[640px] lg:w-[720px]"
+            trigger={filterTrigger}
           >
-            <Filter size={16} />
-            Filters
-            {activeFilterCount > 0 && (
-              <span className="inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] text-white min-w-5 h-5 px-1.5 text-[11px] font-bold">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
 
-          {filterOpen && (
-            <div
-              ref={panelRef}
-              className="absolute right-0 top-full z-50 mt-2 w-[90vw] sm:w-[640px] lg:w-[720px] max-w-[calc(100vw-1rem)] rounded-2xl border border-[var(--color-border)] bg-white p-5 shadow-xl"
-            >
+            <>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-[var(--color-ink)]">Filters</h3>
                 <button
@@ -278,8 +262,8 @@ export function UserTableControls({
                   </Select>
                 </div>
               </div>
-            </div>
-          )}
+            </>
+          </FilterPopover>
         </div>
         </div>
       </div>
