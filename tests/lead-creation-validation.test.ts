@@ -74,15 +74,20 @@ test("lead updates share email and phone validation without requiring contact de
   }
 });
 
-test("lead API schemas accept OLD and continue accepting historical lead statuses", () => {
-  for (const status of ["NEW", "CONVERTED", "LOST", "SPAM", "ON_HOLD", "OLD"]) {
+test("lead writes accept only permitted statuses while historical enum values remain representable", () => {
+  for (const status of ["NEW", "CONVERTED", "OLD"]) {
     assert.equal(manualLead({ name: `Create status ${status}`, phone: "1234567890", status }).success, true, `${status} is accepted by Create Lead API`);
     assert.equal(leadSchema.safeParse({ name: "Status compatibility", status }).success, true, `${status} remains valid`);
     assert.equal(leadProgressRequestSchema.safeParse({
       ...validActivity,
       status,
       scheduleFollowUp: false,
-    }).success, true, `${status} is accepted by Record Progress`);
+    }).success, true, `${status} is accepted by Log Activity`);
+  }
+  for (const status of ["LOST", "SPAM", "ON_HOLD"]) {
+    assert.equal(manualLead({ name: `Create status ${status}`, phone: "1234567890", status }).success, false);
+    assert.equal(leadProgressRequestSchema.safeParse({ ...validActivity, status, scheduleFollowUp: false }).success, false);
+    assert.equal(leadSchema.safeParse({ name: "Existing historical status", status }).success, true);
   }
 });
 

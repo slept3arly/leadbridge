@@ -284,7 +284,7 @@ export class LeadService {
 
     const leadIds = data.map((l) => l.id);
 
-    type LastActivityEntry = { type: string; action: string | null; response: string | null };
+    type LastActivityEntry = { type: string; action: string | null; response: string | null; reason: string | null };
     type LastActivityResult = { occurredAt: Date; entries: LastActivityEntry[] } | null;
     const lastActivityMap = new Map<string, LastActivityResult>();
 
@@ -301,8 +301,8 @@ export class LeadService {
       if (latestEvents.length > 0) {
         const eventIds = latestEvents.map((e) => e.eventId);
 
-        const eventEntries = await prisma.$queryRaw<{ eventId: string; entryType: string; action: string | null; response: string | null }[]>`
-          SELECT en."eventId", en."type" AS "entryType", en."action", en."response"
+        const eventEntries = await prisma.$queryRaw<{ eventId: string; entryType: string; action: string | null; response: string | null; reason: string | null }[]>`
+          SELECT en."eventId", en."type" AS "entryType", en."action", en."response", en."reason"
           FROM "ActivityEntry" en
           WHERE en."eventId" IN (${Prisma.join(eventIds)})
             AND en."type" IN ('CALL', 'WHATSAPP', 'FOLLOW_UP_SCHEDULED', 'FOLLOW_UP_RESCHEDULED', 'FOLLOW_UP_COMPLETED', 'FOLLOW_UP_CANCELLED')
@@ -311,7 +311,7 @@ export class LeadService {
         const entriesByEvent = new Map<string, LastActivityEntry[]>();
         for (const entry of eventEntries) {
           const list = entriesByEvent.get(entry.eventId) ?? [];
-          list.push({ type: entry.entryType, action: entry.action, response: entry.response });
+          list.push({ type: entry.entryType, action: entry.action, response: entry.response, reason: entry.reason });
           entriesByEvent.set(entry.eventId, list);
         }
 
@@ -436,6 +436,7 @@ export class LeadService {
         action: initialActivity.action,
         response: initialActivity.response,
         interest: initialActivity.interest,
+        reason: initialActivity.interest === "NOT_INTERESTED" ? initialActivity.reason ?? null : null,
         message: initialActivity.notes || `${initialActivity.action} - ${initialActivity.response.replaceAll("_", " ")}${initialActivity.interest ? ` (${initialActivity.interest.replaceAll("_", " ")})` : ""}`,
         metadata: initialActivity.notes ? { notes: initialActivity.notes } : undefined,
       }];

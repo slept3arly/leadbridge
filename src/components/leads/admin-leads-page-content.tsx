@@ -33,7 +33,7 @@ export type SerializedLead = {
   priority: string;
   category: string | null;
   isArchived: boolean;
-  lastActivity: { occurredAt: string; entries: Array<{ type: string; action: string | null; response: string | null }> } | null;
+  lastActivity: { occurredAt: string; entries: Array<{ type: string; action: string | null; response: string | null; reason?: string | null }> } | null;
   assignedUser: { id: string; name: string } | null;
   source: { id: string; name: string } | null;
 };

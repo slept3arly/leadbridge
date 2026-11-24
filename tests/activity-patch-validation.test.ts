@@ -47,7 +47,7 @@ test("a successful response requires interest in the resulting state", () => {
 test("activity PATCH accepts a valid interest update and skips outcome validation for notes-only changes", () => {
   const validInterest = validateActivityOutcomePatch(
     { action: "CALL", response: "PICKED_UP", interest: "INTERESTED" },
-    { interest: "NOT_INTERESTED" },
+    { interest: "NOT_INTERESTED", reason: "LANGUAGE_BARRIER" },
   );
   assert.equal(validInterest?.success, true);
 

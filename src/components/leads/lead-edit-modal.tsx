@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
-import { LEAD_STATUSES, LEAD_PRIORITIES, LEAD_CATEGORIES } from "@/lib/lead-constants";
+import { LEAD_PRIORITIES, LEAD_CATEGORIES, SALES_EDITABLE_LEAD_STATUSES, getStatusLabel } from "@/lib/lead-constants";
 import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 import { ActivityFormFields } from "@/components/sales/activity-fields";
 import { createLeadRequestSchema, leadEmailSchema, leadPhoneSchema, leadPatchSchema } from "@/lib/validation";
@@ -89,11 +89,12 @@ export function LeadEditModal({
   const [activityAction, setActivityAction] = useState("CALL");
   const [activityResponse, setActivityResponse] = useState("");
   const [activityInterest, setActivityInterest] = useState("");
+  const [activityReason, setActivityReason] = useState("");
   const [activityNotes, setActivityNotes] = useState("");
   const [scheduleFollowUp, setScheduleFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpTime, setFollowUpTime] = useState("");
-  const [activityErrors, setActivityErrors] = useState<{ action?: string; response?: string; interest?: string; followUpDate?: string }>({});
+  const [activityErrors, setActivityErrors] = useState<{ action?: string; response?: string; interest?: string; reason?: string; followUpDate?: string }>({});
   const focusAfterValidation = useRef<string | null>(null);
   const [previousLead, setPreviousLead] = useState(lead);
   const [previousOpen, setPreviousOpen] = useState(open);
@@ -147,6 +148,7 @@ export function LeadEditModal({
     setActivityAction("CALL");
     setActivityResponse("");
     setActivityInterest("");
+    setActivityReason("");
     setActivityNotes("");
     setScheduleFollowUp(false);
     setFollowUpDate("");
@@ -163,6 +165,7 @@ export function LeadEditModal({
       action: activityAction,
       response: activityResponse,
       interest: isSuccessfulActivityResponse(activityResponse) ? activityInterest || null : null,
+      reason: activityInterest === "NOT_INTERESTED" ? activityReason || null : null,
       notes: activityNotes.trim() || null,
       scheduleFollowUp,
       followUpDate: scheduleFollowUp ? followUpFormDate(followUpDate, followUpTime) : null,
@@ -332,9 +335,19 @@ export function LeadEditModal({
       <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Classification &amp; Assignment</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Status" htmlFor="lead-status">
-          <Select id="lead-status" value={status} onChange={(e) => setStatus(e.target.value)}>
-            {LEAD_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </Select>
+          {SALES_EDITABLE_LEAD_STATUSES.some((item) => item.value === status) ? (
+            <Select id="lead-status" value={status} onChange={(e) => setStatus(e.target.value)}>
+              {SALES_EDITABLE_LEAD_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </Select>
+          ) : (
+            <div className="space-y-2">
+              <p className="flex min-h-10 items-center rounded-lg border border-[var(--color-border)] bg-slate-100 px-3 text-sm text-[var(--color-muted)]">Current status: {getStatusLabel(status)}</p>
+              <Select id="lead-status" value="" onChange={(e) => setStatus(e.target.value)}>
+                <option value="" disabled>Change status</option>
+                {SALES_EDITABLE_LEAD_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </Select>
+            </div>
+          )}
         </FormField>
         <FormField label="Priority" htmlFor="lead-priority">
           <Select id="lead-priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
@@ -466,7 +479,7 @@ export function LeadEditModal({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField label="Status" htmlFor="lead-status">
                 <Select id="lead-status" value={status} onChange={(e) => setStatus(e.target.value)}>
-                  {LEAD_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                  {SALES_EDITABLE_LEAD_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </Select>
               </FormField>
               <FormField label="Priority" htmlFor="lead-priority">
@@ -480,13 +493,15 @@ export function LeadEditModal({
           action={activityAction}
           response={activityResponse}
           interest={activityInterest}
+          reason={activityReason}
           notes={activityNotes}
           scheduleFollowUp={scheduleFollowUp}
           followUpDate={followUpDate}
           followUpTime={followUpTime}
-          onActionChange={(value) => { setActivityAction(value); setActivityResponse(""); setActivityInterest(""); setActivityErrors({}); }}
-          onResponseChange={(value) => { setActivityResponse(value); if (!isSuccessfulActivityResponse(value)) setActivityInterest(""); setActivityErrors({}); }}
+          onActionChange={(value) => { setActivityAction(value); setActivityResponse(""); setActivityErrors({}); }}
+          onResponseChange={(value) => { setActivityResponse(value); setActivityErrors({}); }}
           onInterestChange={(value) => { setActivityInterest(value); setActivityErrors((current) => ({ ...current, interest: undefined })); }}
+          onReasonChange={(value) => { setActivityReason(value); setActivityErrors((current) => ({ ...current, reason: undefined })); }}
           onNotesChange={setActivityNotes}
           onScheduleFollowUpChange={(value) => { setScheduleFollowUp(value); if (!value) { setFollowUpDate(""); setFollowUpTime(""); } }}
           onFollowUpDateChange={(value) => { setFollowUpDate(value); setActivityErrors((current) => ({ ...current, followUpDate: undefined })); }}

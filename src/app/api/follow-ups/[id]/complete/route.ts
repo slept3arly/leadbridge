@@ -3,6 +3,7 @@ import { withApiAuthorization, handleApiError } from "@/lib/api";
 import { followUpService } from "@/services/follow-up.service";
 import { invalidateAfterMutation } from "@/lib/cache-tags";
 import { z } from "zod";
+import { activityReasonSchema } from "@/lib/validation";
 
 const completeFollowUpSchema = z.object({
   note: z.string().trim().max(10000).nullable().optional(),
@@ -14,7 +15,11 @@ const completeFollowUpSchema = z.object({
     action: z.enum(["CALL", "WHATSAPP"]),
     response: z.enum(["PICKED_UP", "NOT_PICKED_UP", "INVALID_NUMBER", "SWITCHED_OFF", "REPLIED", "NOT_REPLIED"]),
     interest: z.enum(["INTERESTED", "NOT_INTERESTED"]).nullable(),
+    reason: activityReasonSchema.nullable().optional(),
     notes: z.string().trim().max(10000).nullable().optional(),
+  }).superRefine((activity, ctx) => {
+    if (activity.interest === "NOT_INTERESTED" && !activity.reason) ctx.addIssue({ code: "custom", path: ["reason"], message: "Select a reason when the lead is not interested." });
+    if (activity.interest !== "NOT_INTERESTED" && activity.reason != null) ctx.addIssue({ code: "custom", path: ["reason"], message: "Reason is only allowed when interest is not interested." });
   }).nullable().optional(),
 });
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { STATUS_VALUES, PRIORITY_VALUES, CATEGORY_VALUES } from "@/lib/lead-constants";
 import { getActivityResponseOptions, isSuccessfulActivityResponse } from "@/lib/activity-options";
+import { ACTIVITY_REASON_VALUES } from "@/lib/activity-reasons";
 import { isValidFollowUpDate } from "@/lib/follow-up-date";
 
 const optionalString = (max: number) =>
@@ -40,6 +41,8 @@ export const loginSchema = z.object({
 });
 
 export const leadStatusSchema = z.enum(STATUS_VALUES as [string, ...string[]]);
+export const permittedLeadStatusSchema = z.enum(["NEW", "OLD", "CONVERTED"]);
+export const activityReasonSchema = z.enum(ACTIVITY_REASON_VALUES);
 
 export const leadPrioritySchema = z.enum(PRIORITY_VALUES as [string, ...string[]]);
 
@@ -132,12 +135,13 @@ const leadFieldsSchema = z.object({
 });
 
 export const leadSchema = leadFieldsSchema;
-export const leadPatchSchema = leadFieldsSchema.partial();
+export const leadPatchSchema = leadFieldsSchema.partial().extend({ status: permittedLeadStatusSchema.optional() });
 
 const interactionActivityFields = {
   action: z.enum(["CALL", "WHATSAPP"]),
   response: z.enum(["PICKED_UP", "NOT_PICKED_UP", "INVALID_NUMBER", "SWITCHED_OFF", "REPLIED", "NOT_REPLIED"]),
   interest: z.enum(["INTERESTED", "NOT_INTERESTED"]).nullable(),
+  reason: activityReasonSchema.nullable().optional(),
   notes: z.string().trim().max(10000).nullable().optional().transform((value) => value || null),
   scheduleFollowUp: z.boolean().optional().default(false),
   followUpDate: z.string().trim().nullable().optional().refine((value) => !value || isValidFollowUpDate(value), "Enter a valid follow-up date; date-times must include a timezone offset."),
@@ -161,6 +165,8 @@ function refineInteraction<T extends z.ZodObject<z.ZodRawShape>>(schema: T) {
     if (!interestValid) {
       ctx.addIssue({ code: "custom", path: ["interest"], message: "Interest is required only for a successful response." });
     }
+    if (interest === "NOT_INTERESTED" && !data.reason) ctx.addIssue({ code: "custom", path: ["reason"], message: "Select a reason when the lead is not interested." });
+    if (interest !== "NOT_INTERESTED" && data.reason != null) ctx.addIssue({ code: "custom", path: ["reason"], message: "Reason is only allowed when interest is not interested." });
     if (scheduleFollowUp && !followUpDate) {
       ctx.addIssue({ code: "custom", path: ["followUpDate"], message: "Follow-up date is required when scheduling a follow-up." });
     }
@@ -178,7 +184,7 @@ export const interactionActivitySchema = refineInteraction(z.object(interactionA
 
 export const leadProgressRequestSchema = refineInteraction(z.object({
   ...interactionActivityFields,
-  status: leadStatusSchema.optional(),
+  status: permittedLeadStatusSchema.optional(),
   priority: leadPrioritySchema.optional(),
   category: leadCategorySchema.optional().nullable(),
   requirement: optionalString(2000),
@@ -189,14 +195,15 @@ type ActivityOutcomePatch = {
   action?: unknown;
   response?: unknown;
   interest?: unknown;
+  reason?: unknown;
 };
 
 /** Validate an interaction PATCH against its complete resulting outcome state. */
 export function validateActivityOutcomePatch(
-  stored: { action: unknown; response: unknown; interest: unknown },
+  stored: { action: unknown; response: unknown; interest: unknown; reason?: unknown },
   patch: ActivityOutcomePatch,
 ) {
-  const changesOutcome = patch.action !== undefined || patch.response !== undefined || patch.interest !== undefined;
+  const changesOutcome = patch.action !== undefined || patch.response !== undefined || patch.interest !== undefined || patch.reason !== undefined;
   if (!changesOutcome) return null;
 
   const response = patch.response ?? stored.response;
@@ -212,6 +219,7 @@ export function validateActivityOutcomePatch(
     action: patch.action ?? stored.action,
     response,
     interest: patch.interest !== undefined ? patch.interest : stored.interest,
+    reason: patch.reason !== undefined ? patch.reason : stored.reason,
     notes: null,
     scheduleFollowUp: false,
     followUpDate: null,
@@ -224,7 +232,11 @@ export const manualLeadFieldsSchema = manualLeadBaseSchema;
 export const manualLeadPatchSchema = manualLeadBaseSchema.partial();
 
 export const createLeadRequestSchema = leadFieldsSchema.omit({ nextFollowUpAt: true }).extend({
-  initialActivity: interactionActivitySchema,
+  status: permittedLeadStatusSchema.default("NEW"),
+  initialActivity: interactionActivitySchema.superRefine((data, ctx) => {
+    if (data.interest === "NOT_INTERESTED" && !data.reason) ctx.addIssue({ code: "custom", path: ["reason"], message: "Select a reason when the lead is not interested." });
+    if (data.interest !== "NOT_INTERESTED" && data.reason != null) ctx.addIssue({ code: "custom", path: ["reason"], message: "Reason is only allowed when interest is not interested." });
+  }),
 }).superRefine((data, ctx) => {
   if (!data.email && !data.phone) {
     ctx.addIssue({ code: "custom", path: ["email"], message: "Provide an email address or phone number." });

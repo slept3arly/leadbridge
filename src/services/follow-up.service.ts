@@ -367,6 +367,7 @@ export class FollowUpService {
       action: "CALL" | "WHATSAPP";
       response: "PICKED_UP" | "NOT_PICKED_UP" | "SWITCHED_OFF" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED" | "NOT_REPLIED";
       interest?: "INTERESTED" | "NOT_INTERESTED" | null;
+      reason?: import("@/generated/prisma/client").ActivityReason | null;
       notes?: string | null;
     } | null;
   }, actor: Actor) {
@@ -406,6 +407,7 @@ export class FollowUpService {
           action: data.activity.action,
           response: data.activity.response,
           interest: data.activity.interest ?? null,
+          reason: data.activity.interest === "NOT_INTERESTED" ? data.activity.reason ?? null : null,
           message: data.activity.notes || `${data.activity.action} - ${data.activity.response.replaceAll("_", " ")}${data.activity.interest ? ` (${data.activity.interest.replaceAll("_", " ")})` : ""}`,
           metadata: data.activity.notes ? { notes: data.activity.notes } : undefined,
         });

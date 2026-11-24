@@ -68,6 +68,20 @@ enum InterestType {
   NOT_INTERESTED
 }
 
+enum ActivityReason {
+  LANGUAGE_BARRIER
+  SELECTED_BY_MISTAKE
+  PERSONAL_USE
+  SEEKING_EMPLOYMENT
+  NOT_IN_MEDICAL_PHARMACEUTICAL_BUSINESS
+  THIRD_PARTY_PRODUCTS_OR_SERVICES
+  NEAR_EXPIRY_PRODUCTS
+  ECOMMERCE_ONLINE_DIRECT_SELLING_MLM
+  CREDIT_OR_DEFERRED_PAYMENT
+  ALLOPATHIC_PRODUCTS
+  NO_CURRENT_REQUIREMENT
+}
+
 enum LeadCategory {
   MEDICAL_REPRESENTATIVE
   RETAILER
@@ -368,6 +382,7 @@ model ActivityEntry {
   action     ActionType?
   response   ResponseType?
   interest   InterestType?
+  reason     ActivityReason?
   message    String?
   metadata   Json?
   followUpId String?

@@ -4,11 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { validateActivityOutcomePatch } from "@/lib/validation";
 import { invalidateAfterMutation } from "@/lib/cache-tags";
 import { z } from "zod";
+import { activityReasonSchema } from "@/lib/validation";
 
 const updateActivitySchema = z.object({
   action: z.enum(["CALL", "WHATSAPP"]).optional(),
   response: z.enum(["PICKED_UP", "NOT_PICKED_UP", "INVALID_NUMBER", "SWITCHED_OFF", "REPLIED", "NOT_REPLIED", "NO_RESPONSE"]).optional(),
   interest: z.enum(["INTERESTED", "NOT_INTERESTED"]).nullable().optional(),
+  reason: activityReasonSchema.nullable().optional(),
   notes: z.string().trim().max(10000).nullable().optional(),
 });
 
@@ -23,7 +25,7 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
 
   const entry = await prisma.activityEntry.findUnique({
     where: { id },
-    select: { id: true, eventId: true, type: true, action: true, response: true, interest: true, message: true },
+    select: { id: true, eventId: true, type: true, action: true, response: true, interest: true, reason: true, message: true },
   });
   if (!entry) return apiError("Activity not found.", 404);
 
@@ -49,6 +51,7 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
     action: entry.action ?? entry.type,
     response: entry.response,
     interest: entry.interest,
+    reason: entry.reason,
   }, data);
   if (outcomeValidation && !outcomeValidation.success) {
     return NextResponse.json({ error: outcomeValidation.error.flatten() }, { status: 400 });
@@ -57,13 +60,17 @@ export const PATCH = withApiAuthorization<{ params: Promise<{ id: string }> }>(u
   const resultingAction = data.action ?? entry.action ?? entry.type;
   const resultingResponse = data.response ?? entry.response ?? "NO_RESPONSE";
   const resultingInterest = data.interest !== undefined ? data.interest : entry.interest;
+  const resultingReason = resultingInterest === "NOT_INTERESTED" ? (data.reason !== undefined ? data.reason : entry.reason) : null;
+  if (data.interest === "NOT_INTERESTED" && !resultingReason) return NextResponse.json({ error: { fieldErrors: { reason: ["Select a reason when the lead is not interested."] } } }, { status: 400 });
+  if (resultingInterest !== "NOT_INTERESTED" && data.reason != null) return NextResponse.json({ error: { fieldErrors: { reason: ["Reason is only allowed when interest is not interested."] } } }, { status: 400 });
 
   const updateData: Record<string, unknown> = {};
   if (data.action !== undefined) updateData.action = data.action;
   if (data.response !== undefined) updateData.response = data.response;
   if (data.interest !== undefined) updateData.interest = data.interest;
+  if (data.reason !== undefined || data.interest !== undefined) updateData.reason = resultingReason;
 
-  if (data.action || data.response || data.interest !== undefined || data.notes !== undefined) {
+  if (data.action || data.response || data.interest !== undefined || data.reason !== undefined || data.notes !== undefined) {
     const responseLabel = resultingResponse.replaceAll("_", " ");
     const interestLabel = resultingInterest ? ` (${resultingInterest.replaceAll("_", " ")})` : "";
     updateData.message = data.notes || `${resultingAction} - ${responseLabel}${interestLabel}`;

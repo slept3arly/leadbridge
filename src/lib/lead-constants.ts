@@ -7,6 +7,12 @@ export const LEAD_STATUSES = [
   { value: "OLD", label: "Old" },
 ] as const;
 
+export const SALES_EDITABLE_LEAD_STATUSES = [
+  { value: "NEW", label: "New" },
+  { value: "OLD", label: "Old" },
+  { value: "CONVERTED", label: "Converted" },
+] as const;
+
 export const LEAD_PRIORITIES = [
   { value: "LOW", label: "Low" },
   { value: "MEDIUM", label: "Medium" },

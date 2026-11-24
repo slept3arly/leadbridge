@@ -32,9 +32,9 @@ test("scheduling defaults off, uses an accessible switch, and clears hidden fiel
   assert.match(modal, /scheduleFollowUp \? followUpTime \|\| null : null/);
 });
 
-test("Record Progress explains automatic completion in the footer and uses the shared API once", () => {
+test("Log Activity explains automatic completion in the footer and uses the shared API once", () => {
   const footer = modal.slice(modal.indexOf("<footer"), modal.indexOf("</footer>"));
-  const message = "Recording progress will automatically mark the existing follow-up as completed, even if you don&apos;t schedule a new follow-up.";
+  const message = "Logging activity will automatically mark the existing follow-up as completed, even if you don&apos;t schedule a new follow-up.";
   assert.ok(footer.includes(message));
   assert.equal(modal.split(message).length - 1, 1);
   assert.match(footer, /sm:flex-row sm:items-center sm:justify-between/);
@@ -50,6 +50,6 @@ test("Record Progress explains automatic completion in the footer and uses the s
 test("409 conflicts and server validation errors are shown to the user", () => {
   assert.match(modal, /err\.response\?\.status === 409/);
   assert.match(modal, /The lead or follow-up changed while you were working/);
-  assert.match(modal, /Unable to record progress/);
+  assert.match(modal, /Unable to log activity/);
   assert.match(modal, /role="alert"/);
 });

@@ -23,6 +23,7 @@ import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 import { followUpFormDate } from "@/lib/follow-up-form-date";
 import { buildLeadWorkspaceTimeline, organizeLeadWorkspaceFollowUps } from "@/lib/lead-workspace";
 import { ACTIVITY_ACTION_OPTIONS, getActivityResponseOptions, getActivityResponseLabel } from "@/lib/activity-options";
+import { ACTIVITY_REASON_OPTIONS } from "@/lib/activity-reasons";
 
 function isResponded(response: string) {
   return response === "PICKED_UP" || response === "REPLIED";
@@ -99,7 +100,7 @@ function ScheduleFollowUpModal({
           </div>
 
           <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
-            Need to record a customer interaction too? <button type="button" onClick={() => onRecordProgress(date, time)} className="font-semibold underline underline-offset-2">Use Record Progress</button> to record it and schedule a follow-up together.
+            Need to log a customer interaction too? <button type="button" onClick={() => onRecordProgress(date, time)} className="font-semibold underline underline-offset-2">Use Log Activity</button> to record it and schedule a follow-up together.
           </div>
 
           {error && (
@@ -199,19 +200,20 @@ function EditActivityModal({
   open: boolean;
   activity: ActivityEventItem | null;
   onClose: () => void;
-  onSave: (id: string, data: { action: string; response: string; interest: string | null; notes: string | null }) => Promise<void>;
+  onSave: (id: string, data: { action: string; response: string; interest: string | null; reason: string | null; notes: string | null }) => Promise<void>;
 }) {
   const entry = activity?.entries.find((e) => e.action);
   const [action, setAction] = useState<string>(entry?.action ?? "CALL");
   const [response, setResponse] = useState(entry?.response ?? "");
   const [interest, setInterest] = useState(entry?.interest ?? "");
+  const [reason, setReason] = useState(entry?.reason ?? "");
   const [notes, setNotes] = useState(entry?.message ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useModalState(open, onClose, !saving);
 
   const interestVisible = isResponded(response);
-  const canSubmit = response && (!interestVisible || interest);
+  const canSubmit = response && (!interestVisible || interest) && (interest !== "NOT_INTERESTED" || reason);
 
   async function handleSave() {
     if (!canSubmit || !entry) return;
@@ -222,6 +224,7 @@ function EditActivityModal({
         action,
         response,
         interest: interestVisible ? interest : null,
+        reason: interest === "NOT_INTERESTED" ? reason || null : null,
         notes: notes.trim() || null,
       });
       onClose();
@@ -243,28 +246,29 @@ function EditActivityModal({
           <h2 className="text-lg font-bold text-[var(--color-ink)]">Edit Activity</h2>
           <div className="space-y-2">
             <label htmlFor="edit-activity-action" className="text-sm font-medium text-[var(--color-ink)]">Action</label>
-            <Select id="edit-activity-action" data-autofocus value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); setInterest(""); }}>
+            <Select id="edit-activity-action" data-autofocus value={action} onChange={(e) => { setAction(e.target.value); setResponse(""); }}>
               {ACTIVITY_ACTION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
             <label htmlFor="edit-activity-response" className="text-sm font-medium text-[var(--color-ink)]">Response</label>
-            <Select id="edit-activity-response" value={response} onChange={(e) => { setResponse(e.target.value); if (!isResponded(e.target.value)) setInterest(""); }}>
+            <Select id="edit-activity-response" value={response} onChange={(e) => setResponse(e.target.value)}>
               <option value="">Select response</option>
               {response === "NO_RESPONSE" && <option value="NO_RESPONSE">{getActivityResponseLabel("NO_RESPONSE")} (historical)</option>}
               {getActivityResponseOptions(action).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </div>
-          {interestVisible && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <label htmlFor="edit-activity-interest" className="text-sm font-medium text-[var(--color-ink)]">Interest</label>
-              <Select id="edit-activity-interest" value={interest} onChange={(e) => setInterest(e.target.value)}>
+              <Select id="edit-activity-interest" value={interest} disabled={!interestVisible} onChange={(e) => setInterest(e.target.value)}>
                 <option value="">Select interest</option>
                 <option value="INTERESTED">Interested</option>
                 <option value="NOT_INTERESTED">Not Interested</option>
               </Select>
             </div>
-          )}
+            <div className="space-y-2"><label htmlFor="edit-activity-reason" className="text-sm font-medium text-[var(--color-ink)]">Reason</label><Select id="edit-activity-reason" value={reason} disabled={interest !== "NOT_INTERESTED"} onChange={(e) => setReason(e.target.value)}><option value="">Select reason</option>{ACTIVITY_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></div>
+          </div>
           <div className="space-y-2">
             <label htmlFor="edit-activity-notes" className="text-sm font-medium text-[var(--color-ink)]">Notes</label>
             <Textarea id="edit-activity-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Add a note about the interaction" className="resize-none" />
@@ -332,7 +336,7 @@ function FollowUpsColumn({
                 {overdue && <Badge label="Overdue" toneKey="URGENT" className="shrink-0" />}
               </div>
               <div className="mt-3 flex items-center gap-1.5">
-                <Button size="sm" variant="secondary" onClick={() => onComplete(followUp.id)}><CheckCircle2 size={13} />Record Progress</Button>
+                <Button size="sm" variant="secondary" onClick={() => onComplete(followUp.id)}><CheckCircle2 size={13} />Log Activity</Button>
                 <IconActionButton icon={RotateCcw} label={`Reschedule ${followUp.title}`} onClick={() => onReschedule(followUp.id)} className="h-8 w-8" />
                 {followUp.createdBy.id === currentUserId && <IconActionButton icon={Trash2} label={`Delete ${followUp.title}`} onClick={() => onDelete(followUp.id)} className="h-8 w-8" />}
               </div>
@@ -442,7 +446,7 @@ export function LeadDetailsModal({
     }
   }, [leadId, onClose, onUpdate]);
 
-  const handleEditActivity = useCallback(async (id: string, data: { action: string; response: string; interest: string | null; notes: string | null }) => {
+  const handleEditActivity = useCallback(async (id: string, data: { action: string; response: string; interest: string | null; reason: string | null; notes: string | null }) => {
     await axios.patch(`/api/activities/${id}`, data);
     toast.success("Activity updated");
     refresh();

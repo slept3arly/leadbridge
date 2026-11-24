@@ -17,7 +17,7 @@ function sourceFiles(directory: string): string[] {
   });
 }
 
-test("user-facing progress entry points use the shared Record Progress component", () => {
+test("user-facing activity entry points use the shared Log Activity component", () => {
   const consumers = [
     "src/components/sales/lead-details-modal.tsx",
     "src/components/sales/tasks-table-client.tsx",
@@ -27,11 +27,11 @@ test("user-facing progress entry points use the shared Record Progress component
     assert.match(readFileSync(join(process.cwd(), path), "utf8"), /RecordProgressModal/);
   }
 
-  assert.match(readFileSync(join(process.cwd(), consumers[2]!), "utf8"), /Record Progress/);
+  assert.match(readFileSync(join(process.cwd(), consumers[2]!), "utf8"), /Log Activity/);
   const taskTable = readFileSync(join(process.cwd(), consumers[1]!), "utf8");
   assert.match(taskTable, /initialFollowUpId=\{progressTarget\.id\}/);
-  assert.match(taskTable, /Record progress and review task completion/);
-  assert.match(taskTable, /aria-label=\{fu\.lead \? "Record progress and review task completion"/);
+  assert.match(taskTable, /Log activity and review task completion/);
+  assert.match(taskTable, /aria-label=\{fu\.lead \? "Log activity and review task completion"/);
 });
 
 test("manual lead creation uses the required initial interaction form and one create endpoint", () => {

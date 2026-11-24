@@ -101,6 +101,7 @@ export type ActivityEventEntry = {
   action: "CALL" | "WHATSAPP" | null;
   response: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED" | "NOT_PICKED_UP" | "SWITCHED_OFF" | "NOT_REPLIED" | null;
   interest: "INTERESTED" | "NOT_INTERESTED" | null;
+  reason?: string | null;
   message: string | null;
   metadata: Record<string, unknown> | null;
   followUpId: string | null;

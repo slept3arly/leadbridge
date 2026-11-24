@@ -67,7 +67,7 @@ export function LeadHeader({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button variant="black" onClick={onRecordProgress}><ArrowUpRight size={16} />Record Progress</Button>
+          <Button variant="black" onClick={onRecordProgress}><ArrowUpRight size={16} />Log Activity</Button>
           <Button variant="secondary" onClick={onViewDetails}><Eye size={15} />View Details</Button>
           {canArchive && <Button variant="ghost" isLoading={archiving} onClick={onToggleArchive}>{lead.isArchived ? "Restore" : "Archive"}</Button>}
           {canDelete && onDelete && <Button variant="ghost" isLoading={deleting} onClick={onDelete} className="text-red-600 hover:bg-red-50 hover:text-red-700">Delete</Button>}

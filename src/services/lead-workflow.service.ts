@@ -18,6 +18,7 @@ function interactionEntry(input: {
   action: "CALL" | "WHATSAPP";
   response: string;
   interest: "INTERESTED" | "NOT_INTERESTED" | null;
+  reason?: ActivityEntryInput["reason"];
   notes: string | null;
 }): ActivityEntryInput {
   const interestLabel = input.interest ? ` (${input.interest.replaceAll("_", " ")})` : "";
@@ -26,6 +27,7 @@ function interactionEntry(input: {
     action: input.action,
     response: input.response as ActivityEntryInput["response"],
     interest: input.interest,
+    reason: input.interest === "NOT_INTERESTED" ? input.reason : null,
     message: input.notes || `${input.action} - ${input.response.replaceAll("_", " ")}${interestLabel}`,
     metadata: input.notes ? { notes: input.notes } : undefined,
   };

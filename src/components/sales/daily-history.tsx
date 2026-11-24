@@ -7,6 +7,7 @@ import { Edit, Calendar, CheckCircle2, Trash2, ArrowUpRight, RefreshCw, Phone, M
 import { formatDate, formatTimeValue, formatTime } from "@/lib/utils";
 import { ACTIVITY_ACTION_LABELS, ACTIVITY_INTEREST_LABELS, ACTIVITY_RESPONSE_LABELS } from "@/lib/activity-options";
 import type { ActivityEventItem, ActivityEventEntry } from "@/hooks/use-lead-details";
+import { getActivityReasonLabel } from "@/lib/activity-reasons";
 
 type DayGroup = {
   dateKey: string;
@@ -42,6 +43,7 @@ function InteractionEntry({ entry }: { entry: ActivityEventEntry }) {
   const responseLabel = entry.response ? (ACTIVITY_RESPONSE_LABELS[entry.response as keyof typeof ACTIVITY_RESPONSE_LABELS] ?? entry.response) : null;
   const interestLabel = entry.interest ? ACTIVITY_INTEREST_LABELS[entry.interest as keyof typeof ACTIVITY_INTEREST_LABELS] ?? entry.interest : null;
   const isCall = action === "CALL";
+  const reasonLabel = entry.reason ? getActivityReasonLabel(entry.reason) : null;
   const generatedMessage = action && entry.response
     ? [`${action} - ${entry.response.replaceAll("_", " ")}`, entry.interest ? `(${entry.interest.replaceAll("_", " ")})` : ""].filter(Boolean).join(" ").toLowerCase()
     : null;
@@ -70,6 +72,7 @@ function InteractionEntry({ entry }: { entry: ActivityEventEntry }) {
           {interestLabel && (
             <span className="text-xs text-[var(--color-muted)]">· {interestLabel}</span>
           )}
+          {reasonLabel && <span className="text-xs text-[var(--color-muted)]">· {reasonLabel}</span>}
         </div>
         {note && (
           <p className="mt-0.5 whitespace-pre-wrap text-sm text-[var(--color-muted)]">&ldquo;{note}&rdquo;</p>

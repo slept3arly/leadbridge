@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ACTIVITY_ACTION_OPTIONS, ACTIVITY_INTEREST_OPTIONS, getActivityResponseOptions, isSuccessfulActivityResponse } from "@/lib/activity-options";
+import { ACTIVITY_REASON_OPTIONS } from "@/lib/activity-reasons";
 
 export function ActivityFormFields({
   idPrefix,
@@ -20,6 +21,7 @@ export function ActivityFormFields({
   action,
   response,
   interest,
+  reason = "",
   notes,
   scheduleFollowUp,
   followUpDate,
@@ -27,6 +29,7 @@ export function ActivityFormFields({
   onActionChange,
   onResponseChange,
   onInterestChange,
+  onReasonChange,
   onNotesChange,
   onScheduleFollowUpChange,
   onFollowUpDateChange,
@@ -41,10 +44,11 @@ export function ActivityFormFields({
   showFollowUpScheduling?: boolean;
   centralizedInterestLabels?: boolean;
   betweenResponseAndInterest?: ReactNode;
-  errors?: { action?: string; response?: string; interest?: string; notes?: string; followUpDate?: string; followUpTime?: string };
+  errors?: { action?: string; response?: string; interest?: string; reason?: string; notes?: string; followUpDate?: string; followUpTime?: string };
   action: string;
   response: string;
   interest: string;
+  reason?: string;
   notes: string;
   scheduleFollowUp: boolean;
   followUpDate: string;
@@ -52,6 +56,7 @@ export function ActivityFormFields({
   onActionChange: (value: string) => void;
   onResponseChange: (value: string) => void;
   onInterestChange: (value: string) => void;
+  onReasonChange?: (value: string) => void;
   onNotesChange: (value: string) => void;
   onScheduleFollowUpChange: (value: boolean) => void;
   onFollowUpDateChange: (value: string) => void;
@@ -115,10 +120,10 @@ export function ActivityFormFields({
 
       {betweenResponseAndInterest}
 
-      {interestVisible && (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor={`${idPrefix}-interest`} className="text-sm font-medium text-[var(--color-ink)]">Interest{guidance("Required")}</label>
-          <Select id={`${idPrefix}-interest`} value={interest} onChange={(e) => onInterestChange(e.target.value)} required aria-invalid={!!errors.interest} aria-describedby={errors.interest ? `${idPrefix}-interest-error` : undefined}>
+          <Select id={`${idPrefix}-interest`} value={interest} onChange={(e) => onInterestChange(e.target.value)} disabled={!interestVisible} required={interestVisible} aria-invalid={!!errors.interest} aria-describedby={errors.interest ? `${idPrefix}-interest-error` : undefined}>
             <option value="">Select interest</option>
             {(centralizedInterestLabels ? ACTIVITY_INTEREST_OPTIONS : [
               { value: "INTERESTED", label: "Interested" },
@@ -127,7 +132,15 @@ export function ActivityFormFields({
           </Select>
           {errors.interest && <p id={`${idPrefix}-interest-error`} className="text-xs text-[var(--color-danger)]" role="alert">{errors.interest}</p>}
         </div>
-      )}
+        <div className="space-y-2">
+          <label htmlFor={`${idPrefix}-reason`} className="text-sm font-medium text-[var(--color-ink)]">Reason{guidance("Required")}</label>
+          <Select id={`${idPrefix}-reason`} value={reason} onChange={(e) => onReasonChange?.(e.target.value)} disabled={interest !== "NOT_INTERESTED"} required={interest === "NOT_INTERESTED"} aria-invalid={!!errors.reason} aria-describedby={errors.reason ? `${idPrefix}-reason-error` : undefined}>
+            <option value="">Select reason</option>
+            {ACTIVITY_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Select>
+          {errors.reason && <p id={`${idPrefix}-reason-error`} className="text-xs text-[var(--color-danger)]" role="alert">{errors.reason}</p>}
+        </div>
+      </div>
 
       <div className="space-y-2">
         <label htmlFor={`${idPrefix}-notes`} className="text-sm font-medium text-[var(--color-ink)]">Notes{guidance("Optional")}</label>

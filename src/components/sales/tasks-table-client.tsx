@@ -121,8 +121,8 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
                   variant="ghost"
                   onClick={() => fu.lead && setProgressTarget(fu)}
                   disabled={!fu.lead}
-                  aria-label={fu.lead ? "Record progress and review task completion" : "Lead unavailable"}
-                  title={fu.lead ? "Record progress and review task completion" : "The lead for this task is unavailable"}
+                  aria-label={fu.lead ? "Log activity and review task completion" : "Lead unavailable"}
+                  title={fu.lead ? "Log activity and review task completion" : "The lead for this task is unavailable"}
                 >
                   <Check size={14} className="text-green-600" />
                 </Button>

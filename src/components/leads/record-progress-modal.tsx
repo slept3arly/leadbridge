@@ -8,12 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { FOLLOW_UP_PRIORITIES, FOLLOW_UP_STATUSES, LEAD_PRIORITIES, LEAD_STATUSES } from "@/lib/lead-constants";
+import { FOLLOW_UP_PRIORITIES, FOLLOW_UP_STATUSES, LEAD_PRIORITIES, SALES_EDITABLE_LEAD_STATUSES } from "@/lib/lead-constants";
 import { ACTIVITY_ACTION_OPTIONS, ACTIVITY_INTEREST_OPTIONS, getActivityResponseOptions, isSuccessfulActivityResponse } from "@/lib/activity-options";
 import { followUpFormDate } from "@/lib/follow-up-form-date";
 import { leadProgressRequestSchema } from "@/lib/validation";
 import { formatDate, formatTime, startOfTodayUTC } from "@/lib/utils";
 import { getEligibleProgressFollowUps } from "@/lib/record-progress-follow-ups";
+import { ACTIVITY_REASON_OPTIONS } from "@/lib/activity-reasons";
 
 export type ProgressFollowUp = {
   id: string;
@@ -32,7 +33,7 @@ type DetailsResponse = {
   lead: LeadClassification & { displayName?: string; name?: string };
   followUps: ProgressFollowUp[];
 };
-type ProgressField = "action" | "response" | "interest" | "notes" | "status" | "priority" | "followUpDate" | "followUpTime";
+type ProgressField = "action" | "response" | "interest" | "reason" | "notes" | "status" | "priority" | "followUpDate" | "followUpTime";
 type ProgressFieldErrors = Partial<Record<ProgressField, string>>;
 
 const FIELD_ELEMENT_ID: Partial<Record<ProgressField, string>> = {
@@ -41,6 +42,7 @@ const FIELD_ELEMENT_ID: Partial<Record<ProgressField, string>> = {
   status: "progress-status",
   priority: "progress-priority",
   interest: "record-progress-interest",
+  reason: "record-progress-reason",
   notes: "record-progress-notes",
   followUpDate: "progress-follow-up-date",
   followUpTime: "progress-follow-up-time",
@@ -73,6 +75,7 @@ export function RecordProgressModal({
   const [action, setAction] = useState("CALL");
   const [response, setResponse] = useState("");
   const [interest, setInterest] = useState("");
+  const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState(leadProp?.status ?? "NEW");
   const [priority, setPriority] = useState(leadProp?.priority ?? "MEDIUM");
@@ -118,6 +121,8 @@ export function RecordProgressModal({
   const currentFollowUp = pendingFollowUps[0] ?? null;
   const responseOptions = getActivityResponseOptions(action);
   const interestVisible = isSuccessfulActivityResponse(response);
+  const statusIsSelectable = SALES_EDITABLE_LEAD_STATUSES.some((item) => item.value === status);
+  const reasonEnabled = interest === "NOT_INTERESTED";
 
   function toggleScheduling(enabled: boolean) {
     setScheduleFollowUp(enabled);
@@ -135,6 +140,7 @@ export function RecordProgressModal({
       action,
       response,
       interest: interestVisible ? interest || null : null,
+      reason: interest === "NOT_INTERESTED" ? reason || null : null,
       notes: notes.trim() || null,
       scheduleFollowUp,
       followUpDate: scheduleFollowUp ? followUpFormDate(followUpDate, followUpTime) : null,
@@ -168,14 +174,14 @@ export function RecordProgressModal({
     setSaving(true);
     try {
       await axios.post(`/api/leads/${leadId}/activities`, parsed.data);
-      toast.success("Progress recorded");
+      toast.success("Activity logged");
       onClose();
       void onSaved();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 409) {
         setError("The lead or follow-up changed while you were working. Refresh the details and try again.");
       } else if (axios.isAxiosError(err) && err.response?.status === 403) {
-        setError("You no longer have permission to record progress on this lead.");
+        setError("You no longer have permission to log activity on this lead.");
       } else {
         const serverError = axios.isAxiosError(err) ? err.response?.data?.error : undefined;
         if (serverError && typeof serverError === "object" && "fieldErrors" in serverError) {
@@ -194,7 +200,7 @@ export function RecordProgressModal({
             focusFirstInvalid(invalidFields);
           } else setError("The server rejected part of this submission. Review the form and try again.");
         } else {
-          setError(typeof serverError === "string" ? serverError : "Unable to record progress. Your entries are still here; please try again.");
+          setError(typeof serverError === "string" ? serverError : "Unable to log activity. Your entries are still here; please try again.");
         }
       }
     } finally {
@@ -214,10 +220,10 @@ export function RecordProgressModal({
         <form noValidate onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-border)] px-5 py-4 sm:px-8">
             <div>
-              <h2 id="record-progress-title" className="text-xl font-bold text-[var(--color-ink)]">Record Progress</h2>
+              <h2 id="record-progress-title" className="text-xl font-bold text-[var(--color-ink)]">Log Activity</h2>
               {leadName && <p className="mt-1 text-sm text-[var(--color-muted)]">For {leadName}</p>}
             </div>
-            <Button type="button" variant="secondary" onClick={onClose} disabled={saving} aria-label="Close Record Progress">Close</Button>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={saving} aria-label="Close Log Activity">Close</Button>
           </header>
 
           {error && <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:mx-8" role="alert">{error}</div>}
@@ -229,14 +235,14 @@ export function RecordProgressModal({
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <label htmlFor="record-progress-action" className="text-sm font-medium text-[var(--color-ink)]">Action</label>
-                    <Select id="record-progress-action" value={action} required aria-invalid={!!fieldErrors.action} aria-describedby={fieldErrors.action ? "record-progress-action-error" : undefined} onChange={(event) => { setAction(event.target.value); setResponse(""); setInterest(""); clearFieldErrors(["action", "response", "interest"]); }}>
+                    <Select id="record-progress-action" value={action} required aria-invalid={!!fieldErrors.action} aria-describedby={fieldErrors.action ? "record-progress-action-error" : undefined} onChange={(event) => { setAction(event.target.value); setResponse(""); clearFieldErrors(["action", "response", "interest"]); }}>
                       {ACTIVITY_ACTION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </Select>
                     {fieldErrors.action && <p id="record-progress-action-error" role="alert" className="text-xs text-[var(--color-danger)]">{fieldErrors.action}</p>}
                   </div>
                   <div className="space-y-1.5">
                     <label htmlFor="record-progress-response" className="text-sm font-medium text-[var(--color-ink)]">Response</label>
-                    <Select id="record-progress-response" value={response} required aria-invalid={!!fieldErrors.response} aria-describedby={fieldErrors.response ? "record-progress-response-error" : undefined} onChange={(event) => { setResponse(event.target.value); if (!isSuccessfulActivityResponse(event.target.value)) setInterest(""); clearFieldErrors(["response", "interest"]); }}>
+                    <Select id="record-progress-response" value={response} required aria-invalid={!!fieldErrors.response} aria-describedby={fieldErrors.response ? "record-progress-response-error" : undefined} onChange={(event) => { setResponse(event.target.value); clearFieldErrors(["response", "interest"]); }}>
                       <option value="">Select response</option>
                       {responseOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </Select>
@@ -246,7 +252,21 @@ export function RecordProgressModal({
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <label htmlFor="progress-status" className="text-sm font-medium text-[var(--color-ink)]">Status</label>
-                    <Select id="progress-status" value={status} aria-invalid={!!fieldErrors.status} aria-describedby={fieldErrors.status ? "progress-status-error" : undefined} onChange={(event) => { setStatus(event.target.value); clearFieldErrors(["status"]); }} disabled={!lead}>{LEAD_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select>
+                    {statusIsSelectable ? (
+                      <Select id="progress-status" value={status} aria-invalid={!!fieldErrors.status} aria-describedby={fieldErrors.status ? "progress-status-error" : undefined} onChange={(event) => { setStatus(event.target.value); clearFieldErrors(["status"]); }} disabled={!lead}>
+                        {SALES_EDITABLE_LEAD_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                      </Select>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <p id="progress-status" aria-live="polite" className="flex min-h-10 items-center rounded-lg border border-[var(--color-border)] bg-slate-100 px-3 text-sm text-[var(--color-muted)]">
+                          {lead ? `Current status: ${lead.status === "LOST" ? "Lost" : lead.status === "SPAM" ? "Junk" : lead.status === "ON_HOLD" ? "Paused" : lead.status}` : status}
+                        </p>
+                        <Select aria-label="Change status" value="" onChange={(event) => { setStatus(event.target.value); clearFieldErrors(["status"]); }} disabled={!lead}>
+                          <option value="" disabled>Change status</option>
+                          {SALES_EDITABLE_LEAD_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                        </Select>
+                      </div>
+                    )}
                     {fieldErrors.status && <p id="progress-status-error" role="alert" className="text-xs text-[var(--color-danger)]">{fieldErrors.status}</p>}
                   </div>
                   <div className="space-y-1.5">
@@ -255,14 +275,17 @@ export function RecordProgressModal({
                     {fieldErrors.priority && <p id="progress-priority-error" role="alert" className="text-xs text-[var(--color-danger)]">{fieldErrors.priority}</p>}
                   </div>
                 </div>
-                {interestVisible && <div className="space-y-1.5">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
                   <label htmlFor="record-progress-interest" className="text-sm font-medium text-[var(--color-ink)]">Interest</label>
-                  <Select id="record-progress-interest" value={interest} required aria-invalid={!!fieldErrors.interest} aria-describedby={fieldErrors.interest ? "record-progress-interest-error" : undefined} onChange={(event) => { setInterest(event.target.value); clearFieldErrors(["interest"]); }}>
+                  <Select id="record-progress-interest" value={interest} required={interestVisible} disabled={!interestVisible} aria-invalid={!!fieldErrors.interest} aria-describedby={fieldErrors.interest ? "record-progress-interest-error" : undefined} onChange={(event) => { setInterest(event.target.value); clearFieldErrors(["interest"]); }}>
                     <option value="">Select interest</option>
                     {ACTIVITY_INTEREST_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </Select>
                   {fieldErrors.interest && <p id="record-progress-interest-error" role="alert" className="text-xs text-[var(--color-danger)]">{fieldErrors.interest}</p>}
-                </div>}
+                </div>
+                <div className="space-y-1.5"><label htmlFor="record-progress-reason" className="text-sm font-medium text-[var(--color-ink)]">Reason</label><Select id="record-progress-reason" value={reason} required={reasonEnabled} disabled={!reasonEnabled} aria-invalid={!!fieldErrors.reason} aria-describedby={fieldErrors.reason ? "record-progress-reason-error" : undefined} onChange={(event) => { setReason(event.target.value); clearFieldErrors(["reason"]); }}><option value="">Select reason</option>{ACTIVITY_REASON_OPTIONS.map(({value,label}) => <option key={value} value={value}>{label}</option>)}</Select>{fieldErrors.reason && <p id="record-progress-reason-error" role="alert" className="text-xs text-[var(--color-danger)]">{fieldErrors.reason}</p>}</div>
+                </div>
                 <div className="space-y-2">
                   <h3 id="progress-notes-title" className="text-base font-semibold text-[var(--color-ink)]">Notes</h3>
                   <Textarea id="record-progress-notes" value={notes} onChange={(event) => { setNotes(event.target.value); clearFieldErrors(["notes"]); }} rows={2} maxLength={10000} placeholder="Add a note about the interaction" className="min-h-[60px] resize-y" aria-invalid={!!fieldErrors.notes} aria-describedby={fieldErrors.notes ? "record-progress-notes-error" : undefined} />
@@ -313,11 +336,11 @@ export function RecordProgressModal({
           </main>
 
           <footer className="flex shrink-0 flex-col gap-3 border-t border-[var(--color-border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-            <p className="text-xs text-[var(--color-muted)] sm:max-w-[60%]">Recording progress will automatically mark the existing follow-up as completed, even if you don&apos;t schedule a new follow-up.</p>
+            <p className="text-xs text-[var(--color-muted)] sm:max-w-[60%]">Logging activity will automatically mark the existing follow-up as completed, even if you don&apos;t schedule a new follow-up.</p>
             <div className="flex shrink-0 justify-end gap-3">
               <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
               <Button type="submit" variant="black" disabled={saving || loadingDetails || !lead}>
-                {saving ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Saving...</span> : "Record Progress"}
+                {saving ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Saving...</span> : "Log Activity"}
               </Button>
             </div>
           </footer>

@@ -1,4 +1,4 @@
-import type { ActivityEventType, ActivityEntryType, ActionType, ResponseType, InterestType } from "@/generated/prisma/client";
+import type { ActivityEventType, ActivityEntryType, ActionType, ResponseType, InterestType, ActivityReason } from "@/generated/prisma/client";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
@@ -9,6 +9,7 @@ export type ActivityEntryInput = {
   action?: ActionType;
   response?: ResponseType;
   interest?: InterestType | null;
+  reason?: ActivityReason | null;
   message?: string;
   metadata?: Record<string, unknown>;
   followUpId?: string | null;
@@ -43,6 +44,7 @@ export class ActivityEventService {
           action: e.action ?? null,
           response: e.response ?? null,
           interest: e.interest ?? null,
+          reason: e.reason ?? null,
           message: e.message ?? null,
           metadata: e.metadata ? (e.metadata as Prisma.InputJsonValue) : undefined,
           followUpId: e.followUpId ?? null,

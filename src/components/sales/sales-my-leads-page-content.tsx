@@ -21,6 +21,7 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 import { ACTIVITY_ACTION_LABELS, ACTIVITY_RESPONSE_LABELS } from "@/lib/activity-options";
+import { getActivityReasonLabel } from "@/lib/activity-reasons";
 
 export type SalesLeadRow = {
   id: string;
@@ -35,7 +36,7 @@ export type SalesLeadRow = {
   nextFollowUpAt: Date | null;
   lastActivity?: {
     occurredAt: Date;
-    entries: Array<{ type: string; action: string | null; response: string | null }>;
+    entries: Array<{ type: string; action: string | null; response: string | null; reason?: string | null }>;
   } | null;
   followUps?: Array<{ status: string; dueDate: Date | null; completedAt: Date | null }>;
 };
@@ -56,11 +57,12 @@ const FOLLOW_UP_LABELS: Record<string, string> = {
   FOLLOW_UP_CANCELLED: "Follow-up cancelled",
 };
 
-function formatLastActivityEntry(entry: { type: string; action: string | null; response: string | null }): string {
+function formatLastActivityEntry(entry: { type: string; action: string | null; response: string | null; reason?: string | null }): string {
   if (entry.type === "CALL" || entry.type === "WHATSAPP") {
     const actionLabel = ACTIVITY_ACTION_LABELS[entry.type as keyof typeof ACTIVITY_ACTION_LABELS] ?? entry.type;
     const responseLabel = entry.response ? ACTIVITY_RESPONSE_LABELS[entry.response as keyof typeof ACTIVITY_RESPONSE_LABELS] ?? entry.response : null;
-    return [actionLabel, responseLabel].filter(Boolean).join(" \u00B7 ");
+    const reasonLabel = entry.reason ? getActivityReasonLabel(entry.reason) : null;
+    return [actionLabel, responseLabel, reasonLabel].filter(Boolean).join(" \u00B7 ");
   }
   return FOLLOW_UP_LABELS[entry.type] ?? entry.type;
 }
@@ -296,7 +298,7 @@ export function SalesMyLeadsPageContent({
               className="gap-1.5"
             >
               <Plus size={14} />
-              Record Progress
+              Log Activity
             </Button>
           </div>
           <div className="flex items-center justify-center gap-1">
