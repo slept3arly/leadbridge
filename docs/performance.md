@@ -1,7 +1,7 @@
 # LeadBridge Performance
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-07
+> **Last verified:** 2026-11-23
 > **Source of truth:** `src/services/`, `src/lib/`, `prisma/schema.prisma`
 
 ## Current Performance Architecture
@@ -18,8 +18,8 @@
 |---|---|---|
 | My Leads list | OFFSET pagination + COUNT(*) + ILIKE search | Core list query |
 | Lead activity enrichment | `DISTINCT ON (leadId)` raw SQL | Runs only for leads on current page |
-| Dashboard admin | 14 parallel queries | Activity metrics use PostgreSQL grouping sets; only aggregate rows are returned |
-| Dashboard sales | 9 parallel queries | Activity metrics use one PostgreSQL aggregate instead of seven lead-ID result sets |
+| Dashboard admin | 14 parallel operations in `Promise.all` | Includes 13 Prisma/service calls and one activity aggregate query; activity metrics use PostgreSQL grouping sets and return aggregate rows |
+| Dashboard sales | 9 parallel operations in `Promise.all` | Includes the attention-center service call; activity metrics use one PostgreSQL aggregate rather than seven prior lead-ID result sets |
 | Attention center CTE | 4 CTEs with MATERIALIZED | Joins 5 tables |
 | CSV exports | Exact filtered count + 250-row keyset batches | Streamed response; 50,000 row, 25 MB serialized-body, 30-second application limits; no snapshot across pages |
 
@@ -35,20 +35,20 @@ WHERE (displayName ILIKE '%term%'
     OR leadNumber ILIKE '%term%')
 ```
 
-Leading wildcard prevents B-tree index usage. Each OR branch causes a sequential scan.
+The leading wildcard means a conventional B-tree index does not support these substring predicates. The query planner chooses the scan strategy based on available indexes and statistics; no current plan or measured search latency is documented here.
 
 ### Pagination
 
 OFFSET-based pagination throughout. Activity events (`activityEventService.listByLead`) use cursor-based pagination.
 
-The five current CSV export categories use keyset batches rather than OFFSET and serialize one row at a time to the response. Each count/page query uses a short transaction; the export does not retain a transaction snapshot during download. The application enforces row, generated-byte, and elapsed-time limits, while an in-flight Prisma query is bounded by PostgreSQL statement timeout rather than immediate disconnect cancellation. These export constraints and concurrency limitations are documented in [the Phase 3 reliability note](experiments/21_EXPORT_DELIVERY_RELIABILITY.md); they have not been benchmarked against a production database.
+The five current CSV export categories use keyset batches rather than OFFSET and serialize one row at a time to the response. Each row-export count/page query uses a short transaction; the download does not retain a transaction snapshot. The application enforces row, generated-byte, and elapsed-time limits. Cancellation stops later iteration, but does not immediately cancel an in-flight Prisma query; PostgreSQL's 15-second statement timeout bounds export queries, and the interactive transaction timeout is 16 seconds. These limits and concurrency behavior have not been benchmarked against a production database.
 
 Lead detail projections omit `Lead.rawPayload`, which is retained for connector ingestion but is not used by the ordinary lead detail UI or API response.
 
 ### Caching
 
-- **Cached (unstable_cache):** Dashboard metrics (per-user), attention center (per-user), admin dashboard (60s TTL), settings (300s TTL), lead source list
-- **Not cached:** My Leads, lead details, notes, follow-ups, activity events
+- **Cached (`unstable_cache`):** Admin dashboard metrics (60-second revalidation); Sales dashboard and Attention Center data (per-user, tag-based, with no explicit time revalidation); individual settings fetched through `SettingsService.get()` (300-second revalidation). `SettingsService.getAll()` and lead-source list queries are not wrapped in this cache.
+- **Not cached as general CRM reads:** My Leads, lead details, notes, follow-ups, and activity-event endpoints. Sales dashboard and Attention Center pages do cache selected lead/follow-up/activity-derived summaries per user as described above.
 - **Invalidation:** `invalidateAfterMutation()` revalidates the acting user's dashboard and attention tags, any additional affected Sales owners' tags, and the Admin dashboard tag. Admin lead creation, ownership changes, and lead-associated note/follow-up mutations resolve affected owner IDs from persisted lead state and invalidate after the write succeeds. Ownership changes include both previous and new owners; tag generation deduplicates IDs. A failed write does not trigger invalidation.
 - **Open tabs:** Successful Axios mutations for leads, notes, follow-ups, and activities broadcast entity identifiers through `BroadcastChannel`, with a `storage` event fallback. Affected views refresh server props, and an open lead detail refetches only for its lead or one of its currently loaded entities. Visible/focused tabs also revalidate after 30 seconds without a refresh; there is no polling.
 
@@ -66,25 +66,25 @@ The production build before the navigation change referenced a 20,361-byte JavaS
 
 ## Known Bottlenecks
 
-All performance numbers below are **theoretical estimates from experimental analysis** (see `docs/experiments/07_PERFORMANCE_ARCHITECTURE_ASSESSMENT.md`). No production measurements exist.
+No production performance measurements are documented here. Evaluate query plans and timings against an isolated local PostgreSQL dataset before making performance changes.
 
 ### 1. ILIKE Search at Scale
 
-**Current behavior:** `ILIKE '%term%'` with leading wildcard causes sequential scans. With 5 OR'd columns, each causes a separate scan.
+**Current behavior:** `ILIKE '%term%'` with a leading wildcard is not supported by a conventional B-tree index. The planner's actual strategy depends on available indexes, statistics, and data; no query plan has been measured here.
 
-**Estimate:** Acceptable at <15k leads. At 250k leads, estimated 500ms-2s depending on data distribution. (Theoretical estimate; not measured.)
+**Assessment:** Substring-search cost depends on data, indexes, and the selected query plan. No scale threshold or latency estimate is established here.
 
 ### 2. OFFSET Pagination Deep Pages
 
-**Current behavior:** `SKIP N` forces PostgreSQL to scan and discard N rows.
+**Current behavior:** Deep `SKIP N` pages may require PostgreSQL to scan and discard earlier rows. Exact work depends on the query plan and data; no query plan has been measured here.
 
-**Estimate:** Pages 1-100 fast. Page 10,000 with pageSize=25 estimated at ~5s. (Theoretical estimate; not measured.)
+**Assessment:** Deep-page cost depends on the query plan and matching rows. No latency estimate is established here.
 
 ### 3. COUNT(*) on Every Page Load
 
-**Current behavior:** Full table scan to count matching rows on every My Leads page load.
+**Current behavior:** The paginated lead query requests a matching-row count alongside the page. The amount of work depends on filters, indexes, and the chosen query plan; no query plan has been measured here.
 
-**Estimate:** At 25k leads per salesperson, estimated ~50-100ms. (Theoretical estimate; not measured.)
+**Assessment:** Count cost depends on filters, indexes, and the query plan. No latency estimate is established here.
 
 ### 4. Dashboard Query Work
 
@@ -100,17 +100,17 @@ All performance numbers below are **theoretical estimates from experimental anal
 - `ILIKE '%term%'` for search across 5 fields
 - `COUNT(*)` for total count on paginated lists
 - `unstable_cache` with tag-based invalidation for dashboard/settings
-- No caching for CRM data (leads, notes, follow-ups)
-- 14 parallel queries for admin dashboard
+- No general-purpose cache for CRM list/detail endpoints; selected dashboard and Attention Center summaries are cached per user as described above
+- 14 parallel operations in the admin dashboard's `Promise.all`
 - Cursor-based pagination for activity events only
 
 ### P0 -- High Impact / Free (when needed)
 
 | Change | Benefit | Trigger |
 |---|---|---|
-| Add GIN trigram index for search | Avoids sequential scans on search | When leads exceed ~15k and search degrades |
-| Replace COUNT(*) with approximate count | Eliminates full table scan for count | When page load time becomes unacceptable |
-| Add FollowUp(status, dueDate) index | Speeds up global follow-up queries | When dashboard/tasks queries slow down |
+| Add GIN trigram index for search | Can support indexed substring matching when selected by the planner | Evaluate if search degrades; the 15k threshold is a theoretical estimate |
+| Replace COUNT(*) with approximate count | May reduce exact-count work, with changed count semantics | Only if measurements show exact counts are a bottleneck |
+| Add FollowUp(status, dueDate) index | May support common status/date filters | Only if query plans and timings show a bottleneck |
 
 ### P1 -- Worthwhile (when needed)
 
@@ -124,7 +124,7 @@ All performance numbers below are **theoretical estimates from experimental anal
 
 | Change | Benefit | Trigger |
 |---|---|---|
-| Cursor pagination for deep pages | Constant-time deep pages | When users navigate past page 100 |
+| Cursor pagination for deep pages | Avoids discarding all earlier rows when a matching index supports the seek | Consider if measurements show deep-page cost matters |
 | Further bundle work | No change recommended now | Reassess only from route-specific bundle or browser measurements |
 
 ### Future -- Only When Needed
@@ -139,10 +139,7 @@ All performance numbers below are **theoretical estimates from experimental anal
 
 At higher scale (250k+ leads):
 
-- **PostgreSQL handles it trivially** -- no database change needed
 - **Local PostgreSQL capacity** should be assessed from the actual machine's storage, memory, and query workload
-- **Full-text search index** becomes essential
-- **Cursor pagination** becomes important for deep page navigation
-- **Approximate counts** become important for page load performance
+- **Search indexes, cursor pagination, and approximate counts** are options to evaluate if measurements show that the current query patterns are limiting the workload
 
-See `docs/experiments/07_PERFORMANCE_ARCHITECTURE_ASSESSMENT.md` for detailed 250k analysis (theoretical estimates, not measured). Its historical hosted-database assumptions do not describe the current local deployment.
+Assess capacity using the actual local machine, database workload, query plans, and measured timings before planning for a larger lead population.

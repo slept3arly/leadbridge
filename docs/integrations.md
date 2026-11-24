@@ -1,7 +1,7 @@
 # LeadBridge Integrations
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-07
+> **Last verified:** 2026-11-23
 > **Source of truth:** `src/connectors/`, `src/parsers/`, `src/runtime/`
 
 ## Overview
@@ -40,9 +40,20 @@ interface IConnector {
 
 ```typescript
 // src/connectors/registry.ts
-factoryRegistry.set("gmail", (config) => new GmailConnector(config));
-factoryRegistry.set("rest", (config) => new RestConnector(config));
+type ConnectorFactory = (config: Record<string, unknown>) => IConnector;
+
+const factories = new Map<string, ConnectorFactory>(); // module-private
+
+function register(key: string, factory: ConnectorFactory): void {
+  if (factories.has(key)) throw new Error(`Connector ${key} is already registered.`);
+  factories.set(key, factory);
+}
+
+register("gmail", (config) => new GmailConnector((config.environmentKey as string) ?? "MAIN"));
+register("rest", (config) => new RestConnector(config));
 ```
+
+The registry exposes `createConnector()` and lookup/list helpers; the map and `register()` function are private to the module, so callers cannot register factories directly.
 
 ### Gmail Connector
 
@@ -62,7 +73,7 @@ factoryRegistry.set("rest", (config) => new RestConnector(config));
 - **Retries and pacing:** Configurable retries for retryable GET/PUT/DELETE failures, exponential backoff (capped at 10 seconds), and `Retry-After` for 429. `rateLimitDelayMs` also spaces successful paginated requests. POST/PATCH requests are not retried automatically because they may have side effects. Test Connection sends the configured method once, and paginated syncs send one request per page; use a read-safe endpoint for these methods. The runtime does not repeat the full REST import after the client exhausts retries.
 - **Pagination:** Page-number and offset strategies continue while a page is full; cursor, token, and next-URL strategies continue while a response supplies a continuation value. Empty pages stop pagination. Repeated cursor/token/URL values and reaching `maxPages` before completion fail the sync. A `leadArrayPath` is required unless the JSON response is itself an array.
 - **Destination policy:** HTTPS is required unless the exact origin is in `REST_CONNECTOR_ALLOWED_ORIGINS` (comma-separated origins); this allowlist also authorizes trusted private-network and HTTP destinations. DNS answers are checked and pinned per request. Redirect and `NEXT_URL` cross-origin destinations must be allowlisted; credentials are not forwarded cross-origin.
-- **Resource limits:** Requests are capped at 30 seconds, request bodies at 1 MiB, each response at 2 MiB (20 MiB total), pagination at 100 pages/500 records per page, total records at 25,000, request attempts at 3, and execution at 120 seconds. Reaching a page cap before the provider signals completion fails the sync.
+- **Resource limits:** Requests are capped at 30 seconds, request bodies at 1 MiB, each response at 2 MiB (20 MiB total), pagination at 100 pages/500 records per page, total records at 25,000, up to 3 total attempts per page request, and execution at 120 seconds. Reaching a page cap before the provider signals completion fails the sync.
 
 ### Configuration
 
@@ -74,7 +85,7 @@ REST connector configuration is stored in `Connector.configuration` (JSON column
 
 Set `REST_CONNECTOR_ALLOWED_ORIGINS` in the server environment only for deliberate trusted HTTP or private-network integrations and cross-origin pagination. Entries are exact origins, including scheme and optional port; do not use a broad or user-controlled allowlist. Without this setting, public HTTPS endpoints on the configured base origin remain supported. For local development only, `REST_CONNECTOR_DEV_ALLOWED_ORIGINS` accepts the same comma-separated exact-origin format, but is ignored unless `NODE_ENV=development`; set it in the LeadBridge server environment and restart the server. It must never be used to authorize production destinations.
 
-Secrets (API key values, bearer tokens, basic auth passwords, custom header values) are sanitized in the UI -- shown as "configured" booleans rather than actual values. Blank secret fields retain saved credentials; entering a value rotates them. The UI sends the editable configuration to the API, and the settings route merges partial updates while preserving unspecified configuration.
+REST credentials are stored in the connector configuration JSON in PostgreSQL. The Admin page serializes secret values as "configured" booleans rather than sending their values to the browser. Blank secret fields retain saved credentials; entering a value rotates them. The settings route merges partial updates while preserving unspecified credentials. Runtime and test-connection code use the stored values server-side.
 
 ## Parsers
 
@@ -108,14 +119,14 @@ Extracts from email headers, MIME body, plainText, HTML. Used for Gmail payloads
 
 ### ConnectorRuntime (`src/runtime/connector-runtime.ts`)
 
-Main orchestrator:
+The manual sync API route and `ConnectorScheduler` acquire the atomic connector execution lease (90-second expiry, renewed every 20 seconds), create an execution fence, and start a heartbeat. They pass `heartbeat.assertOwned` and the fence (`connectorId`, `executionId`, and lock generation) to `ConnectorRuntime`. The runtime checks ownership during execution and passes the fence to guarded lead, activity, routing, and sync-history writes. The route or scheduler stops the heartbeat and releases the lease in `finally`; the runtime does not acquire or release locks.
 
-1. Acquires an atomic connector execution lease (90-second expiry, renewed every 20 seconds)
-2. Records sync run start
-3. Executes connector (with retry policy)
-4. For each payload: dedup check → routing → parsing → normalization → lead creation
-5. Records sync run completion
-6. Releases execution lock
+Within that ownership context, the runtime:
+
+1. Records sync run start
+2. Executes the connector with the runtime retry policy
+3. For each payload: dedup check → routing → parsing → normalization → lead creation
+4. Records sync run completion
 
 ### RoutingEngine (`src/runtime/routing-engine.ts`)
 
@@ -143,9 +154,9 @@ Main orchestrator:
 ### ExecutionLock (`src/services/execution-lock.service.ts`)
 
 - Atomically acquires an idle or expired connector lease and marks remaining active runs interrupted
-- Concurrent runs return HTTP 409
+- The manual sync route returns HTTP 409 for a held lock; the scheduler reports `skipped_locked`
 - Heartbeat and pre-write checks renew only an unexpired lease owned by the execution token; stale owners cannot renew or proceed
-- Released in `finally` block
+- The caller that acquired the lock releases it in `finally` after stopping its heartbeat
 - `forceRelease()` available for stuck connectors
 
 ### ConnectorHealthService (`src/services/connector-health.service.ts`)
@@ -161,7 +172,7 @@ Main orchestrator:
 
 ## Scheduler
 
-`POST /api/scheduler/trigger` discovers enabled connectors with `nextScheduledRun <= now` and executes them sequentially as the system actor. Admin sessions can trigger due connectors or an individual connector. In the local deployment, a trusted host scheduler should call the endpoint with `Authorization: Bearer <SCHEDULER_TRIGGER_SECRET>`; configure a long random secret in the server environment and keep it private. Machine credentials cannot request a specific connector ID. Preset schedules and custom intervals (1–525,600 minutes) are advanced from completion time. The application has no in-process scheduler loop, and this repository does not install a host cron job. See [Local Operations](./local-operations.md#local-scheduler) for setup.
+`POST /api/scheduler/trigger` delegates to `ConnectorScheduler`, which discovers enabled, non-manual connectors that are due and runs them sequentially as the system actor. Admin sessions can trigger due connectors or an individual enabled connector. A scheduler bearer secret can trigger due connectors but cannot request a specific connector ID. Preset schedules and custom intervals (1–525,600 minutes) are advanced after execution completion, including failure handling. In the local deployment, a trusted host scheduler can call the endpoint with `Authorization: Bearer <SCHEDULER_TRIGGER_SECRET>`; configure a long random secret in the server environment and keep it private. The application has no in-process scheduler loop, and this repository does not install a host cron job. See [Local Operations](./local-operations.md#local-scheduler) for setup.
 
 ## Parser Preview
 

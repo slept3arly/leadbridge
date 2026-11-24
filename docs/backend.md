@@ -1,16 +1,16 @@
 # LeadBridge Backend
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-07
+> **Last verified:** 2026-11-24
 > **Source of truth:** `src/services/`, `src/lib/`, `src/runtime/`
 
 ## Service Layer
 
-21 domain services in `src/services/`. Each exports a class and a singleton instance.
+`src/services/` contains domain services and supporting execution and policy modules. Most service modules export a class and a singleton instance.
 
-`src/lib/export/` contains export category definitions, policy metadata, field allowlists, validation schemas, and date contracts. `src/services/export/` enforces category authorization and lead scope, builds typed Prisma filters/projections, counts records, retrieves row exports in bounded keyset pages, serializes CSV rows, and streams bounded UTF-8 response chunks. The legacy `/api/export` parameters are adapted in `src/lib/export/legacy-compatibility.ts`. Row/byte/application-time limits and best-effort structured operation logging apply to the five current categories; see [the delivery reliability design](experiments/21_EXPORT_DELIVERY_RELIABILITY.md).
+`src/lib/export/` contains export category definitions, policy metadata, field allowlists, validation schemas, and date contracts. `src/services/export/` enforces category authorization and lead scope, builds typed Prisma filters/projections, counts records, retrieves row exports in bounded keyset pages, serializes CSV rows, and streams bounded UTF-8 response chunks. The legacy `/api/export` parameters are adapted in `src/lib/export/legacy-compatibility.ts`. These safeguards apply to the five current categories; the API guide records the row, byte, and time limits, consistency caveats, cancellation behavior, and best-effort logging boundaries.
 
-Lead exports also accept comma-separated status, source, action, response, priority, category, and interest values, archive state, search, ADMIN assignee selection, lead-created date bounds, and activity date bounds. Activity date uses `ActivityEvent.occurredAt`; all selected activity entry predicates are nested under the same event and same `ActivityEntry`, matching the Leads table relationship semantics. These predicates are ANDed with the authenticated lead-scope predicate. See [the advanced Lead export filter note](experiments/24_EXPORT_ADVANCED_LEAD_FILTERS.md).
+Lead exports also accept comma-separated status, source, action, response, priority, category, and interest values, archive state, search, ADMIN assignee selection, lead-created date bounds, and activity date bounds. Activity date uses `ActivityEvent.occurredAt`; all selected activity entry predicates are nested under the same event and same `ActivityEntry`, matching the Leads table relationship semantics. These predicates are ANDed with the authenticated lead-scope predicate. The detailed endpoint parameters and date-boundary behavior are in the API guide.
 
 | Service | File | Purpose |
 |---|---|---|
@@ -33,7 +33,6 @@ Lead exports also accept comma-separated status, source, action, response, prior
 | `ReportService` | `report.service.ts` | Analytics: summary, sources, assignments, status, trends |
 | `SettingsService` | `settings.service.ts` | Global settings with caching and definitions |
 | `DuplicateService` | `duplicate.service.ts` | Potential duplicate detection by email/phone |
-| `AssignmentService` | `assignment.service.ts` | Lead assignment delegation |
 | `UnmatchedEmailService` | `unmatched-email.service.ts` | Handle unmatched emails |
 
 ## Service Patterns
@@ -75,7 +74,7 @@ Manual lead creation and Record Progress are orchestrated by `LeadWorkflowServic
 
 Follow-ups for assigned leads are assigned to the lead's responsible salesperson even when Admin performs the workflow. For an unassigned lead, the task is assigned to the acting user. Sales access remains scoped to assigned leads; lead creation remains controlled by `CREATE_LEAD` (SENIOR Sales only).
 
-Lead PATCH and workflow field changes compare normalized values against the row read in the transaction, update only changed columns, and use `updatedAt` as a conditional concurrency token. Unchanged patches do not update lead timestamps/actor metadata or create field-history entries. Follow-up lifecycle transitions use a lead-row `FOR UPDATE` lock, reject multiple legacy pending rows as HTTP 409, and use conditional state transitions. Replacement, history, and denormalized-field recalculation are atomic. Cancellation is soft: PENDING becomes CANCELLED with server-derived `cancelledAt`; the row and activity links remain. The `FollowUp_one_pending_per_lead` partial unique index is defined in the pending migration as a second integrity layer. The migration has not been applied to the configured external Neon database.
+Lead PATCH and workflow field changes compare normalized values against the row read in the transaction, update only changed columns, and use `updatedAt` as a conditional concurrency token. Unchanged patches do not update lead timestamps/actor metadata or create field-history entries. Follow-up lifecycle transitions use a lead-row `FOR UPDATE` lock, reject multiple legacy pending rows as HTTP 409, and use conditional state transitions. Replacement, history, and denormalized-field recalculation are atomic. Cancellation is soft: PENDING becomes CANCELLED with server-derived `cancelledAt`; the row and activity links remain. The `FollowUp_one_pending_per_lead` partial unique index is defined in the checked-in migration as a second integrity layer. Deployment state is specific to the database selected by `DATABASE_URL`; verify the target database before relying on the index.
 
 Interaction validation pairs CALL with `PICKED_UP`, `NOT_PICKED_UP`, `INVALID_NUMBER`, or `SWITCHED_OFF`, and WHATSAPP with `REPLIED` or `NOT_REPLIED`. Legacy `NO_RESPONSE` remains stored and readable for history, but is not an option for new interactions. Priority enums include `COLD`; MEDIUM remains the stored value displayed as “Medium”.
 

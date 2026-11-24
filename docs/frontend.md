@@ -66,13 +66,20 @@ Standalone follow-up scheduling and rescheduling remain available when no intera
 
 The Sales dashboard agenda opens the Lead Workspace for the selected lead, where Record Progress is primary. The Admin dashboard has no quick interaction or task-completion action, so no new dashboard action was added. Add Lead is available through the shared create form on the lead-management pages where `CREATE_LEAD` is granted.
 
-## Loading States (6)
+## Loading States (10)
 
 Loading indicators at route boundaries for instant feedback during Server Component rendering:
 
 - `(dashboard)/loading.tsx`
-- `admin/loading.tsx`, `admin/leads/loading.tsx`, `admin/users/loading.tsx`
-- `sales/loading.tsx`, `sales/my-leads/loading.tsx`
+- `(dashboard)/admin/loading.tsx`
+- `(dashboard)/admin/connectors/loading.tsx`
+- `(dashboard)/admin/leads/loading.tsx`
+- `(dashboard)/admin/providers/loading.tsx`
+- `(dashboard)/admin/reports/loading.tsx`
+- `(dashboard)/admin/settings/loading.tsx`
+- `(dashboard)/admin/users/loading.tsx`
+- `(dashboard)/sales/loading.tsx`
+- `(dashboard)/sales/my-leads/loading.tsx`
 
 ## Layouts (3)
 
@@ -192,5 +199,3 @@ These values are defined in `src/app/globals.css` and exposed through Tailwind C
 | `useTableQuery` | URL-based table state (page, search, sort, filters) |
 | `useLeadDetails` | Lead detail data fetching |
 | `useHydrated` | Client hydration detection |
-
-Note: `src/hooks/index.ts` is currently empty (exports nothing).

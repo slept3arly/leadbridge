@@ -39,7 +39,6 @@ pnpm dev
 | `pnpm db:migrate:deploy` | Apply checked-in migrations to a deployment database (`prisma migrate deploy`) |
 | `pnpm db:migrate:status` | Inspect migration status without applying migrations |
 | `pnpm db:push` | Push schema changes without migration |
-| `pnpm seed:leads` | Seed 25 test leads (refuses to run in production) |
 
 ## Environment Variables
 
@@ -161,8 +160,6 @@ These are verified implementation gaps, not architecture decisions:
 
 1. **Empty API directories:** `src/app/api/audit-logs/`, `src/app/api/mock/leads/`, `src/app/api/sync/`, `src/app/api/follow-ups/[id]/cancel/` contain no route files. Should be removed.
 
-2. **Empty barrel files:** `src/hooks/index.ts` and `src/jobs/index.ts` export nothing. Consider removing or populating.
+2. **No CI/CD:** No GitHub Actions, GitLab CI, or other pipeline configuration.
 
-3. **No CI/CD:** No GitHub Actions, GitLab CI, or other pipeline configuration.
-
-4. **Redundant database index:** `@@index([connectorId, sourceReferenceId])` on Lead is redundant with `@@unique([connectorId, sourceReferenceId])`. The unique constraint already provides the index.
+3. **Redundant database index:** `@@index([connectorId, sourceReferenceId])` on Lead is redundant with `@@unique([connectorId, sourceReferenceId])`. The unique constraint already provides the index.

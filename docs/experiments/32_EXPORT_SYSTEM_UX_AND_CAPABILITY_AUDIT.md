@@ -270,7 +270,7 @@ No active P0 security or correctness defect was verified in the live download pa
 
 ### Historical context and test contracts
 
-- `docs/experiments/18_EXPORT_SYSTEM_AUDIT.md` through `docs/experiments/24_EXPORT_ADVANCED_LEAD_FILTERS.md` (historical context only; live claims above were checked against source).
+- Historical export implementation reports were consulted as context; the live claims above were checked against source. Current endpoint behavior is documented in [the API guide](../api.md), and current UI behavior in [the Frontend guide](../frontend.md).
 - `tests/export-contracts.test.ts`, `tests/export-query.test.ts`, `tests/export-delivery.test.ts`, `tests/export-ui.test.ts`, plus export-related checks in `tests/phase1-hardening.test.ts` and `tests/lead-workflow-form.test.ts`.
 
 ## Verification and limits of this audit

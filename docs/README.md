@@ -1,67 +1,50 @@
 # LeadBridge Documentation
 
-> **Status:** Canonical
-> **Last verified:** 2026-11-05
+> **Status:** Canonical documentation index
+> **Last verified:** 2026-11-24
 
-## Documentation Map
+## How to use these documents
 
-| Document | Purpose |
-|---|---|
-| [architecture.md](./architecture.md) | System architecture, request flow, layer responsibilities |
-| [database.md](./database.md) | Prisma schema, models, relationships, indexes, enums |
-| [backend.md](./backend.md) | Service layer, business logic, data access patterns |
-| [frontend.md](./frontend.md) | Pages, components, UI design system, navigation |
-| [UI_DESIGN_SYSTEM.md](./UI_DESIGN_SYSTEM.md) | Canonical UI reference, design tokens, component inventory, implementation contract |
-| [api.md](./api.md) | API route reference with methods and authorization |
-| [authentication.md](./authentication.md) | Better Auth setup, request proxy, roles, permissions |
-| [integrations.md](./integrations.md) | Connectors, parsers, runtime engine, routing |
-| [performance.md](./performance.md) | Current performance architecture, known bottlenecks |
-| [development.md](./development.md) | Developer guide, conventions, setup, commands |
-| [local-operations.md](./local-operations.md) | Local PostgreSQL migrations, backup/restore, readiness, and scheduler operations |
-| [IMPLEMENTATION_AUDIT.md](./IMPLEMENTATION_AUDIT.md) | File-by-file audit of Admin dashboard improvements with implementation plan |
+Current source code is authoritative for runtime behavior. This directory’s canonical guides describe the current system and take precedence over dated audits, implementation records, experiments, and archived snapshots. Those historical documents preserve evidence and decisions from their stated scope and date; their recommendations are not requirements unless separately approved. When a snapshot conflicts with current source or a canonical guide, follow the current source and canonical guide, and check the snapshot’s date and stated limitations.
 
-## Testing & Reference
+- **Canonical guides** describe current behavior, architecture, operations, and development practices.
+- **Audits** record a bounded review or cleanup inventory. They are dated snapshots, not automatically approved work.
+- **Implementation records** capture completed work and its verification limits at the time of that work.
+- **Experiments** contain historical assessments, investigations, proposals, contracts, and implementation records. Follow the status written in each document; an experiment or recommendation does not by itself establish current behavior.
+- Archived material was removed in the approved documentation reduction; no `docs/archive/` directory remains.
 
-| Document | Purpose |
-|---|---|
-| [rest-connector-testing.md](./rest-connector-testing.md) | Canonical step-by-step local REST connector setup, mock API tests, and troubleshooting |
+See the [audit index](./audits/README.md) and [experiment index](./experiments/README.md) for complete inventories.
 
-## Experimental / Reference
+## Reading order
 
-These documents contain useful analysis and estimates but are **NOT** canonical implementation references:
+For a new contributor, start with [Development](./development.md), then read [Architecture](./architecture.md) and the relevant feature guide. Use [Local Operations](./local-operations.md) for the local PostgreSQL runbook.
+
+## Canonical guides
 
 | Document | Purpose |
 |---|---|
-| [experiments/07_PERFORMANCE_ARCHITECTURE_ASSESSMENT.md](./experiments/07_PERFORMANCE_ARCHITECTURE_ASSESSMENT.md) | 250k leads performance analysis (EXPERIMENTAL) |
-| [experiments/08_FREE_TIER_CAPACITY_ASSESSMENT.md](./experiments/08_FREE_TIER_CAPACITY_ASSESSMENT.md) | Free-tier capacity estimates (EXPERIMENTAL) |
-| [experiments/09_PERFORMANCE_BASELINE_AUDIT.md](./experiments/09_PERFORMANCE_BASELINE_AUDIT.md) | Code-level performance baseline audit (EXPERIMENTAL) |
-| [experiments/11_LOCAL_MAX_PERFORMANCE_AUDIT.md](./experiments/11_LOCAL_MAX_PERFORMANCE_AUDIT.md) | Local deployment performance audit (EXPERIMENTAL) |
-| [experiments/12_V1_PRODUCTION_READINESS_AUDIT.md](./experiments/12_V1_PRODUCTION_READINESS_AUDIT.md) | V1 production readiness assessment (EXPERIMENTAL) |
-| [experiments/26_LEAD_WORKFLOW_BUSINESS_CONTRACTS.md](./experiments/26_LEAD_WORKFLOW_BUSINESS_CONTRACTS.md) | Approved lead workflow business contracts and Phase 5 backend lifecycle status |
-| [experiments/27_DISTRICT_COMPATIBILITY_ASSESSMENT.md](./experiments/27_DISTRICT_COMPATIBILITY_ASSESSMENT.md) | Read-only District compatibility and city-value assessment |
-| [experiments/28_WORKFLOW_ENUMS_AND_FORM_UX_AUDIT.md](./experiments/28_WORKFLOW_ENUMS_AND_FORM_UX_AUDIT.md) | Phase 9 read-only workflow enum, dropdown, default, and form-hint audit with proposals |
-| [experiments/29_PLACEHOLDERS_AND_DEFAULTS_REVIEW.md](./experiments/29_PLACEHOLDERS_AND_DEFAULTS_REVIEW.md) | Phase 11 read-only inventory and owner recommendations for lead form placeholders, prompts, and defaults |
-| [experiments/30_PLACEHOLDERS_AND_DEFAULTS_IMPLEMENTATION.md](./experiments/30_PLACEHOLDERS_AND_DEFAULTS_IMPLEMENTATION.md) | Phase 12 implementation record for approved lead placeholders and retained defaults |
-| [experiments/31_LEAD_STATUS_AND_CUSTOM_DROPDOWNS.md](./experiments/31_LEAD_STATUS_AND_CUSTOM_DROPDOWNS.md) | Phase 13 Lead Status OLD addition and site-wide Radix dropdown migration |
-| [experiments/32_EXPORT_SYSTEM_UX_AND_CAPABILITY_AUDIT.md](./experiments/32_EXPORT_SYSTEM_UX_AND_CAPABILITY_AUDIT.md) | Phase 1 read-only audit of export UX, filters, columns, CSV/XLSX options, backend safeguards, and permissions |
-| [experiments/HOSTING_COMPARISON_2026.md](./experiments/HOSTING_COMPARISON_2026.md) | Hosting platform comparison (EXPERIMENTAL) |
+| [architecture.md](./architecture.md) | System stack, request/data flow, layer responsibilities, and architectural decisions |
+| [database.md](./database.md) | Prisma schema, models, relationships, indexes, enums, and migration files |
+| [backend.md](./backend.md) | Services, business logic, workflows, and data-access patterns |
+| [frontend.md](./frontend.md) | Pages, components, UI workflows, navigation, and loading states |
+| [UI_DESIGN_SYSTEM.md](./UI_DESIGN_SYSTEM.md) | Design tokens, component inventory, accessibility guidance, and UI implementation contract |
+| [api.md](./api.md) | API routes, methods, and authorization |
+| [authentication.md](./authentication.md) | Better Auth, request proxy, roles, and permissions |
+| [integrations.md](./integrations.md) | Connectors, parsers, runtime, routing, and scheduler behavior |
+| [performance.md](./performance.md) | Current query/cache patterns and qualified performance estimates |
+| [development.md](./development.md) | Setup, commands, conventions, and verification |
+| [local-operations.md](./local-operations.md) | Local PostgreSQL migrations, backup/restore, readiness, and scheduler setup |
+| [rest-connector-testing.md](./rest-connector-testing.md) | Manual REST connector setup, fixture testing, and troubleshooting |
 
-## Archived (superseded by canonical docs)
+## Other project records
 
-Historical documents preserved for context. Do not use as implementation guidance.
-
-| Document | Status |
+| Document | Purpose and status |
 |---|---|
-| [archive/01_PROJECT_OVERVIEW.md](./archive/01_PROJECT_OVERVIEW.md) | Content merged into architecture.md, database.md, api.md |
-| [archive/02_ARCHITECTURE.md](./archive/02_ARCHITECTURE.md) | Content split into architecture.md, database.md, api.md, integrations.md |
-| [archive/03_DEVELOPMENT_GUIDELINES.md](./archive/03_DEVELOPMENT_GUIDELINES.md) | Content merged into development.md and integrations.md |
-| [archive/04_ADMINISTRATION_AND_OPERATIONS.md](./archive/04_ADMINISTRATION_AND_OPERATIONS.md) | Content merged into backend.md and development.md |
-| [archive/05_ARCHITECTURE_AUDIT.md](./archive/05_ARCHITECTURE_AUDIT.md) | Verified findings merged into relevant canonical docs |
-| [archive/06_REST_CONNECTOR_IMPLEMENTATION_REPORT.md](./archive/06_REST_CONNECTOR_IMPLEMENTATION_REPORT.md) | Content merged into integrations.md |
+| [IMPLEMENTATION_AUDIT.md](./IMPLEMENTATION_AUDIT.md) | Dashboard improvement plan marked “Ready for Implementation” when created in September 2026; consult current source before treating its observations or plan as current. |
 
 ## Quick Start for Agents
 
-1. Read `AGENTS.md` (repository root) for mandatory rules
-2. Read this `docs/README.md` to find the right canonical guide
-3. Consult the relevant canonical document for your task
-4. Verify against source code before making changes
+1. Read `AGENTS.md` (repository root) for mandatory rules.
+2. Use this index to locate the relevant canonical guide.
+3. Consult dated audits or experiments for historical evidence and decisions, checking their status and limitations.
+4. Verify implementation claims against current source code.

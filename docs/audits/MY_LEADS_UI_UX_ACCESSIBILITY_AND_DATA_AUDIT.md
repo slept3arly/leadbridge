@@ -233,7 +233,7 @@ No P0 source-verified issue was identified in the current My Leads implementatio
 - `docs/UI_DESIGN_SYSTEM.md`
 - `docs/frontend.md`
 - `docs/development.md`
-- `docs/experiments/25_LEAD_WORKFLOW_REDESIGN_AUDIT.md` and `docs/experiments/15_LEAD_WORKFLOW_AND_MODAL_ARCHITECTURE_AUDIT.md` as historical/experimental context only; implementation claims were checked against source.
+- Earlier workflow audits were used as historical context only; implementation claims were checked against source and current behavior is described in the [Frontend](../frontend.md) and [Backend](../backend.md) guides.
 - `src/app/(dashboard)/sales/my-leads/page.tsx`
 - `src/app/(dashboard)/sales/my-leads/loading.tsx`
 - `src/components/sales/sales-my-leads-page-content.tsx`

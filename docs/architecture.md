@@ -1,7 +1,7 @@
 # LeadBridge Architecture
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-05
+> **Last verified:** 2026-11-23
 > **Source of truth:** `src/app/`, `src/services/`, `src/lib/`, `src/runtime/`, `prisma/schema.prisma`
 
 ## Overview
@@ -81,15 +81,17 @@ src/services/connector-health.service.ts (update health metrics)
 | Integration Contracts | `src/connectors/`, `src/parsers/` | Vendor connector and parser implementations |
 | Infrastructure | `src/lib/prisma.ts`, `src/lib/auth.ts`, `src/lib/logger.ts` | Prisma client, Better Auth config, Pino logger |
 
+The connector routes are an exception to the intended boundary: `src/app/api/connectors/route.ts`, `[id]/route.ts`, `[id]/settings/route.ts`, and `src/app/api/providers/connectors/test/route.ts` access Prisma directly. The sync route also reads the connector and owns the lock/heartbeat lifecycle before delegating pipeline work to `ConnectorRuntime`. These current placements should be considered when extending the integration API; this guide does not imply that every route is a thin service wrapper today.
+
 ## Key Architectural Decisions
 
 1. **Server Components by default** -- All page components are async Server Components. Client components are used only for interactive UI (tables, modals, filters).
 
 2. **No server actions** -- All mutations go through API routes (`src/app/api/`). This provides clear HTTP boundaries and makes authorization consistent.
 
-3. **Service layer owns all business logic** -- API routes are thin wrappers that handle auth, validation, and call service methods. Services own Prisma queries and transaction boundaries.
+3. **Intended service-layer boundary** -- Business logic should live in services, with API routes handling HTTP concerns and delegating work. This is not uniform in the current code: connector CRUD/settings and connector-test API routes perform Prisma access and some validation/update logic directly. The manual sync route also coordinates execution-lock ownership and runtime setup. Treat these as current exceptions, not evidence that all route logic belongs in API handlers.
 
-4. **No second data-access architecture** -- All database access goes through Prisma. Do not introduce raw SQL queries outside of services, except for performance-critical aggregation queries already in `lead.service.ts` and `dashboard.service.ts`.
+4. **No second data-access architecture** -- Prisma is the database access layer. Current services use parameterized raw SQL for query-specific aggregation in `lead.service.ts`, `dashboard.service.ts`, and `attention.service.ts`; keep database access in services when adding new behavior, while recognizing the connector-route exceptions described above.
 
 5. **ActivityEvent + ActivityEntry** -- The activity system uses a two-level model: `ActivityEvent` (the event header with type, actor, timestamp) and `ActivityEntry` (individual entries within an event with action, response, interest). This replaced an earlier `LeadActivity` model.
 

@@ -159,13 +159,19 @@ test("Create Lead and Record Progress require a real interaction and manual sche
   assert.equal(leadProgressRequestSchema.safeParse({ ...validCall, requirement: "x".repeat(2001) }).success, false);
 });
 
-test("business contract records pending follow-up, District, and migration boundaries", () => {
-  const contract = readFileSync("docs/experiments/26_LEAD_WORKFLOW_BUSINESS_CONTRACTS.md", "utf8");
-  assert.match(contract, /PENDING is active even with no due date/);
-  assert.match(contract, /SUPERSEDED_BY_NEW_FOLLOW_UP/);
-  assert.match(contract, /district is canonical/);
-  assert.match(contract, /conflicting dual values return 400/);
-  assert.match(contract, /Any result blocks migration/);
-  assert.match(contract, /Never use db push/);
-  assert.match(contract, /Phase 5 implements shared backend follow-up lifecycle behavior/);
+test("follow-up, District, and migration safeguards match current implementation", () => {
+  const backend = readFileSync("docs/backend.md", "utf8");
+  const database = readFileSync("docs/database.md", "utf8");
+  const followUpService = readFileSync("src/services/follow-up.service.ts", "utf8");
+  const migration = readFileSync("prisma/migrations/20261109100000_followup_one_pending_per_lead/migration.sql", "utf8");
+
+  assert.match(backend, /Scheduling supersedes the one existing pending task/);
+  assert.match(followUpService, /where: \{ leadId, status: "PENDING" \}/);
+  assert.match(followUpService, /completionReason: "SUPERSEDED_BY_NEW_FOLLOW_UP"/);
+  assert.match(database, /a city-only write does not infer a district/);
+  assert.match(database, /differing values are allowed/);
+  assert.match(database, /run a fresh read-only inventory against the intended target database/);
+  assert.match(migration, /HAVING count\(\*\) > 1/);
+  assert.match(migration, /RAISE EXCEPTION/);
+  assert.match(database, /never auto-resolve conflicts/);
 });

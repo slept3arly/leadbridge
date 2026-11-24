@@ -1,7 +1,7 @@
 # LeadBridge Database
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-07
+> **Last verified:** 2026-11-24
 > **Source of truth:** `prisma/schema.prisma`, `prisma.config.ts`, `src/lib/prisma.ts`
 
 ## Configuration
@@ -11,7 +11,7 @@
 - **Schema:** `prisma/schema.prisma`
 - **Generated client:** `src/generated/prisma/` (custom output path)
 - **Client singleton:** `src/lib/prisma.ts`
-- **Migrations:** `prisma/migrations/` (17 migrations)
+- **Migrations:** `prisma/migrations/` (21 migration directories in this checkout; this count does not indicate which migrations are applied to a database)
 - **Prisma config:** `prisma.config.ts` (uses `defineConfig` from Prisma v7)
 - **Connection:** `DATABASE_URL`, read by Prisma config and passed to `PrismaPg` in `src/lib/prisma.ts`; use a PostgreSQL connection URL such as `postgresql://user:password@127.0.0.1:5432/leadbridge?schema=public` locally.
 
@@ -36,7 +36,7 @@ The runtime uses Prisma's `@prisma/adapter-pg` driver adapter and the Node Postg
 |---|---|
 | `UserRole` | `ADMIN`, `SALES` |
 | `SalesPrivilege` | `JUNIOR`, `SENIOR` |
-| `LeadStatus` | `NEW`, `CONVERTED`, `LOST`, `SPAM`, `ON_HOLD` |
+| `LeadStatus` | `NEW`, `CONVERTED`, `LOST`, `SPAM`, `ON_HOLD`, `OLD` |
 | `LeadPriority` | `LOW`, `MEDIUM`, `HIGH`, `URGENT`, `COLD` |
 | `FollowUpStatus` | `PENDING`, `COMPLETED`, `CANCELLED` |
 | `FollowUpPriority` | `LOW`, `MEDIUM`, `HIGH`, `URGENT`, `COLD` |
@@ -97,6 +97,12 @@ The runtime uses Prisma's `@prisma/adapter-pg` driver adapter and the Node Postg
 | `UnmatchedEmail` | `UnmatchedEmail` | Emails failing routing rule matches |
 | `ParserRequest` | `ParserRequest` | Vendor samples requesting parser creation |
 | `Setting` | `Setting` | Categorized system settings (key-value JSON) |
+
+## City and District Data Safeguards
+
+`Lead.city` and `Lead.district` are separate optional fields. Current API validation handles each independently; a city-only write does not infer a district, a district-only write does not replace the city, and differing values are allowed. Connector normalization continues to map its city value to `Lead.city`, and the export's City column/filter continues to use that field.
+
+Do not bulk-copy or reinterpret existing City values as District values based on their names. Before any proposed backfill, run a fresh read-only inventory against the intended target database and have the data owner classify the exact current values or affected records. Only owner-confirmed district mappings may populate `Lead.district`; retain the original `Lead.city` values and leave ambiguous or non-district values unmapped. Historical row counts or value lists are not current deployment data and are not sufficient migration input.
 
 ## Key Relationships
 
@@ -233,9 +239,9 @@ Total: 43 `@@index` declarations + 2 `@@unique` declarations + 12 field-level `@
 
 ## Migrations
 
-### Pending follow-up lifecycle migration
+The migration directories below are checked-in migration files, not a record of deployment state. Which migrations have been applied depends on the database selected by `DATABASE_URL`; inspect that database with `pnpm db:migrate:status` before planning a deployment. This document does not assert whether any migration has been applied to a particular database.
 
-`20261109100000_followup_one_pending_per_lead` is a pending migration and has not been applied. It adds nullable `FollowUp.cancelledAt`, runs a preflight that aborts and reports lead IDs/counts/task IDs when multiple PENDING rows exist, then creates the PostgreSQL partial unique index `FollowUp_one_pending_per_lead` on `leadId` for PENDING rows. Prisma schema validation does not model this partial index; retain it in the raw SQL migration and verify it using `pg_indexes` after deployment. Before applying, run the documented conflict query and review every result; never auto-resolve conflicts. The configured external Neon database was inspected and has no such index; no migration was applied. Deployment must first apply the earlier Phase 4 District migration in migration order, which also remains unapplied on that database.
+`20261109100000_followup_one_pending_per_lead` adds nullable `FollowUp.cancelledAt`, runs a preflight that aborts and reports lead IDs/counts/task IDs when multiple PENDING rows exist, then creates the PostgreSQL partial unique index `FollowUp_one_pending_per_lead` on `leadId` for PENDING rows. Prisma schema validation does not model this partial index; retain it in the raw SQL migration and verify it using `pg_indexes` after deployment. Before applying this migration to a database, run the documented conflict query and review every result; never auto-resolve conflicts.
 
 Read-only pending-conflict preflight:
 
@@ -248,14 +254,26 @@ GROUP BY "leadId"
 HAVING count(*) > 1;
 ```
 
-17 migrations from initial schema through connector execution fencing. Key migrations:
+The 21 migration directories present in this checkout, in order:
 
-1. `20260713173452_init` -- Initial schema
-2. `20260714120000_phase1_crm_data_model` -- Core CRM models
-3. `20260717081405_add_connector_schedule_health` -- Connector scheduling
-4. `20260717164212_extend_status_priority_add_followups` -- Follow-ups engine
-5. `20260718090013_simplify_status_add_notes_followups` -- Notes & follow-ups
-6. `20260825171917_phase2_performance_indexes` -- Performance indexes
-7. `20260913000000_add_activity_event_entry` -- ActivityEvent/ActivityEntry model
-8. `20260913120000_remove_lead_activity_and_audit_log` -- Removed old LeadActivity/AuditLog
-9. `20261010000000_add_connector_lock_generation` -- Connector execution fencing
+1. `20260713173452_init` — Initial schema
+2. `20260714120000_phase1_crm_data_model` — Core CRM models
+3. `20260714143000_phase2_connector_sync_history` — Connector sync history
+4. `20260715100000_phase3a_provider_management` — Provider management
+5. `20260717081405_add_connector_schedule_health` — Connector scheduling and health
+6. `20260717164212_extend_status_priority_add_followups` — Status, priority, and follow-ups
+7. `20260717183000_add_lead_connector_source_reference_unique` — Connector source-reference uniqueness
+8. `20260718081824_add_lead_category` — Lead category
+9. `20260718090013_simplify_status_add_notes_followups` — Status, notes, and follow-ups
+10. `20260718091500_simplify_enums_consistency` — Enum consistency
+11. `20260718103934_add_completed_at_backfill` — Follow-up completion timestamp
+12. `20260719122327_add_sales_privilege` — Sales privilege
+13. `20260825171917_phase2_performance_indexes` — Performance indexes
+14. `20260909000000_add_followup_lifecycle_events` — Follow-up lifecycle events
+15. `20260913000000_add_activity_event_entry` — ActivityEvent/ActivityEntry model
+16. `20260913120000_remove_lead_activity_and_audit_log` — Remove old LeadActivity/AuditLog
+17. `20261010000000_add_connector_lock_generation` — Connector execution fencing
+18. `20261109090000_add_lead_district` — Add Lead district
+19. `20261109100000_followup_one_pending_per_lead` — Follow-up cancellation timestamp and one-pending-per-lead partial index
+20. `20261110090000_add_workflow_enum_options` — Workflow enum options
+21. `20261111090000_add_old_lead_status` — Add OLD lead status

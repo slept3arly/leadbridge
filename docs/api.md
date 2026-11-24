@@ -1,7 +1,7 @@
 # LeadBridge API Reference
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-07
+> **Last verified:** 2026-11-24
 > **Source of truth:** `src/app/api/`
 
 ## Overview
@@ -81,7 +81,7 @@
 
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/activities/[id]` | GET | Any authenticated | Get activity event details |
+| `/api/activities/[id]` | PATCH | Assigned SALES user (checked against lead ownership) | Edit an interaction activity entry |
 
 ### Users
 
@@ -101,7 +101,7 @@
 | `/api/providers/[id]` | DELETE | ADMIN | Delete provider |
 | `/api/providers/routing-rules` | GET | ADMIN | List routing rules |
 | `/api/providers/routing-rules` | POST | ADMIN | Create routing rule |
-| `/api/providers/routing-rules/[id]` | PATCH | ADMIN | Update routing rule |
+| `/api/providers/routing-rules` | PATCH | ADMIN | Update routing rule identified by `id` in the request body |
 | `/api/providers/routing-rules/[id]` | DELETE | ADMIN | Delete routing rule |
 | `/api/providers/connectors/test` | POST | ADMIN | Test connector connection |
 | `/api/providers/gmail` | GET | ADMIN | List Gmail accounts from env |
@@ -118,7 +118,6 @@
 |---|---|---|---|
 | `/api/connectors` | GET | ADMIN | List connector types |
 | `/api/connectors` | POST | ADMIN | Create connector (accepts `configuration` for REST type) |
-| `/api/connectors/[id]` | PATCH | ADMIN | Update connector |
 | `/api/connectors/[id]` | DELETE | ADMIN | Delete connector |
 | `/api/connectors/[id]/settings` | PATCH | ADMIN | Update connector settings (accepts `configuration` for REST type, `enabled`, `scheduleType`, `scheduleConfig`, `resetHealth`, `sourceId`) |
 | `/api/connectors/[id]/sync` | POST | ADMIN | Trigger manual sync |
@@ -155,9 +154,11 @@
 |---|---|---|---|
 | `/api/export` | GET | ADMIN; SALES/SENIOR for leads only | Download current CSV export types |
 
-The current endpoint supports `leads`, `users`, `providers`, `sync-history`, and `reports`, with the existing query parameters, filenames, CSV column order, and download response. It streams UTF-8 CSV rows and enforces 50,000 rows, 25,000,000 serialized body bytes, and a 30-second application deadline. Responses are marked private/no-store. Planned categories remain unavailable. The legacy Sync Run `Error` column is retained but blank; stream failures after headers start terminate the body without appending diagnostics. Export operation logs use best-effort structured Pino events. See [the Phase 2 query architecture](experiments/20_EXPORT_QUERY_ARCHITECTURE.md) and [Phase 3 delivery reliability](experiments/21_EXPORT_DELIVERY_RELIABILITY.md).
+The current endpoint supports `leads`, `users`, `providers`, `sync-history`, and `reports`, with fixed CSV columns and the existing download response. Unknown or repeated query parameters and invalid filter values are rejected. Known but unimplemented categories remain unavailable. It streams UTF-8 CSV rows and enforces 50,000 data rows, 25,000,000 serialized body bytes, and a 30-second application deadline. Row exports count the filtered result first, then fetch deterministic keyset pages of up to 250 rows; each count/page query uses a short transaction. Row exports do not hold a database snapshot across the download, so concurrent changes can affect row membership or values. Responses are marked private/no-store. The legacy Sync Run `Error` column is retained but blank; failures after streaming begins terminate the body without appending diagnostics.
 
-The Admin and Senior Sales workspaces are `/admin/exports` and `/sales/exports`. The pages use the same endpoint and do not add a preview/count API. Leads accept `status`, `source`, `activityAction`, `activityResponse`, `activityInterest`, `priority`, `category`, `archived`, `assignedUserId` (ADMIN only), `search`, lead creation `from`/`to`, and `activityDate` with optional `activityFrom`/`activityTo`. Multi-value filters are comma-separated; values within a group are ORed and groups are ANDed. Activity values and occurrence date must match a CALL/WHATSAPP entry on the same ActivityEvent. Activity presets are `today`, `yesterday`, and `custom`, evaluated in UTC; custom date-only bounds include both calendar dates. `archived=true` selects archived leads, `false` selects active leads, and omission selects both. `assignedUserId=unassigned` selects unassigned leads for ADMIN. Sales scope remains fixed to the authenticated Senior Sales user and cannot be widened with query parameters. Sync Runs accept connector and date bounds; Reports accept paired date bounds; Users and Providers accept no query filters. The Provider compatibility adapter exports active providers only. Column selection and exact record-count preview are not available through this route. The browser opens a native download tab so the CSV body remains streamed.
+Cancelling the response stops further iteration between page operations and records a cancellation outcome. An in-flight Prisma query is not immediately cancelled; PostgreSQL's 15-second statement timeout bounds it. Export operation logs are best-effort structured Pino events containing actor/category, outcome, row/byte counts, and accepted filter-group names, not filter values or exported content. They are not durable audit records. No preview/count endpoint or background export job is implemented.
+
+The Admin and Senior Sales workspaces are `/admin/exports` and `/sales/exports`. The pages use the same endpoint and do not add a preview/count API. Leads accept `status`, `source`, `activityAction`, `activityResponse`, `activityInterest`, `priority`, `category`, `archived`, `assignedUserId` (ADMIN only), `search`, lead creation `from`/`to`, and `activityDate` with optional `activityFrom`/`activityTo`. Multi-value filters are comma-separated; values within a group are ORed and groups are ANDed. Activity action, response, interest, and occurrence-date predicates must match a CALL/WHATSAPP entry on the same event. Activity presets are `today`, `yesterday`, and `custom`, evaluated in UTC. For custom activity dates, date-only end bounds include the whole selected UTC day; timestamp end bounds are inclusive to match the Leads table. Legacy `from`/`to` bounds are also inclusive. `archived=true` selects archived leads, `false` selects active leads, and omission selects both. `assignedUserId=unassigned` selects unassigned leads for ADMIN. Sales scope remains fixed to the authenticated Senior Sales user and cannot be widened with query parameters. Sync Runs accept connector and date bounds; Reports accept paired date bounds; Users and Providers accept no query filters. The Provider compatibility adapter exports active providers only. Column selection and exact record-count preview are not available through this route. The browser opens a native download tab so the CSV body remains streamed.
 
 The Leads `Lead Number` CSV value remains the stored `Lead.leadNumber` string. It is generated as a CUID for new records; historical backfilled values use `lead-` plus the database ID. There is no separate reliable numeric sequence, so the export does not derive or substitute a number.
 
