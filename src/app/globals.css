@@ -40,3 +40,32 @@ select,
 textarea {
   font: inherit;
 }
+
+.workspace-panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(100 116 139 / 45%) transparent;
+}
+
+.workspace-panel-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.workspace-panel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.workspace-panel-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-color: rgb(100 116 139 / 45%);
+  background-clip: content-box;
+}
+
+.workspace-panel-scroll:hover {
+  scrollbar-color: rgb(71 85 105 / 65%) transparent;
+}
+
+.workspace-panel-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105 / 65%);
+}

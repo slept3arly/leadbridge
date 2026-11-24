@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { getEligibleProgressFollowUps } from "../src/lib/record-progress-follow-ups";
 
-const modal = readFileSync("src/components/leads/record-progress-modal.tsx", "utf8");
+const modal = readFileSync("src/components/leads/record-progress-form.tsx", "utf8");
 const followUps = [
   { id: "pending-current", status: "PENDING", leadId: "lead-1" },
   { id: "pending-other", status: "PENDING", leadId: "lead-2" },
@@ -23,11 +23,12 @@ test("the read-only follow-up card includes task details and a compact empty sta
 });
 
 test("scheduling defaults off, uses an accessible switch, and clears hidden field values", () => {
-  assert.match(modal, /useState\(false\)/);
+  assert.match(modal, /useState<boolean \| null>\(null\)/);
+  assert.match(modal, /const scheduleFollowUp = scheduleEnabledDraft \?\? Boolean\(initialFollowUpSchedule\)/);
   assert.match(modal, /role="switch" aria-checked=\{scheduleFollowUp\}/);
   assert.match(modal, /focus-visible:ring-3/);
   assert.match(modal, /inert=\{!scheduleFollowUp\}/);
-  assert.match(modal, /if \(!enabled\) \{\s*setFollowUpDate\(""\);\s*setFollowUpTime\(""\);/);
+  assert.match(modal, /if \(!enabled\) \{\s*setFollowUpDateDraft\(""\);\s*setFollowUpTimeDraft\(""\);/);
   assert.match(modal, /scheduleFollowUp \? followUpFormDate\(followUpDate, followUpTime\) : null/);
   assert.match(modal, /scheduleFollowUp \? followUpTime \|\| null : null/);
 });

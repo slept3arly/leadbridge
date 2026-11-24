@@ -77,38 +77,40 @@ test("workspace follow-ups keep all pending tasks, sort next action first, and i
   assert.deepEqual(result.completed.map((item) => item.id), ["completed"]);
 });
 
-test("Lead Details exposes View Details while keeping Record Progress and permission-gated actions", () => {
+test("Lead Details keeps lead actions and embeds activity entry in the workspace", () => {
   const header = readFileSync("src/components/sales/lead-header.tsx", "utf8");
   const workspace = readFileSync("src/components/sales/lead-details-modal.tsx", "utf8");
 
   assert.match(header, /onViewDetails/);
   assert.match(header, /View Details/);
   assert.doesNotMatch(header, /Edit Details/);
-  assert.match(header, /onRecordProgress/);
+  assert.doesNotMatch(header, /onRecordProgress|Log Activity/);
   assert.match(header, /canArchive &&/);
   assert.match(header, /canDelete && onDelete/);
   assert.match(workspace, /onEditActivity={!isAdmin \?/);
   assert.match(workspace, /onViewDetails=\{\(\) => setViewDetailsOpen\(true\)\}/);
-  assert.match(workspace, /RecordProgressModal/);
+  assert.match(workspace, /RecordProgressForm/);
+  assert.doesNotMatch(workspace, /RecordProgressModal/);
   assert.match(workspace, /<ConfirmDialog[\s\S]*title=\{leadDraft\?\.isArchived/);
   assert.match(workspace, /title="Delete lead\?"/);
 });
 
-test("Activity and History leads the workspace while assignment and timestamps are separated", () => {
+test("Activity and History header stays concise while timing details remain in View Details", () => {
   const workspace = readFileSync("src/components/sales/lead-details-modal.tsx", "utf8");
   const info = readFileSync("src/components/sales/lead-info-section.tsx", "utf8");
 
-  assert.match(workspace, /<main className="order-1[\s\S]*<h3 id="workspace-history-title"[^>]*>Activity and history/);
+  assert.match(workspace, /id="workspace-history-panel"[\s\S]*<h3 id="workspace-history-title"[^>]*>Activity &amp; History/);
+  assert.doesNotMatch(workspace, /Most recent first|Assigned to \{lead\.assignedUser/);
   assert.doesNotMatch(workspace, /<main[\s\S]*?<LeadInfoSection/);
-  const assignment = workspace.slice(workspace.indexOf("aria-label=\"Assigned salesperson\""), workspace.indexOf("<FollowUpsColumn"));
-  assert.doesNotMatch(assignment, />Lead owner</);
-  assert.match(assignment, />Assigned to</);
-  assert.match(assignment, /lead\.assignedUser\?\.name \?\? "Unassigned"/);
-  assert.match(assignment, /dl className="flex items-center justify-between gap-3 text-sm"/);
-  assert.match(assignment, /dt className="shrink-0/);
-  assert.match(assignment, /dd className="min-w-0 break-words text-right/);
-  assert.doesNotMatch(assignment, /<dl className="mt-3/);
-  assert.doesNotMatch(assignment, /firstContactedAt|lastContactedAt|closedAt/);
+  assert.doesNotMatch(workspace, /firstContactedAt|lastContactedAt|closedAt/);
+  assert.match(workspace, /--workspace-grid-columns/);
+  assert.match(workspace, /overflow-y-auto[\s\S]*lg:flex/);
+  assert.match(workspace, /workspace-panel-scroll/);
+  const form = readFileSync("src/components/leads/record-progress-form.tsx", "utf8");
+  assert.match(form, /mode === "embedded" && <header className="sticky top-0 z-10 flex h-14/);
+  assert.match(form, /mode === "standalone" && <footer/);
+  assert.doesNotMatch(form, /mode === "embedded" && <footer/);
+  assert.match(form, /workspace-panel-scroll min-h-0 flex-1 space-y-8 overflow-y-auto/);
   assert.match(info, /Lead timing/);
   assert.match(info, /First contacted/);
   assert.match(info, /Last contacted/);
@@ -139,6 +141,7 @@ test("Lead Workspace retains historical Product labels and uses no separate work
   const workspace = readFileSync("src/components/sales/lead-details-modal.tsx", "utf8");
 
   assert.match(history, /product: "Product"/);
-  assert.match(workspace, /onComplete=\{\(id\) => \{ setCompletionFollowUpId\(id\); setProgressScheduleDraft\(null\); setRecordProgressOpen\(true\); \}\}/);
-  assert.match(workspace, /RecordProgressModal/);
+  assert.match(workspace, /onComplete=\{focusActivityForm\}/);
+  assert.match(workspace, /RecordProgressForm/);
+  assert.doesNotMatch(workspace, /RecordProgressModal/);
 });

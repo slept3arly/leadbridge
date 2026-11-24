@@ -23,9 +23,9 @@ test("user-facing activity entry points use the shared Log Activity component", 
     "src/components/sales/tasks-table-client.tsx",
     "src/components/sales/sales-my-leads-page-content.tsx",
   ];
-  for (const path of consumers) {
-    assert.match(readFileSync(join(process.cwd(), path), "utf8"), /RecordProgressModal/);
-  }
+  assert.match(readFileSync(join(process.cwd(), consumers[0]!), "utf8"), /RecordProgressForm/);
+  assert.doesNotMatch(readFileSync(join(process.cwd(), consumers[0]!), "utf8"), /RecordProgressModal/);
+  for (const path of consumers.slice(1)) assert.match(readFileSync(join(process.cwd(), path), "utf8"), /RecordProgressModal/);
 
   assert.match(readFileSync(join(process.cwd(), consumers[2]!), "utf8"), /Log Activity/);
   const taskTable = readFileSync(join(process.cwd(), consumers[1]!), "utf8");
@@ -142,7 +142,7 @@ test("Create Lead advances from a select only after a committed selection closes
 
 test("Create Lead handles custom dropdowns before single-line inputs and wires blur for Create only", () => {
   const modal = readFileSync(join(process.cwd(), "src/components/leads/lead-edit-modal.tsx"), "utf8");
-  const recordProgress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-modal.tsx"), "utf8");
+  const recordProgress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-form.tsx"), "utf8");
   const selectBranch = modal.indexOf('target.getAttribute("role") === "combobox"');
   const inputBranch = modal.indexOf("isEnterNavigationInput({ tagName: target.tagName");
 
@@ -166,7 +166,7 @@ test("Enter navigation applies only to single-line inputs and leaves selects and
 test("Create Lead wires Enter navigation without changing Record Progress", () => {
   const modal = readFileSync(join(process.cwd(), "src/components/leads/lead-edit-modal.tsx"), "utf8");
   const activityFields = readFileSync(join(process.cwd(), "src/components/sales/activity-fields.tsx"), "utf8");
-  const recordProgress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-modal.tsx"), "utf8");
+  const recordProgress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-form.tsx"), "utf8");
 
   assert.match(modal, /import \{ CREATE_LEAD_FIELD_ORDER, findNextCreateLeadFieldId, isEnterNavigationInput, shouldAdvanceFromSelect \}/);
   assert.match(modal, /onKeyDown=\{handleCreateLeadKeyDown\}/);
@@ -186,7 +186,7 @@ test("Create Lead wires Enter navigation without changing Record Progress", () =
 test("Create Lead uses a compact Notes textarea while Record Progress keeps its height", () => {
   const addLead = readFileSync(join(process.cwd(), "src/components/leads/lead-edit-modal.tsx"), "utf8");
   const activityFields = readFileSync(join(process.cwd(), "src/components/sales/activity-fields.tsx"), "utf8");
-  const recordProgress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-modal.tsx"), "utf8");
+  const recordProgress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-form.tsx"), "utf8");
   const createUi = addLead.slice(addLead.indexOf("const createLeadInteractionFields"), addLead.indexOf("if (!open) return null;"));
 
   assert.match(createUi, /compactNotes/);
@@ -223,7 +223,7 @@ test("Create Lead removes subtitles and the contact-method helper message", () =
 
 test("approved lead placeholders appear across create, edit, progress, activity, and search", () => {
   const leadForm = readFileSync(join(process.cwd(), "src/components/leads/lead-edit-modal.tsx"), "utf8");
-  const progress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-modal.tsx"), "utf8");
+  const progress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-form.tsx"), "utf8");
   const activity = readFileSync(join(process.cwd(), "src/components/sales/activity-fields.tsx"), "utf8");
   const activityEdit = readFileSync(join(process.cwd(), "src/components/sales/lead-details-modal.tsx"), "utf8");
   const tableControls = readFileSync(join(process.cwd(), "src/components/shared/table-controls.tsx"), "utf8");
@@ -251,7 +251,7 @@ test("approved lead placeholders appear across create, edit, progress, activity,
 
 test("approved initial defaults and saved edit values remain intact", () => {
   const leadForm = readFileSync(join(process.cwd(), "src/components/leads/lead-edit-modal.tsx"), "utf8");
-  const progress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-modal.tsx"), "utf8");
+  const progress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-form.tsx"), "utf8");
   const followUpService = readFileSync(join(process.cwd(), "src/services/follow-up.service.ts"), "utf8");
 
   assert.match(leadForm, /const \[status, setStatus\] = useState\("NEW"\)/);
@@ -261,11 +261,11 @@ test("approved initial defaults and saved edit values remain intact", () => {
   assert.match(leadForm, /setPriority\(lead\.priority\)/);
   assert.match(leadForm, /setActivityAction\("CALL"\)/);
   assert.match(progress, /const \[action, setAction\] = useState\("CALL"\)/);
-  assert.match(progress, /const \[status, setStatus\] = useState\(leadProp\?\.status \?\? "NEW"\)/);
-  assert.match(progress, /const \[priority, setPriority\] = useState\(leadProp\?\.priority \?\? "MEDIUM"\)/);
-  assert.match(progress, /const \[scheduleFollowUp, setScheduleFollowUp\] = useState\(false\)/);
-  assert.match(progress, /const \[followUpDate, setFollowUpDate\] = useState\(""\)/);
-  assert.match(progress, /const \[followUpTime, setFollowUpTime\] = useState\(""\)/);
+  assert.match(progress, /const \[statusDraft, setStatusDraft\] = useState\(leadProp\?\.status \?\? "NEW"\)/);
+  assert.match(progress, /const \[priorityDraft, setPriorityDraft\] = useState\(leadProp\?\.priority \?\? "MEDIUM"\)/);
+  assert.match(progress, /const scheduleFollowUp = scheduleEnabledDraft \?\? Boolean\(initialFollowUpSchedule\)/);
+  assert.match(progress, /const \[followUpDateDraft, setFollowUpDateDraft\] = useState<string \| null>\(null\)/);
+  assert.match(progress, /const \[followUpTimeDraft, setFollowUpTimeDraft\] = useState<string \| null>\(null\)/);
   assert.match(followUpService, /priority: \(data\.priority as FollowUpPriority\) \?\? "MEDIUM"/);
 });
 
@@ -305,7 +305,7 @@ test("application components contain no handwritten native select controls", () 
 test("Create Lead uses an accessible follow-up toggle and omits scheduling values when off", () => {
   const addLead = readFileSync(join(process.cwd(), "src/components/leads/lead-edit-modal.tsx"), "utf8");
   const activityFields = readFileSync(join(process.cwd(), "src/components/sales/activity-fields.tsx"), "utf8");
-  const recordProgress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-modal.tsx"), "utf8");
+  const recordProgress = readFileSync(join(process.cwd(), "src/components/leads/record-progress-form.tsx"), "utf8");
   const createUi = addLead.slice(addLead.indexOf("const createLeadInteractionFields"), addLead.indexOf("if (!open) return null;"));
 
   assert.match(createUi, /scheduleToggle/);
@@ -367,7 +367,9 @@ test("the obsolete Log Activity modal is absent and Record Progress owns interac
   assert.deepEqual(oldComponentReferences, []);
 
   const directProgressPosts = files.filter((path) => /axios\.post\(\s*`[^`]*\/activities`/.test(readFileSync(path, "utf8")));
-  assert.deepEqual(directProgressPosts.map((path) => relative(process.cwd(), path)), ["src/components/leads/record-progress-modal.tsx"]);
+  assert.deepEqual(directProgressPosts.map((path) => relative(process.cwd(), path)), ["src/components/leads/record-progress-form.tsx"]);
+  const modalWrapper = readFileSync(join(process.cwd(), "src/components/leads/record-progress-modal.tsx"), "utf8");
+  assert.match(modalWrapper, /<RecordProgressForm[\s\S]*mode="standalone"/);
 });
 
 test("standalone scheduling and compatibility Note/follow-up APIs remain available", () => {

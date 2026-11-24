@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowUpRight, Eye, Mail, Phone, X } from "lucide-react";
+import { Phone, X } from "lucide-react";
 import { getCategoryLabel, getPriorityLabel, getStatusLabel } from "@/lib/lead-constants";
 
 type LeadWorkspaceHeaderProps = {
@@ -20,7 +20,6 @@ type LeadWorkspaceHeaderProps = {
     assignedUser?: { id: string; name: string } | null;
   };
   onClose: () => void;
-  onRecordProgress: () => void;
   onViewDetails: () => void;
   onToggleArchive: () => void;
   onDelete?: () => void;
@@ -33,7 +32,6 @@ type LeadWorkspaceHeaderProps = {
 export function LeadHeader({
   lead,
   onClose,
-  onRecordProgress,
   onViewDetails,
   onToggleArchive,
   onDelete,
@@ -43,35 +41,27 @@ export function LeadHeader({
   canDelete = false,
 }: LeadWorkspaceHeaderProps) {
   return (
-    <header className="sticky top-0 z-20 shrink-0 border-b border-[var(--color-border)] bg-white/95 px-4 py-4 backdrop-blur sm:px-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-            <h2 id="lead-workspace-title" className="max-w-full truncate text-xl font-semibold text-[var(--color-ink)] sm:text-2xl">{lead.displayName}</h2>
-            {lead.leadNumber && <span className="text-xs font-medium text-[var(--color-muted)]">#{lead.leadNumber}</span>}
-            {lead.isArchived && <Badge label="Archived" />}
+    <header className="sticky top-0 z-20 shrink-0 border-b border-[var(--color-border)] bg-white/95 px-4 py-2 backdrop-blur sm:px-6">
+      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 xl:flex-nowrap">
+          <div className="flex min-w-0 max-w-full flex-col justify-center xl:max-w-[26%]">
+            <h2 id="lead-workspace-title" className="truncate text-lg font-semibold leading-6 text-[var(--color-ink)]">{lead.displayName}</h2>
+            {lead.company && <span className="truncate text-sm leading-5 text-[var(--color-muted)]">{lead.company}</span>}
           </div>
-          {lead.company && <p className="mt-0.5 text-sm text-[var(--color-muted)]">{lead.company}</p>}
-
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {lead.phone && <a href={`tel:${lead.phone}`} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 text-sm text-[var(--color-ink)] hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]" aria-label={`Call ${lead.displayName} at ${lead.phone}`}><Phone size={14} aria-hidden="true" />{lead.phone}</a>}
-            {lead.email && <a href={`mailto:${lead.email}`} className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 text-sm text-[var(--color-ink)] hover:bg-slate-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]"><Mail size={14} className="shrink-0" aria-hidden="true" /><span className="truncate">{lead.email}</span></a>}
-            {!lead.phone && !lead.email && <span className="text-sm text-[var(--color-muted)]">No phone or email recorded</span>}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          {lead.phone && <span className="inline-flex min-w-0 max-w-full items-center gap-1 whitespace-nowrap text-sm text-[var(--color-muted)] xl:max-w-[16%]" aria-label={`Phone ${lead.phone}`}><Phone size={13} className="shrink-0" aria-hidden="true" /><span className="truncate">{lead.phone}</span></span>}
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
             <Badge label={getStatusLabel(lead.status)} toneKey={lead.status} />
             <Badge label={getPriorityLabel(lead.priority)} toneKey={lead.priority} />
             {lead.category && <Badge label={getCategoryLabel(lead.category)} toneKey={lead.category} />}
+            {lead.isArchived && <Badge label="Archived" />}
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button variant="black" onClick={onRecordProgress}><ArrowUpRight size={16} />Log Activity</Button>
-          <Button variant="secondary" onClick={onViewDetails}><Eye size={15} />View Details</Button>
-          {canArchive && <Button variant="ghost" isLoading={archiving} onClick={onToggleArchive}>{lead.isArchived ? "Restore" : "Archive"}</Button>}
-          {canDelete && onDelete && <Button variant="ghost" isLoading={deleting} onClick={onDelete} className="text-red-600 hover:bg-red-50 hover:text-red-700">Delete</Button>}
-          <Button variant="ghost" onClick={onClose} aria-label="Close lead workspace"><X size={18} /></Button>
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 xl:flex-nowrap">
+          <Button size="sm" variant="secondary" onClick={onViewDetails} className="min-h-10">View Details</Button>
+          {canArchive && <Button size="sm" variant="ghost" isLoading={archiving} onClick={onToggleArchive} className="min-h-10">{lead.isArchived ? "Restore" : "Archive"}</Button>}
+          {canDelete && onDelete && <Button size="sm" variant="ghost" isLoading={deleting} onClick={onDelete} className="min-h-10 text-red-600 hover:bg-red-50 hover:text-red-700">Delete</Button>}
+          <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close lead workspace" className="min-h-10 min-w-10 px-2"><X size={18} /></Button>
         </div>
       </div>
     </header>

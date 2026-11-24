@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const modal = readFileSync("src/components/leads/record-progress-modal.tsx", "utf8");
+const modal = readFileSync("src/components/leads/record-progress-form.tsx", "utf8");
 
 test("Record Progress uses a full-screen responsive two-column modal without accordions", () => {
   assert.match(modal, /fixed inset-0 z-\[60\]/);

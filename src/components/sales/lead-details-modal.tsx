@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect, type CSSProperties } from "react";
 import axios from "axios";
 import { LeadHeader } from "@/components/sales/lead-header";
 import type { LeadInfoSection } from "@/components/sales/lead-info-section";
@@ -15,8 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { useLeadDetails, type LeadFollowUp, type ActivityEventItem } from "@/hooks/use-lead-details";
-import { CheckCircle2, RotateCcw, Trash2, Plus } from "lucide-react";
-import { RecordProgressModal } from "@/components/leads/record-progress-modal";
+import { CheckCircle2, RotateCcw, Trash2 } from "lucide-react";
+import { RecordProgressForm } from "@/components/leads/record-progress-form";
 import { LeadEditModal } from "@/components/leads/lead-edit-modal";
 import { formatDate, formatTime } from "@/lib/utils";
 import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
@@ -296,25 +296,22 @@ function FollowUpsColumn({
   onComplete,
   onReschedule,
   onDelete,
-  onScheduleNew,
 }: {
   followUps: LeadFollowUp[];
   currentUserId: string;
   onComplete: (id: string) => void;
   onReschedule: (id: string) => void;
   onDelete: (id: string) => void;
-  onScheduleNew: () => void;
 }) {
   const { pending, completed, overdueIds } = useMemo(() => organizeLeadWorkspaceFollowUps(followUps), [followUps]);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white" aria-labelledby="workspace-follow-ups-title">
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-3">
+      <div className="border-b border-[var(--color-border)] px-4 py-3">
         <div>
           <h3 id="workspace-follow-ups-title" className="text-sm font-semibold text-[var(--color-ink)]">Follow-ups</h3>
           <p className="mt-0.5 text-xs text-[var(--color-muted)]">{pending.length ? `${pending.length} pending` : "No pending tasks"}</p>
         </div>
-        <Button size="sm" variant="secondary" onClick={onScheduleNew}><Plus size={14} />Schedule</Button>
       </div>
 
       <div className="space-y-3 p-3">
@@ -379,9 +376,14 @@ export function LeadDetailsModal({
   const { data, loading: detailsLoading, refresh } = useLeadDetails(leadId);
   const leadDraft = data?.lead ?? null;
 
-  const [recordProgressOpen, setRecordProgressOpen] = useState(false);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<"history" | "activity">("history");
+  const [historyPanelSplit, setHistoryPanelSplit] = useState(70);
+  const workspaceTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const workspaceGridRef = useRef<HTMLDivElement | null>(null);
+  const resizeSeparatorRef = useRef<HTMLDivElement | null>(null);
+  const splitRef = useRef(70);
+  const dragRef = useRef<{ offset: number; userSelect: string; cursor: string } | null>(null);
   const [scheduleFollowUpOpen, setScheduleFollowUpOpen] = useState(false);
-  const [completionFollowUpId, setCompletionFollowUpId] = useState<string | undefined>(undefined);
   const [progressScheduleDraft, setProgressScheduleDraft] = useState<{ date: string; time: string } | null>(null);
   const [editActivity, setEditActivity] = useState<ActivityEventItem | null>(null);
   const [rescheduleFollowUp, setRescheduleFollowUp] = useState<{ id: string; dueDate: string | null; dueTime: string | null } | null>(null);
@@ -401,6 +403,90 @@ export function LeadDetailsModal({
   const [deleteConfirmError, setDeleteConfirmError] = useState<string | null>(null);
 
   const dialogRef = useAccessibleDialog<HTMLDivElement>({ open: true, onClose });
+
+  const applyHistoryPanelSplit = useCallback((requestedSplit: number) => {
+    const split = Math.max(30, Math.min(70, requestedSplit));
+    splitRef.current = split;
+    workspaceGridRef.current?.style.setProperty(
+      "--workspace-grid-columns",
+      `minmax(0, ${split}fr) 12px minmax(0, ${100 - split}fr)`,
+    );
+    return split;
+  }, []);
+
+  const restoreDividerDragStyles = useCallback(() => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    document.body.style.userSelect = drag.userSelect;
+    document.body.style.cursor = drag.cursor;
+    dragRef.current = null;
+  }, []);
+
+  const handleDividerPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !event.isPrimary || !workspaceGridRef.current || !resizeSeparatorRef.current) return;
+    const gridRect = workspaceGridRef.current.getBoundingClientRect();
+    const separatorRect = resizeSeparatorRef.current.getBoundingClientRect();
+    const leftWidth = (gridRect.width - separatorRect.width) * splitRef.current / 100;
+    dragRef.current = {
+      offset: event.clientX - (gridRect.left + leftWidth),
+      userSelect: document.body.style.userSelect,
+      cursor: document.body.style.cursor,
+    };
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.focus();
+    event.preventDefault();
+  }, []);
+
+  const handleDividerPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const grid = workspaceGridRef.current;
+    const separator = resizeSeparatorRef.current;
+    if (!drag || !grid || !separator) return;
+    const gridRect = grid.getBoundingClientRect();
+    const availableWidth = gridRect.width - separator.getBoundingClientRect().width;
+    if (availableWidth <= 0) return;
+    const leftWidth = event.clientX - gridRect.left - drag.offset;
+    applyHistoryPanelSplit(leftWidth / availableWidth * 100);
+  }, [applyHistoryPanelSplit]);
+
+  const finishDividerDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    restoreDividerDragStyles();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setHistoryPanelSplit(splitRef.current);
+  }, [restoreDividerDragStyles]);
+
+  const handleDividerKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    let nextSplit = splitRef.current;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") nextSplit -= 2;
+    else if (event.key === "ArrowRight" || event.key === "ArrowUp") nextSplit += 2;
+    else if (event.key === "Home") nextSplit = 30;
+    else if (event.key === "End") nextSplit = 70;
+    else return;
+    event.preventDefault();
+    setHistoryPanelSplit(applyHistoryPanelSplit(nextSplit));
+  }, [applyHistoryPanelSplit]);
+
+  useEffect(() => () => restoreDividerDragStyles(), [restoreDividerDragStyles]);
+
+  const focusActivityForm = useCallback(() => {
+    setActiveWorkspaceTab("activity");
+    requestAnimationFrame(() => document.getElementById("record-progress-action")?.focus());
+  }, []);
+
+  const handleWorkspaceTabKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const nextIndex = event.key === "ArrowRight" || event.key === "ArrowDown" ? (index + 1) % 2
+      : event.key === "ArrowLeft" || event.key === "ArrowUp" ? (index + 1) % 2
+        : event.key === "Home" ? 0
+          : event.key === "End" ? 1
+            : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    setActiveWorkspaceTab(nextIndex === 0 ? "history" : "activity");
+    workspaceTabRefs.current[nextIndex]?.focus();
+  }, []);
 
   const handleToggleArchive = useCallback(() => {
     setArchiveConfirmError(null);
@@ -482,9 +568,8 @@ export function LeadDetailsModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden">
+    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-white">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-
       <div
         ref={dialogRef}
         data-accessible-dialog
@@ -492,22 +577,19 @@ export function LeadDetailsModal({
         aria-modal="true"
         aria-labelledby="lead-workspace-title"
         tabIndex={-1}
-        className="relative z-10 mt-2 mb-2 flex h-[96dvh] max-h-[96dvh] w-[96%] max-w-7xl flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-2xl sm:mt-4 sm:mb-4 sm:h-[92vh] sm:max-h-[92vh] sm:w-[95%]"
+        className="relative z-10 flex h-[100dvh] w-full min-w-0 flex-col overflow-hidden bg-white shadow-2xl"
       >
         {detailsLoading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="animate-spin h-8 w-8 border-2 border-[var(--color-brand)] border-t-transparent rounded-full" />
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--color-brand)] border-t-transparent" />
           </div>
         ) : !lead ? (
-          <div className="flex-1 flex items-center justify-center text-sm text-[var(--color-muted)]">
-            Failed to load lead details.
-          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-[var(--color-muted)]">Failed to load lead details.</div>
         ) : (
           <>
             <LeadHeader
               lead={lead}
               onClose={onClose}
-              onRecordProgress={() => { setCompletionFollowUpId(undefined); setProgressScheduleDraft(null); setRecordProgressOpen(true); }}
               onViewDetails={() => setViewDetailsOpen(true)}
               onToggleArchive={handleToggleArchive}
               onDelete={handleDelete}
@@ -517,66 +599,111 @@ export function LeadDetailsModal({
               canDelete={canDelete}
             />
 
-            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 p-3 sm:p-5 lg:overflow-hidden">
-              <div className="mx-auto grid max-w-7xl grid-cols-1 items-start gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-5">
-                <aside className="order-2 min-w-0 space-y-4 lg:order-2 lg:h-full lg:overflow-y-auto lg:pb-2" aria-label="Assignment and follow-ups">
-                  <section className="rounded-2xl border border-[var(--color-border)] bg-white p-4" aria-label="Assigned salesperson">
-                    <dl className="flex items-center justify-between gap-3 text-sm">
-                      <dt className="shrink-0 text-[var(--color-muted)]">Assigned to</dt><dd className="min-w-0 break-words text-right font-medium text-[var(--color-ink)]">{lead.assignedUser?.name ?? "Unassigned"}</dd>
-                    </dl>
-                  </section>
-                  <FollowUpsColumn
-                    followUps={allFollowUps}
-                    currentUserId={currentUserId}
-                    onComplete={(id) => { setCompletionFollowUpId(id); setProgressScheduleDraft(null); setRecordProgressOpen(true); }}
-                    onReschedule={(id) => {
-                      const fu = allFollowUps.find((f) => f.id === id);
-                      if (fu) setRescheduleFollowUp({ id: fu.id, dueDate: fu.dueDate, dueTime: fu.dueTime });
-                    }}
-                    onDelete={handleDeleteFollowUp}
-                    onScheduleNew={() => setScheduleFollowUpOpen(true)}
-                  />
-                </aside>
+            <div role="tablist" aria-label="Lead workspace panels" className="grid shrink-0 grid-cols-2 border-b border-[var(--color-border)] bg-white lg:hidden">
+              {(["history", "activity"] as const).map((tab, index) => (
+                <button
+                  key={tab}
+                  ref={(element) => { workspaceTabRefs.current[index] = element; }}
+                  id={`workspace-${tab}-tab`}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeWorkspaceTab === tab}
+                  aria-controls={`workspace-${tab}-panel`}
+                  tabIndex={activeWorkspaceTab === tab ? 0 : -1}
+                  onClick={() => setActiveWorkspaceTab(tab)}
+                  onKeyDown={(event) => handleWorkspaceTabKeyDown(event, index)}
+                  className={`min-h-12 border-b-2 px-3 py-3 text-sm font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand)] ${activeWorkspaceTab === tab ? "border-[var(--color-brand)] text-[var(--color-brand)]" : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-ink)]"}`}
+                >
+                  {tab === "history" ? "History" : "Log Activity"}
+                </button>
+              ))}
+            </div>
 
-                <main className="order-1 min-w-0 space-y-4 lg:order-1 lg:h-full lg:overflow-y-auto lg:pb-2">
-                  <section className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white" aria-labelledby="workspace-history-title">
-                    <div className="border-b border-[var(--color-border)] px-4 py-3 sm:px-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h3 id="workspace-history-title" className="text-sm font-semibold text-[var(--color-ink)]">Activity and history</h3>
-                          <p className="mt-0.5 text-xs text-[var(--color-muted)]">Most recent first · up to 100 activity events and 100 saved notes</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="px-4 py-2 sm:px-5">
-                      <DailyHistory
-                        activityEvents={workspaceEvents}
-                        onEditActivity={!isAdmin ? (id) => {
-                          const event = activityEvents.find((item) => item.entries.some((entry) => entry.id === id));
-                          if (event) setEditActivity(event);
-                        } : undefined}
+            <div
+              ref={workspaceGridRef}
+              className="grid min-h-0 flex-1 min-w-0 grid-cols-1 lg:grid-cols-[var(--workspace-grid-columns)]"
+              style={{
+                "--workspace-grid-columns": `minmax(0, ${historyPanelSplit}fr) 12px minmax(0, ${100 - historyPanelSplit}fr)`,
+              } as CSSProperties}
+            >
+                <section
+                  id="workspace-history-panel"
+                  role="tabpanel"
+                  aria-labelledby="workspace-history-title"
+                  className={`${activeWorkspaceTab === "history" ? "flex" : "hidden"} min-h-0 min-w-0 flex-col overflow-hidden lg:flex lg:border-r lg:border-[var(--color-border)]`}
+                >
+                  <header className="flex h-14 shrink-0 items-center border-b border-[var(--color-border)] bg-white/95 px-5 backdrop-blur sm:px-6">
+                    <h3 id="workspace-history-title" className="text-base leading-6 font-semibold text-[var(--color-ink)]">Activity &amp; History</h3>
+                  </header>
+                  <div tabIndex={0} className="workspace-panel-scroll min-h-0 min-w-0 flex-1 overflow-y-auto bg-[var(--color-panel)] px-5 py-5 sm:px-6 sm:py-6">
+                    <DailyHistory
+                      activityEvents={workspaceEvents}
+                      onEditActivity={!isAdmin ? (id) => {
+                        const event = activityEvents.find((item) => item.entries.some((entry) => entry.id === id));
+                        if (event) setEditActivity(event);
+                      } : undefined}
+                    />
+                  </div>
+                </section>
+
+                <div
+                  ref={resizeSeparatorRef}
+                  role="separator"
+                  aria-label="Resize Activity & History and Log Activity panels"
+                  aria-orientation="vertical"
+                  aria-controls="workspace-history-panel workspace-activity-panel"
+                  aria-valuemin={30}
+                  aria-valuemax={70}
+                  aria-valuenow={Math.round(historyPanelSplit)}
+                  aria-valuetext={`${Math.round(historyPanelSplit)}% Activity & History, ${100 - Math.round(historyPanelSplit)}% Log Activity`}
+                  tabIndex={0}
+                  onPointerDown={handleDividerPointerDown}
+                  onPointerMove={handleDividerPointerMove}
+                  onPointerUp={finishDividerDrag}
+                  onPointerCancel={finishDividerDrag}
+                  onKeyDown={handleDividerKeyDown}
+                  className="group hidden cursor-col-resize touch-none select-none items-center justify-center outline-none hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand)] lg:flex"
+                >
+                  <span className="h-12 w-1 rounded-full bg-[var(--color-border)] transition-colors group-hover:bg-[var(--color-brand)] group-focus-visible:bg-[var(--color-brand)]" aria-hidden="true" />
+                </div>
+
+                <section
+                  id="workspace-activity-panel"
+                  role="tabpanel"
+                  aria-labelledby="workspace-activity-title"
+                  tabIndex={0}
+                  className={`${activeWorkspaceTab === "activity" ? "flex" : "hidden"} min-h-0 min-w-0 flex-col overflow-hidden bg-white lg:flex`}
+                >
+                  <RecordProgressForm
+                    key={`embedded-progress:${leadId}`}
+                    mode="embedded"
+                    leadId={leadId}
+                    lead={leadDraft}
+                    pendingFollowUps={allFollowUps}
+                    initialFollowUpSchedule={progressScheduleDraft}
+                    followUpManagement={
+                      <FollowUpsColumn
+                        followUps={allFollowUps}
+                        currentUserId={currentUserId}
+                        onComplete={focusActivityForm}
+                        onReschedule={(id) => {
+                          const fu = allFollowUps.find((item) => item.id === id);
+                          if (fu) setRescheduleFollowUp({ id: fu.id, dueDate: fu.dueDate, dueTime: fu.dueTime });
+                        }}
+                        onDelete={handleDeleteFollowUp}
                       />
-                    </div>
-                  </section>
-                </main>
-              </div>
+                    }
+                    onSaved={async () => {
+                      await refresh();
+                      setProgressScheduleDraft(null);
+                      if (onUpdate) onUpdate();
+                    }}
+                  />
+                </section>
             </div>
           </>
         )}
       </div>
-
-      {recordProgressOpen && <RecordProgressModal
-        key={`lead:${leadId}:record-progress:${recordProgressOpen ? "open" : "closed"}:${completionFollowUpId ?? "none"}`}
-        open
-        leadId={leadId}
-        leadName={lead?.displayName as string | undefined}
-        lead={leadDraft}
-        pendingFollowUps={allFollowUps.filter((item) => item.status === "PENDING")}
-        initialFollowUpId={completionFollowUpId}
-        initialFollowUpSchedule={progressScheduleDraft}
-        onClose={() => { setRecordProgressOpen(false); setCompletionFollowUpId(undefined); setProgressScheduleDraft(null); }}
-        onSaved={async () => { await refresh(); if (onUpdate) onUpdate(); }}
-      />}
 
       <ScheduleFollowUpModal
         key={`lead:${leadId}:schedule-follow-up:${scheduleFollowUpOpen ? "open" : "closed"}`}
@@ -584,7 +711,7 @@ export function LeadDetailsModal({
         leadId={leadId}
         onClose={() => setScheduleFollowUpOpen(false)}
         onSaved={refresh}
-        onRecordProgress={(date, time) => { setScheduleFollowUpOpen(false); setCompletionFollowUpId(undefined); setProgressScheduleDraft({ date, time }); setRecordProgressOpen(true); }}
+        onRecordProgress={(date, time) => { setScheduleFollowUpOpen(false); setProgressScheduleDraft({ date, time }); focusActivityForm(); }}
       />
 
 
