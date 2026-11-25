@@ -77,6 +77,25 @@ test("workspace follow-ups keep all pending tasks, sort next action first, and i
   assert.deepEqual(result.completed.map((item) => item.id), ["completed"]);
 });
 
+test("Lead Details pending follow-up cards are read-only and retain completed follow-ups", () => {
+  const workspace = readFileSync("src/components/sales/lead-details-modal.tsx", "utf8");
+  const card = workspace.slice(workspace.indexOf("function FollowUpsColumn"), workspace.indexOf("export function LeadDetailsModal"));
+
+  assert.match(card, /followUp\.title/);
+  assert.match(card, /followUp\.dueDate/);
+  assert.match(card, /followUp\.assignedUser/);
+  assert.match(card, /label="Overdue"/);
+  assert.match(card, /Completed follow-ups/);
+  assert.match(card, /<details/);
+  assert.match(card, /\{!hideActions && \(/);
+  assert.match(workspace, /hideActions=\{hideFollowUpActions\}/);
+  assert.match(workspace, /onReschedule=\{/);
+  assert.match(workspace, /onDelete=\{handleDeleteFollowUp\}/);
+
+  const form = readFileSync("src/components/leads/record-progress-form.tsx", "utf8");
+  assert.match(form, /record-progress-schedule-toggle/);
+});
+
 test("Lead Details keeps lead actions and embeds activity entry in the workspace", () => {
   const header = readFileSync("src/components/sales/lead-header.tsx", "utf8");
   const workspace = readFileSync("src/components/sales/lead-details-modal.tsx", "utf8");
@@ -141,7 +160,7 @@ test("Lead Workspace retains historical Product labels and uses no separate work
   const workspace = readFileSync("src/components/sales/lead-details-modal.tsx", "utf8");
 
   assert.match(history, /product: "Product"/);
-  assert.match(workspace, /onComplete=\{focusActivityForm\}/);
   assert.match(workspace, /RecordProgressForm/);
+  assert.match(readFileSync("src/components/leads/record-progress-form.tsx", "utf8"), /record-progress-schedule-toggle/);
   assert.doesNotMatch(workspace, /RecordProgressModal/);
 });

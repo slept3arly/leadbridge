@@ -17,17 +17,22 @@ function sourceFiles(directory: string): string[] {
   });
 }
 
-test("user-facing activity entry points use the shared Log Activity component", () => {
+test("Lead Details and Tasks use the shared Log Activity component", () => {
   const consumers = [
     "src/components/sales/lead-details-modal.tsx",
     "src/components/sales/tasks-table-client.tsx",
-    "src/components/sales/sales-my-leads-page-content.tsx",
   ];
   assert.match(readFileSync(join(process.cwd(), consumers[0]!), "utf8"), /RecordProgressForm/);
   assert.doesNotMatch(readFileSync(join(process.cwd(), consumers[0]!), "utf8"), /RecordProgressModal/);
-  for (const path of consumers.slice(1)) assert.match(readFileSync(join(process.cwd(), path), "utf8"), /RecordProgressModal/);
+  assert.match(readFileSync(join(process.cwd(), consumers[1]!), "utf8"), /RecordProgressModal/);
 
-  assert.match(readFileSync(join(process.cwd(), consumers[2]!), "utf8"), /Log Activity/);
+  const myLeads = readFileSync(join(process.cwd(), "src/components/sales/sales-my-leads-page-content.tsx"), "utf8");
+  assert.doesNotMatch(myLeads, /RecordProgressModal|progressLeadId|Log Activity/);
+  assert.match(myLeads, /hideFollowUpActions/);
+  assert.match(myLeads, /Archive/);
+  assert.match(myLeads, /Delete \$\{lead\.name\}/);
+  assert.match(myLeads, /View details for \$\{lead\.name\}/);
+
   const taskTable = readFileSync(join(process.cwd(), consumers[1]!), "utf8");
   assert.match(taskTable, /initialFollowUpId=\{progressTarget\.id\}/);
   assert.match(taskTable, /Log activity and review task completion/);

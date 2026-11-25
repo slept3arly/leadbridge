@@ -293,12 +293,14 @@ function EditActivityModal({
 function FollowUpsColumn({
   followUps,
   currentUserId,
+  hideActions = false,
   onComplete,
   onReschedule,
   onDelete,
 }: {
   followUps: LeadFollowUp[];
   currentUserId: string;
+  hideActions?: boolean;
   onComplete: (id: string) => void;
   onReschedule: (id: string) => void;
   onDelete: (id: string) => void;
@@ -332,11 +334,13 @@ function FollowUpsColumn({
                 </div>
                 {overdue && <Badge label="Overdue" toneKey="URGENT" className="shrink-0" />}
               </div>
-              <div className="mt-3 flex items-center gap-1.5">
-                <Button size="sm" variant="secondary" onClick={() => onComplete(followUp.id)}><CheckCircle2 size={13} />Log Activity</Button>
-                <IconActionButton icon={RotateCcw} label={`Reschedule ${followUp.title}`} onClick={() => onReschedule(followUp.id)} className="h-8 w-8" />
-                {followUp.createdBy.id === currentUserId && <IconActionButton icon={Trash2} label={`Delete ${followUp.title}`} onClick={() => onDelete(followUp.id)} className="h-8 w-8" />}
-              </div>
+              {!hideActions && (
+                <div className="mt-3 flex items-center gap-1.5">
+                  <Button size="sm" variant="secondary" onClick={() => onComplete(followUp.id)}><CheckCircle2 size={13} />Log Activity</Button>
+                  <IconActionButton icon={RotateCcw} label={`Reschedule ${followUp.title}`} onClick={() => onReschedule(followUp.id)} className="h-8 w-8" />
+                  {followUp.createdBy.id === currentUserId && <IconActionButton icon={Trash2} label={`Delete ${followUp.title}`} onClick={() => onDelete(followUp.id)} className="h-8 w-8" />}
+                </div>
+              )}
             </article>
           );
         })}
@@ -360,6 +364,7 @@ export function LeadDetailsModal({
   isAdmin,
   canArchive = false,
   canDelete = false,
+  hideFollowUpActions = false,
   leadSources,
   onClose,
   onUpdate,
@@ -369,6 +374,7 @@ export function LeadDetailsModal({
   isAdmin: boolean;
   canArchive?: boolean;
   canDelete?: boolean;
+  hideFollowUpActions?: boolean;
   leadSources?: Array<{ id: string; name: string }>;
   onClose: () => void;
   onUpdate?: () => void;
@@ -685,6 +691,7 @@ export function LeadDetailsModal({
                       <FollowUpsColumn
                         followUps={allFollowUps}
                         currentUserId={currentUserId}
+                        hideActions={hideFollowUpActions}
                         onComplete={focusActivityForm}
                         onReschedule={(id) => {
                           const fu = allFollowUps.find((item) => item.id === id);

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog";
 import { LeadDetailsModal } from "@/components/sales/lead-details-modal";
-import { RecordProgressModal } from "@/components/leads/record-progress-modal";
 import { SalesTableControls } from "@/components/sales/sales-table-controls";
 import { LeadEditModal } from "@/components/leads/lead-edit-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -180,7 +179,6 @@ export function SalesMyLeadsPageContent({
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
-  const [progressLeadId, setProgressLeadId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   useCrmSync({ entityTypes: CRM_MUTATION_ENTITY_TYPES, onRefresh: () => router.refresh() });
@@ -287,20 +285,9 @@ export function SalesMyLeadsPageContent({
       className: "text-center",
       render: (lead: SalesLeadRow) => (
         <div
-          className="flex flex-col gap-1.5 min-w-[130px]"
+          className="min-w-[130px]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex justify-center">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setProgressLeadId(lead.id)}
-              className="gap-1.5"
-            >
-              <Plus size={14} />
-              Log Activity
-            </Button>
-          </div>
           <div className="flex items-center justify-center gap-1">
             {canArchive ? (
               <IconActionButton
@@ -389,6 +376,7 @@ export function SalesMyLeadsPageContent({
         isAdmin={user.role === "ADMIN"}
         canArchive={canArchive}
         canDelete={canDelete}
+        hideFollowUpActions
         leadSources={leadSources}
       />
       {detailLeadId && (
@@ -398,6 +386,7 @@ export function SalesMyLeadsPageContent({
           isAdmin={user.role === "ADMIN"}
           canArchive={canArchive}
           canDelete={canDelete}
+          hideFollowUpActions
           leadSources={leadSources}
           onClose={() => setDetailLeadId(null)}
           onUpdate={() => router.refresh()}
@@ -409,17 +398,6 @@ export function SalesMyLeadsPageContent({
           onClose={() => setCreateOpen(false)}
           leadSources={leadSources}
           submitLabel="Save"
-        />
-      )}
-      {progressLeadId && (
-        <RecordProgressModal
-          open={true}
-          leadId={progressLeadId}
-          onSaved={() => {
-            setProgressLeadId(null);
-            router.refresh();
-          }}
-          onClose={() => setProgressLeadId(null)}
         />
       )}
       <ConfirmDialog

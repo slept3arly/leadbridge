@@ -8,12 +8,14 @@ export function LeadDetailDialog({
   isAdmin,
   canArchive,
   canDelete = false,
+  hideFollowUpActions = false,
   leadSources,
 }: {
   currentUserId: string;
   isAdmin: boolean;
   canArchive: boolean;
   canDelete?: boolean;
+  hideFollowUpActions?: boolean;
   leadSources?: Array<{ id: string; name: string }>;
 }) {
   const router = useRouter();
@@ -37,6 +39,7 @@ export function LeadDetailDialog({
       isAdmin={isAdmin}
       canArchive={canArchive}
       canDelete={canDelete}
+      hideFollowUpActions={hideFollowUpActions}
       leadSources={leadSources}
       onClose={handleClose}
       onUpdate={() => router.refresh()}
