@@ -4,6 +4,7 @@ import { Pencil, X } from "lucide-react";
 import { LeadInfoSection } from "@/components/sales/lead-info-section";
 import { Button } from "@/components/ui/button";
 import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
+import { getLeadDisplayName } from "@/lib/lead-display";
 
 type LeadCustomer = Parameters<typeof LeadInfoSection>[0]["lead"];
 
@@ -37,7 +38,7 @@ export function LeadDetailsPopup({
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3 sm:px-6">
           <div>
             <h2 id="lead-view-details-title" className="text-lg font-semibold text-[var(--color-ink)]">View Details</h2>
-            <p className="mt-0.5 text-sm text-[var(--color-muted)]">{lead.displayName}</p>
+            <p className="mt-0.5 text-sm text-[var(--color-muted)]">{getLeadDisplayName(lead.displayName)}</p>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close lead details">
             <X size={18} aria-hidden="true" />

@@ -19,10 +19,11 @@ import { CREATE_LEAD_FIELD_ORDER, findNextCreateLeadFieldId, isEnterNavigationIn
 
 export type LeadFormData = {
   id: string;
-  name: string;
+  name: string | null;
   company: string | null;
   email: string | null;
   phone: string | null;
+  alternatePhone?: string | null;
   city: string | null;
   district?: string | null;
   state: string | null;
@@ -71,6 +72,7 @@ export function LeadEditModal({
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [alternatePhone, setAlternatePhone] = useState("");
   const [city, setCity] = useState("");
   const [district, setDistrict] = useState("");
   const [state, setState] = useState("");
@@ -81,9 +83,9 @@ export function LeadEditModal({
   const [sourceId, setSourceId] = useState("");
   const [assignedUserId, setAssignedUserId] = useState("");
   const [contactError, setContactError] = useState<string | null>(null);
-  const [nameError, setNameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [alternatePhoneError, setAlternatePhoneError] = useState<string | null>(null);
   const [districtError, setDistrictError] = useState<string | null>(null);
   const [cityError, setCityError] = useState<string | null>(null);
   const [activityAction, setActivityAction] = useState("CALL");
@@ -104,16 +106,17 @@ export function LeadEditModal({
     const elementId = focusAfterValidation.current;
     if (!elementId) return;
     document.getElementById(elementId)?.focus();
-  }, [nameError, emailError, phoneError, districtError, cityError, activityErrors]);
+  }, [emailError, phoneError, alternatePhoneError, districtError, cityError, activityErrors]);
 
   if (open && (!previousOpen || previousLead !== lead)) {
     setPreviousOpen(open);
     setPreviousLead(lead);
     if (lead) {
-      setName(lead.name);
+      setName(lead.name ?? "");
       setCompany(lead.company ?? "");
       setEmail(lead.email ?? "");
       setPhone(lead.phone ?? "");
+      setAlternatePhone(lead.alternatePhone ?? "");
       setCity(lead.city ?? "");
       setDistrict(lead.district ?? "");
       setState(lead.state ?? "");
@@ -128,6 +131,7 @@ export function LeadEditModal({
       setCompany("");
       setEmail("");
       setPhone("");
+      setAlternatePhone("");
       setCity("");
       setDistrict("");
       setState("");
@@ -140,9 +144,9 @@ export function LeadEditModal({
     }
     setError(null);
     setContactError(null);
-    setNameError(null);
     setEmailError(null);
     setPhoneError(null);
+    setAlternatePhoneError(null);
     setDistrictError(null);
     setCityError(null);
     setActivityAction("CALL");
@@ -172,10 +176,11 @@ export function LeadEditModal({
       followUpTime: scheduleFollowUp ? followUpTime || null : null,
     } : undefined;
     const payload: Record<string, unknown> = {
-      name,
+      name: name.trim() || null,
       company: company || null,
       email: email || null,
       phone: phone || null,
+      alternatePhone: alternatePhone || null,
       state: state || null,
       status,
       priority,
@@ -199,9 +204,9 @@ export function LeadEditModal({
       ? leadPatchSchema.safeParse(payload)
       : createLeadRequestSchema.safeParse(payload);
 
-    setNameError(null);
     setEmailError(null);
     setPhoneError(null);
+    setAlternatePhoneError(null);
     setDistrictError(null);
     setCityError(null);
     setContactError(null);
@@ -209,14 +214,14 @@ export function LeadEditModal({
     setError(null);
     if (!parsed.success) {
       const issues = parsed.error.issues;
-      const nameIssue = issues.find((issue) => issue.path[0] === "name");
       const emailIssue = issues.find((issue) => issue.path[0] === "email");
       const phoneIssue = issues.find((issue) => issue.path[0] === "phone");
+      const alternatePhoneIssue = issues.find((issue) => issue.path[0] === "alternatePhone");
       const districtIssue = issues.find((issue) => issue.path[0] === "district");
       const cityIssue = issues.find((issue) => issue.path[0] === "city");
-      setNameError(nameIssue?.message ?? null);
       setEmailError(email.trim() ? emailIssue?.message ?? null : null);
       setPhoneError(phoneIssue?.message ?? null);
+      setAlternatePhoneError(alternatePhoneIssue?.message ?? null);
       setDistrictError(districtIssue?.message ?? null);
       setCityError(cityIssue?.message ?? null);
       if (!isEdit && !email.trim() && !phone.trim()) {
@@ -235,7 +240,7 @@ export function LeadEditModal({
         const target = getLeadCreateValidationTarget(issues);
         focusAfterValidation.current = target.firstElementId;
       }
-      if (!nameIssue && !emailIssue && !phoneIssue && !districtIssue && !cityIssue && !activityIssue) {
+      if (!emailIssue && !phoneIssue && !alternatePhoneIssue && !districtIssue && !cityIssue && !activityIssue) {
         setError(issues[0]?.message ?? "Review the highlighted fields.");
       }
       return;
@@ -261,14 +266,14 @@ export function LeadEditModal({
       } else if (message && typeof message === "object" && "fieldErrors" in message) {
         const fields = (message as { fieldErrors?: Record<string, unknown> }).fieldErrors ?? {};
         const fieldMessage = (key: string) => Array.isArray(fields[key]) && typeof fields[key][0] === "string" ? fields[key][0] as string : null;
-        setNameError(fieldMessage("name"));
         setEmailError(fieldMessage("email"));
         setPhoneError(fieldMessage("phone"));
+        setAlternatePhoneError(fieldMessage("alternatePhone"));
         setDistrictError(fieldMessage("district"));
         setCityError(fieldMessage("city"));
         const activityMessage = fieldMessage("initialActivity");
         setError(activityMessage ?? "The server rejected part of this submission. Review the highlighted fields and try again.");
-        const firstInvalid = ["lead-name", "lead-email", "lead-phone", "lead-district", "lead-city"].find((id) => {
+        const firstInvalid = ["lead-email", "lead-phone", "lead-alternate-phone", "lead-district", "lead-city"].find((id) => {
           const key = id.replace("lead-", "");
           return fieldMessage(key) !== null;
         });
@@ -320,8 +325,8 @@ export function LeadEditModal({
     <div>
       <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--color-muted)] mb-3">Basic Information</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Name" htmlFor="lead-name" labelSuffix="Required" error={nameError} errorId="lead-name-error">
-          <Input id="lead-name" data-autofocus value={name} placeholder="Full name" onChange={(e) => { setName(e.target.value); setNameError(e.target.value.trim().length >= 2 ? null : "Enter at least 2 characters."); }} required aria-invalid={!!nameError} aria-describedby={nameError ? "lead-name-error" : undefined} />
+        <FormField label="Name" htmlFor="lead-name">
+          <Input id="lead-name" data-autofocus value={name} placeholder="Full name (optional)" onChange={(e) => setName(e.target.value)} />
         </FormField>
         <FormField label="Company" htmlFor="lead-company">
           <Input id="lead-company" value={company} placeholder="Company or organization" onChange={(e) => setCompany(e.target.value)} />
@@ -388,6 +393,9 @@ export function LeadEditModal({
         <FormField label="Phone" htmlFor="lead-phone" error={phoneError} errorId="lead-phone-error">
           <Input id="lead-phone" type="tel" inputMode="numeric" autoComplete="tel" value={phone} placeholder="10-digit phone number" onChange={(e) => { const value = e.target.value; const parsedPhone = leadPhoneSchema.safeParse(value); setPhone(value); setPhoneError(parsedPhone.success ? null : parsedPhone.error.issues[0]?.message ?? "Enter exactly 10 digits using numbers only."); if (parsedPhone.success && parsedPhone.data) setContactError(null); }} aria-invalid={!!phoneError || !!contactError} aria-describedby={phoneError ? "lead-phone-error" : contactError ? "lead-contact-error" : undefined} />
         </FormField>
+        <FormField label="Alternate Phone Number" htmlFor="lead-alternate-phone" error={alternatePhoneError} errorId="lead-alternate-phone-error">
+          <Input id="lead-alternate-phone" type="tel" inputMode="numeric" autoComplete="tel-national" value={alternatePhone} placeholder="10-digit phone number (optional)" onChange={(e) => { const value = e.target.value; const parsedPhone = leadPhoneSchema.safeParse(value); setAlternatePhone(value); setAlternatePhoneError(parsedPhone.success ? null : parsedPhone.error.issues[0]?.message ?? "Enter exactly 10 digits using numbers only."); }} aria-invalid={!!alternatePhoneError} aria-describedby={alternatePhoneError ? "lead-alternate-phone-error" : undefined} />
+        </FormField>
         {contactError && <p id="lead-contact-error" className="sm:col-span-2 -mt-2 text-xs text-[var(--color-danger)]" role="alert">{contactError}</p>}
         <FormField label="District" htmlFor="lead-district">
           <Input id="lead-district" value={district} placeholder="e.g. Andheri West" onChange={(e) => setDistrict(e.target.value)} />
@@ -419,8 +427,8 @@ export function LeadEditModal({
         <h3 id="create-lead-information-title" className="text-base font-semibold text-[var(--color-ink)]">Lead Information</h3>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormField label="Name" htmlFor="lead-name" error={nameError} errorId="lead-name-error">
-          <Input id="lead-name" data-autofocus value={name} placeholder="Full name" onChange={(e) => { setName(e.target.value); setNameError(e.target.value.trim().length >= 2 ? null : "Enter at least 2 characters."); }} required aria-invalid={!!nameError} aria-describedby={nameError ? "lead-name-error" : undefined} />
+        <FormField label="Name" htmlFor="lead-name">
+          <Input id="lead-name" data-autofocus value={name} placeholder="Full name (optional)" onChange={(e) => setName(e.target.value)} />
         </FormField>
         <FormField label="Company" htmlFor="lead-company">
           <Input id="lead-company" value={company} placeholder="Company or organization" onChange={(e) => setCompany(e.target.value)} />
@@ -436,6 +444,9 @@ export function LeadEditModal({
         </FormField>
         <FormField label="Phone" htmlFor="lead-phone" error={phoneError} errorId="lead-phone-error">
           <Input id="lead-phone" type="tel" inputMode="numeric" autoComplete="tel" value={phone} placeholder="10-digit phone number" onChange={(e) => { const value = e.target.value; const parsedPhone = leadPhoneSchema.safeParse(value); setPhone(value); setPhoneError(parsedPhone.success ? null : parsedPhone.error.issues[0]?.message ?? "Enter exactly 10 digits using numbers only."); if (parsedPhone.success && parsedPhone.data) setContactError(null); }} aria-invalid={!!phoneError || !!contactError} aria-describedby={phoneError ? "lead-phone-error" : contactError ? "lead-contact-error" : undefined} />
+        </FormField>
+        <FormField label="Alternate Phone Number" htmlFor="lead-alternate-phone" error={alternatePhoneError} errorId="lead-alternate-phone-error">
+          <Input id="lead-alternate-phone" type="tel" inputMode="numeric" autoComplete="tel-national" value={alternatePhone} placeholder="10-digit phone number (optional)" onChange={(e) => { const value = e.target.value; const parsedPhone = leadPhoneSchema.safeParse(value); setAlternatePhone(value); setAlternatePhoneError(parsedPhone.success ? null : parsedPhone.error.issues[0]?.message ?? "Enter exactly 10 digits using numbers only."); }} aria-invalid={!!alternatePhoneError} aria-describedby={alternatePhoneError ? "lead-alternate-phone-error" : undefined} />
         </FormField>
         <FormField label="Email" htmlFor="lead-email" className="sm:col-span-2" error={emailError} errorId="lead-email-error">
           <Input id="lead-email" type="email" value={email} placeholder="name@example.com" autoComplete="email" onChange={(e) => { const value = e.target.value; const parsedEmail = leadEmailSchema.safeParse(value); setEmail(value); setEmailError(parsedEmail.success ? null : parsedEmail.error.issues[0]?.message ?? "Enter a valid email address."); if (parsedEmail.success && parsedEmail.data) setContactError(null); }} aria-invalid={!!emailError || !!contactError} aria-describedby={emailError ? "lead-email-error" : contactError ? "lead-contact-error" : undefined} />

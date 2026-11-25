@@ -174,7 +174,7 @@ export class DashboardService {
         message: a.entries[0]?.message ?? a.type,
         actorName: a.actor?.name ?? "System",
         leadId: a.leadId,
-        leadName: a.lead?.displayName ?? "Deleted",
+        leadName: a.lead ? a.lead.displayName : "Deleted",
         leadNumber: a.lead?.leadNumber ?? "",
         createdAt: a.occurredAt.toISOString(),
       })),

@@ -10,6 +10,9 @@ export const ACTIVITY_REASON_OPTIONS = [
   { value: "CREDIT_OR_DEFERRED_PAYMENT", label: "Seeking credit / deferred payment" },
   { value: "ALLOPATHIC_PRODUCTS", label: "Interested in allopathic products" },
   { value: "NO_CURRENT_REQUIREMENT", label: "No current requirement" },
+  { value: "COSMETIC_PRODUCTS_AND_TREATMENTS", label: "Cosmetic Products & Treatments" },
+  { value: "TRADITIONAL_CLASSICAL_HEALTHCARE_PRODUCTS", label: "Traditional / Classical Healthcare Products" },
+  { value: "NUTRACEUTICALS_AND_DIETARY_SUPPLEMENTS", label: "Nutraceuticals & Dietary Supplements" },
 ] as const;
 
 export const ACTIVITY_REASON_VALUES = ACTIVITY_REASON_OPTIONS.map((option) => option.value);

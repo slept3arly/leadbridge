@@ -20,7 +20,7 @@ export class ExampleParser extends BaseParser<Record<string, unknown>> {
 
   parse(input: Record<string, unknown>): NormalizedLead {
     return {
-      name: String(input.name ?? "Unknown Lead"),
+      name: typeof input.name === "string" ? input.name : undefined,
       email: typeof input.email === "string" ? input.email : undefined,
       phone: typeof input.phone === "string" ? input.phone : undefined,
       company: typeof input.company === "string" ? input.company : undefined,

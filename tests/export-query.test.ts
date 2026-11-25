@@ -63,6 +63,7 @@ test("lead filters combine groups with AND, values with OR, search with OR, and 
   assert.match(whereJson, /"isArchived":true/);
   assert.match(whereJson, /"lastContactedAt":\{"gte":"2026-03-01T00:00:00.000Z","lt":"2026-03-03T00:00:00.000Z"\}/);
   assert.match(whereJson, /"OR":\[.*"displayName".*"leadNumber"/);
+  assert.match(whereJson, /"alternatePhone"/);
   assert.equal(where.AND && (Array.isArray(where.AND) ? where.AND.length : 1), 6);
 });
 

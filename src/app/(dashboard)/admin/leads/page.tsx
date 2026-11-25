@@ -48,6 +48,7 @@ export default async function AdminLeadsPage({
     company: l.company,
     email: l.email,
     phone: l.phone,
+    alternatePhone: l.alternatePhone,
     city: l.city,
     district: l.district,
     state: l.state,

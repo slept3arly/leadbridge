@@ -2,8 +2,9 @@ import type { LeadInput } from "@/services/lead.service";
 import { prisma } from "@/lib/prisma";
 
 export class DuplicateService {
-  async findPotentialDuplicates(data: Pick<LeadInput, "email" | "phone">) {
-    if (!data.email && !data.phone) {
+  async findPotentialDuplicates(data: Pick<LeadInput, "email" | "phone" | "alternatePhone">) {
+    const phones = [data.phone, data.alternatePhone].filter((phone): phone is string => Boolean(phone));
+    if (!data.email && phones.length === 0) {
       return [];
     }
 
@@ -12,7 +13,7 @@ export class DuplicateService {
         isDeleted: false,
         OR: [
           data.email ? { email: data.email } : undefined,
-          data.phone ? { phone: data.phone } : undefined,
+          ...phones.flatMap((phone) => [{ phone }, { alternatePhone: phone }]),
         ].filter(Boolean) as object[],
       },
       select: {

@@ -45,7 +45,7 @@ function historyValue(value: unknown): unknown {
 
 const leadListSelect = {
   id: true, leadNumber: true, displayName: true, company: true,
-  email: true, phone: true, city: true, district: true, state: true,
+  email: true, phone: true, alternatePhone: true, city: true, district: true, state: true,
   requirement: true,
   status: true, priority: true, category: true, createdAt: true, updatedAt: true,
   nextFollowUpAt: true, lastFollowUpAt: true, isArchived: true,
@@ -82,7 +82,7 @@ const leadDetailSelect = {
   connector: { select: { id: true, name: true, type: true } },
 } as const;
 
-function toApiLead<T extends { displayName: string }>(lead: T) {
+function toApiLead<T extends { displayName: string | null }>(lead: T) {
   return { ...lead, name: lead.displayName };
 }
 
@@ -271,7 +271,7 @@ export class LeadService {
       ...followUpFilter,
       ...districtFilter,
       ...activityFilter,
-      ...containsSearch(["displayName", "company", "email", "phone", "leadNumber"], query.search),
+      ...containsSearch(["displayName", "company", "email", "phone", "alternatePhone", "leadNumber"], query.search),
       ...leadDateFilter,
     };
     const orderBy = ["createdAt", "updatedAt", "displayName", "status", "priority", "category", "nextFollowUpAt"].includes(query.sortBy ?? "")

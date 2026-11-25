@@ -60,7 +60,11 @@ const query = parseListQuery(urlSearchParams);
 // Returns: { page, pageSize, search, sortBy, sortDirection, filters, dateFrom, dateTo }
 ```
 
-Search uses `ILIKE '%term%'` across 5 fields: `displayName`, `company`, `email`, `phone`, `leadNumber`.
+Search uses `ILIKE '%term%'` across 6 fields: `displayName`, `company`, `email`, `phone`, `alternatePhone`, and `leadNumber`. Lead display names are nullable; API responses and exports preserve `null`, while UI components use the display-only `Unnamed Lead` fallback.
+
+Lead duplicate warnings compare email and each provided phone value against both stored primary and alternate phone fields. They remain potential-match warnings and do not impose uniqueness. Manual primary and alternate phones use the existing ten-digit rule. Connector phone compatibility remains unchanged; connector lead names may be absent and blank names normalize to `null`.
+
+`ActivityReason` is shared by activity schemas and persistence. New reason labels/enum values are added through a forward Prisma migration; existing identifiers and nullable historical reasons are preserved.
 
 Lead stores nullable `city` and nullable `district` as independent location fields. Each field is validated and normalized independently; differing values are accepted. Single-key writes affect only that key, and omitted PATCH fields remain unchanged. Lead list/detail projections return both. The generic lead list filter parser supports `filter.district`; export city filters continue to target only city. Connector normalization still supplies city, and this change does not alter connector mappings.
 

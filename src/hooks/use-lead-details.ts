@@ -24,7 +24,7 @@ function fetchLeadDetails(leadId: string, force = false): Promise<LeadDetails> {
 export type LeadDetail = {
   id: string;
   leadNumber: string;
-  displayName: string;
+  displayName: string | null;
   company: string | null;
   email: string | null;
   phone: string | null;

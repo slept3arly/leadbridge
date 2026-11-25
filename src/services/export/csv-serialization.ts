@@ -22,7 +22,7 @@ function date(value: Date | null): string {
 
 export function serializeLeadCsvRow(lead: {
   leadNumber: string;
-  displayName: string;
+  displayName: string | null;
   company: string | null;
   email: string | null;
   phone: string | null;

@@ -756,6 +756,7 @@ export function LeadDetailsModal({
             company: lead.company as string | null,
             email: lead.email as string | null,
             phone: lead.phone as string | null,
+            alternatePhone: lead.alternatePhone as string | null,
             city: lead.city as string | null,
             district: lead.district as string | null,
             state: lead.state as string | null,

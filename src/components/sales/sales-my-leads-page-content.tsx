@@ -21,11 +21,12 @@ import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 import { ACTIVITY_ACTION_LABELS, ACTIVITY_RESPONSE_LABELS } from "@/lib/activity-options";
 import { getActivityReasonLabel } from "@/lib/activity-reasons";
+import { getLeadDisplayName } from "@/lib/lead-display";
 
 export type SalesLeadRow = {
   id: string;
   leadNumber: string;
-  name: string;
+  name: string | null;
   company: string | null;
   phone: string | null;
   status: string;
@@ -242,7 +243,7 @@ export function SalesMyLeadsPageContent({
       header: "Lead",
       render: (lead: SalesLeadRow) => (
         <div className="min-w-0 max-w-[220px] [overflow-wrap:anywhere]">
-          <p className="text-sm font-semibold">{lead.name}</p>
+          <p className="text-sm font-semibold">{getLeadDisplayName(lead.name)}</p>
           {lead.company && (
             <p className="text-sm text-[var(--color-muted)]">{lead.company}</p>
           )}
@@ -292,7 +293,7 @@ export function SalesMyLeadsPageContent({
             {canArchive ? (
               <IconActionButton
                 icon={Archive}
-                label={`Archive ${lead.name}`}
+                label={`Archive ${getLeadDisplayName(lead.name)}`}
                 isLoading={archiving && archiveTarget === lead.id}
                 onClick={() => {
                   setArchiveError(null);
@@ -303,7 +304,7 @@ export function SalesMyLeadsPageContent({
             {canDelete ? (
               <IconActionButton
                 icon={Trash2}
-                label={`Delete ${lead.name}`}
+                label={`Delete ${getLeadDisplayName(lead.name)}`}
                 isLoading={deleting && deleteTarget === lead.id}
                 onClick={() => {
                   setDeleteError(null);
@@ -313,7 +314,7 @@ export function SalesMyLeadsPageContent({
             ) : null}
             <IconActionButton
               icon={ExternalLink}
-              label={`View details for ${lead.name}`}
+              label={`View details for ${getLeadDisplayName(lead.name)}`}
               onClick={() => setDetailLeadId(lead.id)}
             />
           </div>
@@ -351,7 +352,7 @@ export function SalesMyLeadsPageContent({
             columns={columns}
             isLoading={isPending}
             onRowClick={(row) => setDetailLeadId(row.id)}
-            getRowAccessibleLabel={(row) => `Open details for ${row.name}`}
+            getRowAccessibleLabel={(row) => `Open details for ${getLeadDisplayName(row.name)}`}
           />
         </div>
       ) : (

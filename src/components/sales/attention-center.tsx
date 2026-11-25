@@ -17,6 +17,7 @@ import type {
 } from "@/services/attention.service";
 import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
+import { getLeadDisplayName } from "@/lib/lead-display";
 
 export type SectionId = "pending" | "today" | "new" | "stale";
 
@@ -100,7 +101,7 @@ export function AttentionCenter({
       key: string;
       sectionId: SectionId;
       leadId: string;
-      leadName: string;
+      leadName: string | null;
       customerName?: string | null;
       phone?: string | null;
       priority: string;
@@ -276,7 +277,7 @@ export function AttentionCenter({
             <AttentionCard
               key={item.key}
               leadId={item.leadId}
-              leadName={item.leadName}
+              leadName={getLeadDisplayName(item.leadName)}
               customerName={item.customerName}
               phone={item.phone}
               priority={item.priority}

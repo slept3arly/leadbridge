@@ -30,7 +30,7 @@ export type ProgressFollowUp = {
 
 type LeadClassification = { status: string; priority: string };
 type DetailsResponse = {
-  lead: LeadClassification & { displayName?: string; name?: string };
+  lead: LeadClassification & { displayName?: string | null; name?: string | null };
   followUps: ProgressFollowUp[];
 };
 type ProgressField = "action" | "response" | "interest" | "reason" | "notes" | "status" | "priority" | "followUpDate" | "followUpTime";

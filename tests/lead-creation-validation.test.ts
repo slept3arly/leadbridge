@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createLeadRequestSchema, interactionActivitySchema, leadProgressRequestSchema, leadSchema } from "../src/lib/validation";
+import { activityReasonSchema, createLeadRequestSchema, interactionActivitySchema, leadProgressRequestSchema, leadSchema, leadPatchSchema } from "../src/lib/validation";
 import { resolveFollowUpAssignee } from "../src/services/follow-up-policy";
 import { LEGACY_EXPORT_COLUMNS, resolveLeadProjection } from "../src/services/export/projections";
+import { ACTIVITY_REASON_OPTIONS, getActivityReasonLabel } from "../src/lib/activity-reasons";
+import { getLeadDisplayName } from "../src/lib/lead-display";
+import { ExampleParser } from "../src/parsers/example-parser";
+import { LeadNormalizer } from "../src/runtime/lead-normalizer";
 
 const validActivity = {
   action: "CALL",
@@ -26,6 +30,51 @@ test("lead phone validation requires exactly ten numeric digits", () => {
   assert.equal(manualLead({ name: "Alphabetic phone", phone: "12345abcde" }).success, false);
   assert.equal(manualLead({ name: "Special phone", phone: "12345-7890" }).success, false);
   assert.equal(manualLead({ name: "Spaced phone", phone: " 1234567890 " }).success, false);
+});
+
+test("alternate phone is optional and uses the manual ten-digit rule", () => {
+  assert.equal(manualLead({ name: "Alternate contact", phone: "1234567890", alternatePhone: "" }).success, true);
+  const valid = manualLead({ name: "Alternate contact", phone: "1234567890", alternatePhone: "0987654321" });
+  assert.equal(valid.success, true);
+  if (valid.success) assert.equal(valid.data.alternatePhone, "0987654321");
+  assert.equal(manualLead({ name: "Invalid alternate", phone: "1234567890", alternatePhone: "12345-7890" }).success, false);
+  assert.equal(leadPatchSchema.safeParse({ alternatePhone: "123456789" }).success, false);
+});
+
+test("lead names may be omitted or cleared and remain null in persisted/API data", () => {
+  const missing = manualLead({ email: "unnamed@example.test" });
+  const blank = manualLead({ name: "   ", phone: "1234567890" });
+  const clear = leadPatchSchema.safeParse({ name: " " });
+  assert.equal(missing.success, true);
+  assert.equal(blank.success, true);
+  assert.equal(clear.success, true);
+  if (missing.success) assert.equal(missing.data.name, null);
+  if (blank.success) assert.equal(blank.data.name, null);
+  if (clear.success) assert.equal(clear.data.name, null);
+  assert.equal(getLeadDisplayName(null), "Unnamed Lead");
+  assert.equal(getLeadDisplayName("  Jane  "), "Jane");
+});
+
+test("connector normalization leaves missing names nullable instead of persisting a placeholder", () => {
+  const normalized = new LeadNormalizer().enrich(new ExampleParser().parse({ email: "unnamed@example.test" }), {});
+  assert.equal(normalized.name, null);
+});
+
+test("new Reason values preserve the conditional NOT_INTERESTED rule and canonical labels", () => {
+  const added = [
+    ["COSMETIC_PRODUCTS_AND_TREATMENTS", "Cosmetic Products & Treatments"],
+    ["TRADITIONAL_CLASSICAL_HEALTHCARE_PRODUCTS", "Traditional / Classical Healthcare Products"],
+    ["NUTRACEUTICALS_AND_DIETARY_SUPPLEMENTS", "Nutraceuticals & Dietary Supplements"],
+  ] as const;
+  for (const [value, label] of added) {
+    assert.equal(activityReasonSchema.safeParse(value).success, true);
+    assert.equal(getActivityReasonLabel(value), label);
+    assert.equal(interactionActivitySchema.safeParse({ ...validActivity, interest: "NOT_INTERESTED", reason: value }).success, true);
+    assert.equal(leadProgressRequestSchema.safeParse({ ...validActivity, interest: "NOT_INTERESTED", reason: value }).success, true);
+  }
+  assert.deepEqual(added.map(([value]) => ACTIVITY_REASON_OPTIONS.some((option) => option.value === value)), [true, true, true]);
+  assert.equal(interactionActivitySchema.safeParse({ ...validActivity, interest: "INTERESTED", reason: added[0][0] }).success, false);
+  assert.equal(interactionActivitySchema.safeParse({ ...validActivity, interest: "NOT_INTERESTED", reason: null }).success, false);
 });
 
 test("lead contact validation accepts either method, trims email, and normalizes empty optional values", () => {

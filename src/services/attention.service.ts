@@ -10,7 +10,7 @@ export type PendingFollowUpItem = {
   daysOverdue: number;
   lead: {
     id: string;
-    displayName: string;
+    displayName: string | null;
     company: string | null;
     phone: string | null;
     category: string | null;
@@ -25,7 +25,7 @@ export type TodayFollowUpItem = {
   dueTime: string | null;
   lead: {
     id: string;
-    displayName: string;
+    displayName: string | null;
     company: string | null;
     phone: string | null;
     category: string | null;
@@ -35,7 +35,7 @@ export type TodayFollowUpItem = {
 
 export type NewLeadItem = {
   id: string;
-  displayName: string;
+  displayName: string | null;
   company: string | null;
   phone: string | null;
   category: string | null;
@@ -47,7 +47,7 @@ export type NewLeadItem = {
 
 export type NeedsAttentionItem = {
   id: string;
-  displayName: string;
+  displayName: string | null;
   company: string | null;
   phone: string | null;
   category: string | null;

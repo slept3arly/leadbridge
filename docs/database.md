@@ -1,7 +1,7 @@
 # LeadBridge Database
 
 > **Status:** Canonical
-> **Last verified:** 2026-11-24
+> **Last verified:** 2026-11-25
 > **Source of truth:** `prisma/schema.prisma`, `prisma.config.ts`, `src/lib/prisma.ts`
 
 ## Configuration
@@ -11,7 +11,7 @@
 - **Schema:** `prisma/schema.prisma`
 - **Generated client:** `src/generated/prisma/` (custom output path)
 - **Client singleton:** `src/lib/prisma.ts`
-- **Migrations:** `prisma/migrations/` (21 migration directories in this checkout; this count does not indicate which migrations are applied to a database)
+- **Migrations:** `prisma/migrations/` (23 migration directories in this checkout; this count does not indicate which migrations are applied to a database)
 - **Prisma config:** `prisma.config.ts` (uses `defineConfig` from Prisma v7)
 - **Connection:** `DATABASE_URL`, read by Prisma config and passed to `PrismaPg` in `src/lib/prisma.ts`; use a PostgreSQL connection URL such as `postgresql://user:password@127.0.0.1:5432/leadbridge?schema=public` locally.
 
@@ -30,7 +30,7 @@ Uses the standard Next.js singleton pattern via `globalThis` to prevent multiple
 
 The runtime uses Prisma's `@prisma/adapter-pg` driver adapter and the Node PostgreSQL driver. For migration, backup, and recovery procedures, see [Local Operations](./local-operations.md).
 
-## Enums (17)
+## Enums (18)
 
 | Enum | Values |
 |---|---|
@@ -43,6 +43,7 @@ The runtime uses Prisma's `@prisma/adapter-pg` driver adapter and the Node Postg
 | `ActionType` | `CALL`, `WHATSAPP` |
 | `ResponseType` | `PICKED_UP`, `NO_RESPONSE` (legacy), `INVALID_NUMBER`, `REPLIED`, `NOT_PICKED_UP`, `SWITCHED_OFF`, `NOT_REPLIED` |
 | `InterestType` | `INTERESTED`, `NOT_INTERESTED` |
+| `ActivityReason` | Existing reason values plus `COSMETIC_PRODUCTS_AND_TREATMENTS`, `TRADITIONAL_CLASSICAL_HEALTHCARE_PRODUCTS`, and `NUTRACEUTICALS_AND_DIETARY_SUPPLEMENTS` |
 | `LeadCategory` | 17 values including `MEDICAL_REPRESENTATIVE`, `RETAILER`, `WHOLESALER`, etc. |
 | `ConnectorStatus` | `INACTIVE`, `ACTIVE`, `ERROR` |
 | `ConnectorScheduleType` | `MANUAL`, `EVERY_5_MIN`, `EVERY_15_MIN`, `EVERY_30_MIN`, `HOURLY`, `DAILY`, `CUSTOM` |
@@ -67,7 +68,7 @@ The runtime uses Prisma's `@prisma/adapter-pg` driver adapter and the Node Postg
 
 | Model | Table | Purpose |
 |---|---|---|
-| `Lead` | `Lead` | Core lead record with contact details, status, priority, category, nullable `city` and additive nullable `district`; nullable `product` remains for imported and historical data |
+| `Lead` | `Lead` | Core lead record with nullable display name, primary and alternate phone, contact details, status, priority, category, nullable `city` and additive nullable `district`; nullable `product` remains for imported and historical data |
 | `LeadSource` | `LeadSource` | Vendor/provider registry (e.g., "IndiaMART", "Website") |
 | `Note` | `Note` | Interaction notes attached to leads |
 | `FollowUp` | `FollowUp` | Scheduled follow-up tasks linked to leads |

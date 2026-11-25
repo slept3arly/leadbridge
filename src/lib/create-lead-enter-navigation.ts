@@ -12,6 +12,7 @@ export const CREATE_LEAD_FIELD_ORDER: readonly string[] = [
   "lead-district",
   "lead-state",
   "lead-phone",
+  "lead-alternate-phone",
   "lead-email",
   "lead-category",
   "lead-source",

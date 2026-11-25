@@ -5,10 +5,6 @@ export class LeadNormalizer {
   validate(lead: NormalizedLead): NormalizationResult {
     const warnings: string[] = [];
 
-    if (!lead.name || lead.name.trim().length === 0) {
-      warnings.push("Lead name is empty or missing");
-    }
-
     if (lead.email && !this.isValidEmail(lead.email)) {
       warnings.push(`Invalid email format: ${lead.email}`);
     }
@@ -30,6 +26,7 @@ export class LeadNormalizer {
   ): NormalizedLead {
     return {
       ...lead,
+      name: typeof lead.name === "string" ? lead.name.trim() || null : null,
       parserVersion: context.parserVersion ?? lead.parserVersion,
       sourceType: context.sourceType ?? lead.sourceType,
       sourceId: context.sourceId ?? lead.sourceId,

@@ -30,8 +30,8 @@ test("Lead Details and Tasks use the shared Log Activity component", () => {
   assert.doesNotMatch(myLeads, /RecordProgressModal|progressLeadId|Log Activity/);
   assert.match(myLeads, /hideFollowUpActions/);
   assert.match(myLeads, /Archive/);
-  assert.match(myLeads, /Delete \$\{lead\.name\}/);
-  assert.match(myLeads, /View details for \$\{lead\.name\}/);
+  assert.match(myLeads, /Delete \$\{getLeadDisplayName\(lead\.name\)\}/);
+  assert.match(myLeads, /View details for \$\{getLeadDisplayName\(lead\.name\)\}/);
 
   const taskTable = readFileSync(join(process.cwd(), consumers[1]!), "utf8");
   assert.match(taskTable, /initialFollowUpId=\{progressTarget\.id\}/);
@@ -61,7 +61,7 @@ test("Create Lead uses a full-screen two-column layout and the required field or
   assert.doesNotMatch(addLead, /AccordionSection|expandedSections/);
 
   const info = addLead.slice(addLead.indexOf("const createLeadInformationFields"), addLead.indexOf("const createLeadInteractionFields"));
-  const orderedLabels = ["Name", "Company", "City", "District", "State", "Phone", "Email", "Category", "Lead Source"];
+  const orderedLabels = ["Name", "Company", "City", "District", "State", "Phone", "Alternate Phone Number", "Email", "Category", "Lead Source"];
   let priorIndex = -1;
   for (const label of orderedLabels) {
     const index = info.search(new RegExp(`label="${label}"`));
@@ -111,6 +111,8 @@ test("Create Lead places Action and Response in one equal-width row that stacks 
 test("Create Lead Enter navigation walks the two-column visual order across both columns", () => {
   assert.equal(findNextCreateLeadFieldId("lead-name"), "lead-company");
   assert.equal(findNextCreateLeadFieldId("lead-company"), "lead-city");
+  assert.equal(findNextCreateLeadFieldId("lead-phone"), "lead-alternate-phone");
+  assert.equal(findNextCreateLeadFieldId("lead-alternate-phone"), "lead-email");
   assert.equal(findNextCreateLeadFieldId("lead-email"), "lead-category");
   assert.equal(findNextCreateLeadFieldId("lead-source"), "lead-assigned");
   assert.equal(findNextCreateLeadFieldId("lead-assigned"), "initial-activity-action");
@@ -221,7 +223,8 @@ test("Create Lead removes subtitles and the contact-method helper message", () =
   assert.doesNotMatch(createUi, /labelSuffix="(?:Optional|Required)"/);
   assert.doesNotMatch(createUi, />Required</);
   assert.doesNotMatch(createUi, /showFieldGuidance/);
-  assert.match(editUi, /label="Name" htmlFor="lead-name" labelSuffix="Required"/);
+  assert.match(editUi, /label="Name" htmlFor="lead-name"/);
+  assert.doesNotMatch(editUi, /lead-name" labelSuffix="Required"/);
   assert.doesNotMatch(editUi, /labelSuffix="Optional"/);
   assert.match(activityFields, /const guidance = \(value: "Required" \| "Optional"\) => showFieldGuidance \?/);
 });
@@ -235,7 +238,8 @@ test("approved lead placeholders appear across create, edit, progress, activity,
   const searchToolbar = readFileSync(join(process.cwd(), "src/components/shared/search-toolbar.tsx"), "utf8");
 
   for (const value of [
-    'placeholder="Full name"',
+    'placeholder="Full name (optional)"',
+    'placeholder="10-digit phone number (optional)"',
     'placeholder="Company or organization"',
     'placeholder="e.g. Pune"',
     'placeholder="e.g. Andheri West"',

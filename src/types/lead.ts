@@ -4,7 +4,7 @@ export type LeadStatus = (typeof STATUS_VALUES)[number];
 export type LeadPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT" | "COLD";
 
 export type NormalizedLead = {
-  name: string;
+  name?: string | null;
   company?: string;
   email?: string;
   phone?: string;

@@ -1,7 +1,7 @@
 import { DateTimeDisplay } from "@/components/shared/date-time-display";
 
 type LeadCustomer = Record<string, unknown> & {
-  displayName: string;
+  displayName: string | null;
   company: string | null;
   email: string | null;
   phone: string | null;

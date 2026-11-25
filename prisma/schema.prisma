@@ -80,6 +80,9 @@ enum ActivityReason {
   CREDIT_OR_DEFERRED_PAYMENT
   ALLOPATHIC_PRODUCTS
   NO_CURRENT_REQUIREMENT
+  COSMETIC_PRODUCTS_AND_TREATMENTS
+  TRADITIONAL_CLASSICAL_HEALTHCARE_PRODUCTS
+  NUTRACEUTICALS_AND_DIETARY_SUPPLEMENTS
 }
 
 enum LeadCategory {
@@ -279,7 +282,7 @@ model LeadSource {
 model Lead {
   id                String         @id @default(cuid())
   leadNumber        String         @unique @default(cuid())
-  displayName       String         @map("name")
+  displayName       String?        @map("name")
   company           String?
   email             String?
   phone             String?

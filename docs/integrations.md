@@ -140,9 +140,9 @@ Within that ownership context, the runtime:
 
 ### LeadNormalizer (`src/runtime/lead-normalizer.ts`)
 
-- Validates: name not empty, email format, phone format
+- Validates: optional lead name, email format, phone format
 - Enriches: `sourceId`, `sourceType`, `parserVersion`, `importedAt`
-- Warnings do NOT block lead creation
+- Blank or missing names normalize to `null`; no placeholder name is persisted. Warnings do NOT block lead creation.
 - The legacy nullable `Lead.product` field remains import-compatible: parsers may provide it and `src/runtime/connector-runtime.ts` persists it. It is not part of the manual lead form; existing values and CSV export compatibility are preserved.
 
 ### RetryPolicy (`src/runtime/retry-policy.ts`)

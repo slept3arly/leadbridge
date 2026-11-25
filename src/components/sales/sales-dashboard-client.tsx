@@ -11,6 +11,7 @@ import { KpiCard } from "@/components/shared/kpi-card";
 import { Badge } from "@/components/ui/badge";
 import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
 import { formatDateShort, formatTime } from "@/lib/utils";
+import { getLeadDisplayName } from "@/lib/lead-display";
 
 interface AttentionCounts {
   todayFollowUpCount: number;
@@ -36,7 +37,7 @@ interface UpcomingFollowUp {
   dueDate: string;
   dueTime: string | null;
   leadId: string;
-  leadName: string;
+  leadName: string | null;
   leadNumber: string;
   company: string | null;
   priority: string;
@@ -84,7 +85,7 @@ function AgendaRow({ item, onOpen }: { item: UpcomingFollowUp; onOpen: (leadId: 
       <td className="px-4 py-3 text-sm text-[var(--color-muted)] whitespace-nowrap">{dateStr}</td>
       <td className="px-4 py-3 text-sm text-[var(--color-muted)] whitespace-nowrap">{timeStr}</td>
       <td className="px-4 py-3">
-        <p className="text-sm font-semibold text-[var(--color-ink)]">{item.leadName}</p>
+        <p className="text-sm font-semibold text-[var(--color-ink)]">{getLeadDisplayName(item.leadName)}</p>
         {item.leadNumber && <p className="text-xs text-[var(--color-muted)]">#{item.leadNumber}</p>}
       </td>
       <td className="px-4 py-3 text-sm text-[var(--color-muted)]">{item.company ?? "-"}</td>

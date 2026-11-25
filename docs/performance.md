@@ -25,13 +25,14 @@
 
 ### Search
 
-Current implementation uses `ILIKE '%term%'` across 5 fields:
+Current implementation uses `ILIKE '%term%'` across 6 fields:
 
 ```sql
 WHERE (displayName ILIKE '%term%'
     OR company ILIKE '%term%'
     OR email ILIKE '%term%'
     OR phone ILIKE '%term%'
+    OR alternatePhone ILIKE '%term%'
     OR leadNumber ILIKE '%term%')
 ```
 
@@ -97,7 +98,7 @@ No production performance measurements are documented here. Evaluate query plans
 ### Current Implementation (verified from code)
 
 - OFFSET pagination for all list queries
-- `ILIKE '%term%'` for search across 5 fields
+- `ILIKE '%term%'` for search across 6 fields
 - `COUNT(*)` for total count on paginated lists
 - `unstable_cache` with tag-based invalidation for dashboard/settings
 - No general-purpose cache for CRM list/detail endpoints; selected dashboard and Attention Center summaries are cached per user as described above

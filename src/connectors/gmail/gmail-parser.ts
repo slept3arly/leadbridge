@@ -2,13 +2,13 @@ import { BaseParser } from "@/parsers/base-parser";
 import type { NormalizedLead } from "@/types/lead";
 import type { ParserManifest } from "@/parsers/parser-manifest";
 
-function extractName(from?: string): string {
-  if (!from) return "Unknown Sender";
+function extractName(from?: string): string | undefined {
+  if (!from) return undefined;
   const match = from.match(/^"?(.+?)"?\s*<.*>$/);
   if (match) return match[1].trim();
   const emailMatch = from.match(/^([^@<\s]+)@/);
   if (emailMatch) return emailMatch[1];
-  return from.split("@")[0] ?? "Unknown Sender";
+  return from.split("@")[0] || undefined;
 }
 
 function extractEmail(from?: string): string | undefined {

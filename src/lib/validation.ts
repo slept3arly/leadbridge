@@ -26,6 +26,10 @@ export const leadEmailSchema = z.preprocess(
   z.email({ error: "Enter a valid email address." }).nullable().optional(),
 );
 
+const optionalLeadNameSchema = z
+  .preprocess(normalizeOptionalString, z.string().max(120).nullable().optional())
+  .transform((value) => value ?? null);
+
 export const leadPhoneSchema = z.preprocess(
   (value) => typeof value === "string" && value.trim() === "" ? null : value,
   z.union([
@@ -93,11 +97,11 @@ export const createNoteSchema = noteSchema.extend({
 });
 
 const leadFieldsSchema = z.object({
-  name: z.string().trim().min(2).max(120),
+  name: optionalLeadNameSchema,
   company: optionalString(120),
   email: leadEmailSchema,
   phone: leadPhoneSchema,
-  alternatePhone: optionalString(30),
+  alternatePhone: leadPhoneSchema,
   address: optionalString(180),
   city: optionalLocationString,
   district: optionalLocationString,

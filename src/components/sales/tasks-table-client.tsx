@@ -14,6 +14,7 @@ import { Check, X, Clock } from "lucide-react";
 import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 import { RecordProgressModal } from "@/components/leads/record-progress-modal";
+import { getLeadDisplayName } from "@/lib/lead-display";
 
 type FollowUpRow = {
   id: string;
@@ -23,7 +24,7 @@ type FollowUpRow = {
   dueTime: string | null;
   priority: string;
   status: string;
-  lead: { id: string; displayName: string; leadNumber: string } | null;
+  lead: { id: string; displayName: string | null; leadNumber: string } | null;
   assignedUser: { id: string; name: string } | null;
 };
 
@@ -81,7 +82,7 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
             key: "lead",
             header: "Lead",
             render: (fu: FollowUpRow) => (
-              <span className="font-medium">{fu.lead?.displayName ?? "Deleted"}</span>
+              <span className="font-medium">{fu.lead ? getLeadDisplayName(fu.lead.displayName) : "Deleted"}</span>
             ),
           },
           {
@@ -149,7 +150,7 @@ export function TasksTableClient({ initialRows }: { initialRows: FollowUpRow[] }
         key={`task-progress:${progressTarget.id}`}
         open
         leadId={progressTarget.lead.id}
-        leadName={progressTarget.lead.displayName}
+        leadName={getLeadDisplayName(progressTarget.lead.displayName)}
         initialFollowUpId={progressTarget.id}
         onClose={() => setProgressTarget(null)}
         onSaved={() => { setProgressTarget(null); router.refresh(); }}

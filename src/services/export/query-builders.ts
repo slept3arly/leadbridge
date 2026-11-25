@@ -109,7 +109,7 @@ export function buildLeadExportWhere(
       },
     });
   }
-  clauses.push(...searchClauses(filters.search, ["displayName", "company", "email", "phone", "leadNumber"]));
+  clauses.push(...searchClauses(filters.search, ["displayName", "company", "email", "phone", "alternatePhone", "leadNumber"]));
   return { AND: clauses };
 }
 

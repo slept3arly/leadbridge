@@ -18,10 +18,12 @@ import { toast } from "sonner";
 import type { TableQueryState } from "@/hooks/use-table-query";
 import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
+import { getLeadDisplayName } from "@/lib/lead-display";
 
 export type SerializedLead = {
   id: string;
-  name: string;
+  name: string | null;
+  alternatePhone: string | null;
   company: string | null;
   email: string | null;
   phone: string | null;
@@ -133,7 +135,7 @@ export function AdminLeadsPageContent({
           emptyDescription="Try changing your search or filters."
           rowKey={(lead: SerializedLead) => lead.id}
           onRowClick={(lead: SerializedLead) => setDetailsLeadId(lead.id)}
-          getRowAccessibleLabel={(lead: SerializedLead) => `Open details for ${lead.name}`}
+          getRowAccessibleLabel={(lead: SerializedLead) => `Open details for ${getLeadDisplayName(lead.name)}`}
           columns={[
             {
               key: "number",
@@ -149,8 +151,8 @@ export function AdminLeadsPageContent({
               headerClassName: "w-[250px]",
               className: "w-[250px]",
               render: (lead: SerializedLead) => (
-                <div className="min-w-0 max-w-[250px]" title={[lead.name, lead.company, lead.phone, lead.email].filter(Boolean).join(" · ")}>
-                  <p className="truncate text-sm font-semibold">{lead.name}</p>
+                <div className="min-w-0 max-w-[250px]" title={[getLeadDisplayName(lead.name), lead.company, lead.phone, lead.email].filter(Boolean).join(" · ")}>
+                  <p className="truncate text-sm font-semibold">{getLeadDisplayName(lead.name)}</p>
                   {lead.company && <p className="truncate text-sm text-[var(--color-muted)]">{lead.company}</p>}
                   {(lead.phone || lead.email) && <p className="whitespace-nowrap truncate text-sm text-[var(--color-muted)]">{lead.phone ?? lead.email}</p>}
                 </div>
@@ -207,16 +209,16 @@ export function AdminLeadsPageContent({
                   {!lead.isArchived && <div className="w-8 shrink-0">
                     <IconActionButton
                       icon={Archive}
-                      label={`Archive ${lead.name}`}
+                      label={`Archive ${getLeadDisplayName(lead.name)}`}
                       onClick={() => { setMutationError(null); setConfirmAction({ id: lead.id, kind: "archive" }); }}
                       className="w-full"
                     />
                   </div>}
-                  {lead.isArchived && <div className="w-8 shrink-0"><IconActionButton icon={RotateCcw} label={`Restore ${lead.name}`} onClick={() => { setMutationError(null); setConfirmAction({ id: lead.id, kind: "restore" }); }} className="w-full" /></div>}
+                  {lead.isArchived && <div className="w-8 shrink-0"><IconActionButton icon={RotateCcw} label={`Restore ${getLeadDisplayName(lead.name)}`} onClick={() => { setMutationError(null); setConfirmAction({ id: lead.id, kind: "restore" }); }} className="w-full" /></div>}
                   <div className="w-8 shrink-0">
                     <IconActionButton
                       icon={Trash2}
-                      label={`Delete ${lead.name}`}
+                      label={`Delete ${getLeadDisplayName(lead.name)}`}
                       onClick={() => { setMutationError(null); setConfirmAction({ id: lead.id, kind: "delete" }); }}
                       className="w-full"
                     />
@@ -240,6 +242,7 @@ export function AdminLeadsPageContent({
                 company: selectedLead.company,
                 email: selectedLead.email,
                 phone: selectedLead.phone,
+                alternatePhone: selectedLead.alternatePhone,
                 city: selectedLead.city,
                 state: selectedLead.state,
                 requirement: selectedLead.requirement,

@@ -11,6 +11,7 @@ import { formatDateTime, formatTimeAgo } from "@/lib/utils";
 import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
 import { getPriorityLabel, getStatusLabel } from "@/lib/lead-constants";
+import { getLeadDisplayName } from "@/lib/lead-display";
 
 type StatusMetric = { status: string; count: number };
 type PriorityMetric = { priority: string; count: number };
@@ -20,7 +21,7 @@ type RecentActivity = {
   message: string;
   actorName: string;
   leadId: string;
-  leadName: string;
+  leadName: string | null;
   leadNumber: string;
   createdAt: string;
 };
@@ -83,7 +84,7 @@ const ACTIVITY_COLUMNS: Column<RecentActivity>[] = [
     key: "lead",
     header: "Lead",
     className: "text-[var(--color-muted)]",
-    render: (row) => `${row.leadName}${row.leadNumber ? ` (#${row.leadNumber})` : ""}`,
+    render: (row) => `${row.leadNumber ? getLeadDisplayName(row.leadName) : "Deleted"}${row.leadNumber ? ` (#${row.leadNumber})` : ""}`,
   },
 ];
 
