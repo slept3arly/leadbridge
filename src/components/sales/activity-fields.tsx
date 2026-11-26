@@ -15,7 +15,6 @@ export function ActivityFormFields({
   scheduleToggle = false,
   compactNotes = false,
   showFollowUpScheduling = true,
-  centralizedInterestLabels = false,
   betweenResponseAndInterest,
   errors = {},
   action,
@@ -42,7 +41,6 @@ export function ActivityFormFields({
   scheduleToggle?: boolean;
   compactNotes?: boolean;
   showFollowUpScheduling?: boolean;
-  centralizedInterestLabels?: boolean;
   betweenResponseAndInterest?: ReactNode;
   errors?: { action?: string; response?: string; interest?: string; reason?: string; notes?: string; followUpDate?: string; followUpTime?: string };
   action: string;
@@ -125,10 +123,7 @@ export function ActivityFormFields({
           <label htmlFor={`${idPrefix}-interest`} className="text-sm font-medium text-[var(--color-ink)]">Interest{guidance("Required")}</label>
           <Select id={`${idPrefix}-interest`} value={interest} onChange={(e) => onInterestChange(e.target.value)} disabled={!interestVisible} required={interestVisible} aria-invalid={!!errors.interest} aria-describedby={errors.interest ? `${idPrefix}-interest-error` : undefined}>
             <option value="">Select interest</option>
-            {(centralizedInterestLabels ? ACTIVITY_INTEREST_OPTIONS : [
-              { value: "INTERESTED", label: "Interested" },
-              { value: "NOT_INTERESTED", label: "Not Interested" },
-            ]).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {ACTIVITY_INTEREST_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
           {errors.interest && <p id={`${idPrefix}-interest-error`} className="text-xs text-[var(--color-danger)]" role="alert">{errors.interest}</p>}
         </div>

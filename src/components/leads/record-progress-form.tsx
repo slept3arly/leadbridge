@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { FOLLOW_UP_PRIORITIES, FOLLOW_UP_STATUSES, LEAD_PRIORITIES, SALES_EDITABLE_LEAD_STATUSES } from "@/lib/lead-constants";
+import { FOLLOW_UP_PRIORITIES, FOLLOW_UP_STATUSES, LEAD_PRIORITIES, SALES_EDITABLE_LEAD_STATUSES, getStatusLabel } from "@/lib/lead-constants";
 import { ACTIVITY_ACTION_OPTIONS, ACTIVITY_INTEREST_OPTIONS, getActivityResponseOptions, isSuccessfulActivityResponse } from "@/lib/activity-options";
 import { followUpFormDate } from "@/lib/follow-up-form-date";
 import { leadProgressRequestSchema } from "@/lib/validation";
@@ -363,7 +363,7 @@ export function RecordProgressForm({
                     ) : (
                       <div className="space-y-1.5">
                         <p id="progress-status" aria-live="polite" className="flex min-h-10 items-center rounded-lg border border-[var(--color-border)] bg-slate-100 px-3 text-sm text-[var(--color-muted)]">
-                          {activeLead ? `Current status: ${activeLead.status === "LOST" ? "Lost" : activeLead.status === "SPAM" ? "Junk" : activeLead.status === "ON_HOLD" ? "Paused" : activeLead.status}` : status}
+                          {activeLead ? `Current status: ${getStatusLabel(activeLead.status)}` : status}
                         </p>
                         <Select aria-label="Change status" value="" onChange={(event) => { setStatusDraft(event.target.value); setStatusDirty(true); clearFieldErrors(["status"]); }} disabled={!activeLead}>
                           <option value="" disabled>Change status</option>

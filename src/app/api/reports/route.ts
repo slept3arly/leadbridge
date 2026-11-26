@@ -1,55 +1,48 @@
 import { NextResponse } from "next/server";
 import { withApiAuthorization, apiError, handleApiError } from "@/lib/api";
+import { parseLegacyReportExport } from "@/lib/export/legacy-compatibility";
 import { reportService } from "@/services/report.service";
-
-function parseDateRange(searchParams: URLSearchParams): { from?: Date; to?: Date } {
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
-  return {
-    ...(from ? { from: new Date(from) } : {}),
-    ...(to ? { to: new Date(to) } : {}),
-  };
-}
+import { z } from "zod";
 
 export const GET = withApiAuthorization("ADMIN", async (request) => {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type");
-  const range = parseDateRange(searchParams);
-  const dateRange = range.from || range.to ? range as { from: Date; to: Date } : undefined;
-  if (dateRange && !(dateRange.from && dateRange.to)) {
-    return apiError("Both 'from' and 'to' are required for date range", 400);
-  }
 
   try {
+    const { filters } = parseLegacyReportExport(searchParams);
+
     switch (type) {
       case "summary": {
-        const data = await reportService.leadSummary(dateRange);
+        const data = await reportService.leadSummary(undefined, filters);
         return NextResponse.json({ data });
       }
       case "sources": {
-        const data = await reportService.leadSources(dateRange);
+        const data = await reportService.leadSources(undefined, filters);
         return NextResponse.json({ data });
       }
       case "assignments": {
-        const data = await reportService.assignments(dateRange);
+        const data = await reportService.assignments(undefined, filters);
         return NextResponse.json({ data });
       }
       case "activity": {
-        const data = await reportService.activity();
+        const data = await reportService.activity(filters);
         return NextResponse.json({ data });
       }
       case "trends": {
-        const data = await reportService.monthlyTrends();
+        const data = await reportService.monthlyTrends(filters);
         return NextResponse.json({ data });
       }
       case "status": {
-        const data = await reportService.statusBreakdown(dateRange);
+        const data = await reportService.statusBreakdown(undefined, filters);
         return NextResponse.json({ data });
       }
       default:
         return apiError(`Unknown report type: ${type}. Supported: summary, sources, assignments, activity, trends, status`, 400);
     }
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return apiError("Invalid report filter parameters.", 400);
+    }
     return handleApiError(error, "Report generation failed");
   }
 });

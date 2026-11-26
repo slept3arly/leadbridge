@@ -91,7 +91,7 @@ export function buildLeadExportWhere(
   if (filters.archived === "active") clauses.push({ isArchived: false });
   if (filters.archived === "archived") clauses.push({ isArchived: true });
   const activityBounds = leadActivityDateBounds(filters);
-  if (activityBounds || filters.actions?.length || filters.responses?.length || filters.interests?.length) {
+  if (activityBounds || filters.actions?.length || filters.responses?.length || filters.interests?.length || filters.reasons?.length) {
     const occurredAt = dateTimeFilter(activityBounds);
     clauses.push({
       activityEvents: {
@@ -103,6 +103,7 @@ export function buildLeadExportWhere(
               ...(filters.actions?.length ? { action: { in: filters.actions } } : {}),
               ...(filters.responses?.length ? { response: { in: filters.responses } } : {}),
               ...(filters.interests?.length ? { interest: { in: filters.interests } } : {}),
+              ...(filters.reasons?.length ? { reason: { in: filters.reasons } } : {}),
             },
           },
         },
@@ -132,7 +133,7 @@ export function buildUserExportWhere(filters: UserExportFilters, legacyBounds?: 
   if (filters.active !== undefined) clauses.push({ active: filters.active });
   if (filters.banned !== undefined) clauses.push({ banned: filters.banned });
   if (filters.designations?.length) clauses.push({ designation: { in: filters.designations } });
-  clauses.push(...searchClauses(filters.search, ["name", "email", "employeeCode"]));
+  clauses.push(...searchClauses(filters.search, ["name", "email", "employeeCode", "designation", "phone"]));
   return { AND: clauses };
 }
 

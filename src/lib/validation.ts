@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { STATUS_VALUES, PRIORITY_VALUES, CATEGORY_VALUES } from "@/lib/lead-constants";
-import { getActivityResponseOptions, isSuccessfulActivityResponse } from "@/lib/activity-options";
+import { STATUS_VALUES, PRIORITY_VALUES, CATEGORY_VALUES, SALES_EDITABLE_LEAD_STATUS_VALUES } from "@/lib/lead-constants";
+import { ACTIVITY_INTEREST_VALUES, getActivityResponseOptions, isSuccessfulActivityResponse } from "@/lib/activity-options";
 import { ACTIVITY_REASON_VALUES } from "@/lib/activity-reasons";
 import { isValidFollowUpDate } from "@/lib/follow-up-date";
 
@@ -45,7 +45,7 @@ export const loginSchema = z.object({
 });
 
 export const leadStatusSchema = z.enum(STATUS_VALUES as [string, ...string[]]);
-export const permittedLeadStatusSchema = z.enum(["NEW", "OLD", "CONVERTED"]);
+export const permittedLeadStatusSchema = z.enum(SALES_EDITABLE_LEAD_STATUS_VALUES);
 export const activityReasonSchema = z.enum(ACTIVITY_REASON_VALUES);
 
 export const leadPrioritySchema = z.enum(PRIORITY_VALUES as [string, ...string[]]);
@@ -144,7 +144,7 @@ export const leadPatchSchema = leadFieldsSchema.partial().extend({ status: permi
 const interactionActivityFields = {
   action: z.enum(["CALL", "WHATSAPP"]),
   response: z.enum(["PICKED_UP", "NOT_PICKED_UP", "INVALID_NUMBER", "SWITCHED_OFF", "REPLIED", "NOT_REPLIED"]),
-  interest: z.enum(["INTERESTED", "NOT_INTERESTED"]).nullable(),
+  interest: z.enum(ACTIVITY_INTEREST_VALUES).nullable(),
   reason: activityReasonSchema.nullable().optional(),
   notes: z.string().trim().max(10000).nullable().optional().transform((value) => value || null),
   scheduleFollowUp: z.boolean().optional().default(false),

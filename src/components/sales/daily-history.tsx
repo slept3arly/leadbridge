@@ -5,7 +5,7 @@ import { IconActionButton } from "@/components/ui/icon-action-button";
 import { Badge } from "@/components/ui/badge";
 import { Edit, Calendar, CheckCircle2, Trash2, ArrowUpRight, RefreshCw, Phone, MessageSquare } from "lucide-react";
 import { formatDate, formatTimeValue, formatTime } from "@/lib/utils";
-import { ACTIVITY_ACTION_LABELS, ACTIVITY_INTEREST_LABELS, ACTIVITY_RESPONSE_LABELS } from "@/lib/activity-options";
+import { ACTIVITY_ACTION_LABELS, ACTIVITY_RESPONSE_LABELS, getActivityInterestLabel } from "@/lib/activity-options";
 import type { ActivityEventItem, ActivityEventEntry } from "@/hooks/use-lead-details";
 import { getActivityReasonLabel } from "@/lib/activity-reasons";
 
@@ -41,11 +41,11 @@ function InteractionEntry({ entry }: { entry: ActivityEventEntry }) {
   const action = entry.action ?? (entry.type === "CALL" || entry.type === "WHATSAPP" ? entry.type : null);
   const actionLabel = action ? (ACTIVITY_ACTION_LABELS[action as keyof typeof ACTIVITY_ACTION_LABELS] ?? action) : null;
   const responseLabel = entry.response ? (ACTIVITY_RESPONSE_LABELS[entry.response as keyof typeof ACTIVITY_RESPONSE_LABELS] ?? entry.response) : null;
-  const interestLabel = entry.interest ? ACTIVITY_INTEREST_LABELS[entry.interest as keyof typeof ACTIVITY_INTEREST_LABELS] ?? entry.interest : null;
+  const interestLabel = entry.interest ? getActivityInterestLabel(entry.interest) : null;
   const isCall = action === "CALL";
   const reasonLabel = entry.reason ? getActivityReasonLabel(entry.reason) : null;
   const generatedMessage = action && entry.response
-    ? [`${action} - ${entry.response.replaceAll("_", " ")}`, entry.interest ? `(${entry.interest.replaceAll("_", " ")})` : ""].filter(Boolean).join(" ").toLowerCase()
+    ? [`${action} - ${entry.response.replaceAll("_", " ")}`, interestLabel ? `(${interestLabel})` : ""].filter(Boolean).join(" ").toLowerCase()
     : null;
   const note = typeof entry.metadata?.notes === "string" && entry.metadata.notes.trim()
     ? entry.metadata.notes.trim()

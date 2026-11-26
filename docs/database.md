@@ -36,14 +36,14 @@ The runtime uses Prisma's `@prisma/adapter-pg` driver adapter and the Node Postg
 |---|---|
 | `UserRole` | `ADMIN`, `SALES` |
 | `SalesPrivilege` | `JUNIOR`, `SENIOR` |
-| `LeadStatus` | `NEW`, `CONVERTED`, `LOST`, `SPAM`, `ON_HOLD`, `OLD` |
+| `LeadStatus` | `NEW`, `CONVERTED`, `LOST`, `SPAM`, `ON_HOLD`, `OLD`, `REPEATED` |
 | `LeadPriority` | `LOW`, `MEDIUM`, `HIGH`, `URGENT`, `COLD` |
 | `FollowUpStatus` | `PENDING`, `COMPLETED`, `CANCELLED` |
 | `FollowUpPriority` | `LOW`, `MEDIUM`, `HIGH`, `URGENT`, `COLD` |
 | `ActionType` | `CALL`, `WHATSAPP` |
 | `ResponseType` | `PICKED_UP`, `NO_RESPONSE` (legacy), `INVALID_NUMBER`, `REPLIED`, `NOT_PICKED_UP`, `SWITCHED_OFF`, `NOT_REPLIED` |
-| `InterestType` | `INTERESTED`, `NOT_INTERESTED` |
-| `ActivityReason` | Existing reason values plus `COSMETIC_PRODUCTS_AND_TREATMENTS`, `TRADITIONAL_CLASSICAL_HEALTHCARE_PRODUCTS`, and `NUTRACEUTICALS_AND_DIETARY_SUPPLEMENTS` |
+| `InterestType` | `INTERESTED`, `NOT_INTERESTED`, `DETAIL_SHARED`, `POSITIVE` |
+| `ActivityReason` | Existing reason values plus `COSMETIC_PRODUCTS_AND_TREATMENTS`, `TRADITIONAL_CLASSICAL_HEALTHCARE_PRODUCTS`, `NUTRACEUTICALS_AND_DIETARY_SUPPLEMENTS`, and `CALL_CUT_HOLD` |
 | `LeadCategory` | 17 values including `MEDICAL_REPRESENTATIVE`, `RETAILER`, `WHOLESALER`, etc. |
 | `ConnectorStatus` | `INACTIVE`, `ACTIVE`, `ERROR` |
 | `ConnectorScheduleType` | `MANUAL`, `EVERY_5_MIN`, `EVERY_15_MIN`, `EVERY_30_MIN`, `HOURLY`, `DAILY`, `CUSTOM` |

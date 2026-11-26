@@ -21,7 +21,10 @@ export const LEGACY_ACTIVITY_RESPONSE_OPTIONS = [
 export const ACTIVITY_INTEREST_OPTIONS = [
   { value: "INTERESTED", label: "Interested" },
   { value: "NOT_INTERESTED", label: "Not interested" },
+  { value: "DETAIL_SHARED", label: "Detail shared" },
+  { value: "POSITIVE", label: "Positive" },
 ] as const;
+export const ACTIVITY_INTEREST_VALUES = ACTIVITY_INTEREST_OPTIONS.map(({ value }) => value);
 export const ACTIVITY_INTEREST_LABELS = Object.fromEntries(
   ACTIVITY_INTEREST_OPTIONS.map(({ value, label }) => [value, label]),
 ) as Record<(typeof ACTIVITY_INTEREST_OPTIONS)[number]["value"], string>;

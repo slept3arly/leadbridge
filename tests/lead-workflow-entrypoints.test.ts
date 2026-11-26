@@ -90,7 +90,8 @@ test("Create Lead uses a full-screen two-column layout and the required field or
     priorIndex = index;
   }
 
-  assert.match(addLead, /ActivityFormFields[\s\S]*idPrefix="initial-activity"[\s\S]*centralizedInterestLabels/);
+  assert.match(addLead, /ActivityFormFields[\s\S]*idPrefix="initial-activity"/);
+  assert.match(activityFields, /ACTIVITY_INTEREST_OPTIONS\.map/);
   assert.match(addLead, /scheduleFollowUp,[\s\S]*followUpDate,[\s\S]*followUpTime/);
   assert.doesNotMatch(info + interaction, /Product/i);
   assert.match(addLead, /await axios\.post\("\/api\/leads", parsed\.data\)/);
@@ -100,7 +101,8 @@ test("Create Lead places Action and Response in one equal-width row that stacks 
   const addLead = readFileSync(join(process.cwd(), "src/components/leads/lead-edit-modal.tsx"), "utf8");
   const activityFields = readFileSync(join(process.cwd(), "src/components/sales/activity-fields.tsx"), "utf8");
 
-  assert.match(addLead, /ActivityFormFields[\s\S]*actionResponseInline[\s\S]*centralizedInterestLabels/);
+  assert.match(addLead, /ActivityFormFields[\s\S]*actionResponseInline/);
+  assert.match(activityFields, /ACTIVITY_INTEREST_OPTIONS\.map/);
   assert.match(
     activityFields,
     /actionResponseInline \? \(\s*<div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">\s*\{actionField\}\s*\{responseField\}\s*<\/div>\s*\) : \(/,

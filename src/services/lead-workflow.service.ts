@@ -17,7 +17,7 @@ function parseOrThrow<T>(result: { success: true; data: T } | { success: false; 
 function interactionEntry(input: {
   action: "CALL" | "WHATSAPP";
   response: string;
-  interest: "INTERESTED" | "NOT_INTERESTED" | null;
+  interest: import("@/generated/prisma/client").InterestType | null;
   reason?: ActivityEntryInput["reason"];
   notes: string | null;
 }): ActivityEntryInput {

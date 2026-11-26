@@ -7,8 +7,7 @@ export const EXPORT_FORMATS = ["csv"] as const;
 export const exportFormatSchema = z.enum(EXPORT_FORMATS);
 export type ExportFormat = z.infer<typeof exportFormatSchema>;
 
-const columnIds = z.array(z.string().trim().min(1).max(80)).min(1).max(100)
-  .transform((columns) => [...new Set(columns)]);
+const columnIds = z.array(z.string().trim().min(1).max(80)).min(1).max(100);
 
 function exportRequestVariant<C extends ExportCategoryId>(category: C) {
   const filters = exportFiltersByCategory[category];
@@ -144,7 +143,7 @@ export const EXPORT_CSV_REPRESENTATION = {
   null: "Empty cell",
   dates: "ISO-8601 UTC",
   enums: "Stable Prisma enum value",
-  booleans: "true or false",
+  booleans: "Yes or No",
   decimals: "Base-10 decimal string without locale formatting",
   spreadsheetFormulas: "Prefix text cells that could be formulas with an apostrophe before CSV quoting",
 } as const;

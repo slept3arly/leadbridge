@@ -250,7 +250,7 @@ test("My Leads controls expose names, Radix popover state, close labeling, and i
   await waitFor(() => {
     const params = new URL(window.location.href).searchParams;
     assert.equal(params.get("dateFrom"), new Date("2031-02-03T00:00:00").toISOString());
-    assert.equal(params.get("dateTo"), new Date("2031-02-17T23:59:59").toISOString());
+    assert.equal(params.get("dateTo"), new Date("2031-02-17T23:59:59.999").toISOString());
   });
   assert.equal((screen.getByLabelText("From") as HTMLInputElement).value, "2031-02-03");
   assert.equal((screen.getByLabelText("To") as HTMLInputElement).value, "2031-02-17");

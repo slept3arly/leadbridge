@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { InterestType } from "@/generated/prisma/client";
 import axios from "axios";
 import { useCrmSync } from "@/hooks/use-crm-sync";
 import { CRM_MUTATION_ENTITY_TYPES } from "@/lib/crm-sync";
@@ -100,7 +101,7 @@ export type ActivityEventEntry = {
   type: string;
   action: "CALL" | "WHATSAPP" | null;
   response: "PICKED_UP" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED" | "NOT_PICKED_UP" | "SWITCHED_OFF" | "NOT_REPLIED" | null;
-  interest: "INTERESTED" | "NOT_INTERESTED" | null;
+  interest: InterestType | null;
   reason?: string | null;
   message: string | null;
   metadata: Record<string, unknown> | null;

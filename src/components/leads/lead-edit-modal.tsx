@@ -485,7 +485,6 @@ export function LeadEditModal({
           actionResponseInline
           scheduleToggle
           compactNotes
-          centralizedInterestLabels
           betweenResponseAndInterest={
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField label="Status" htmlFor="lead-status">

@@ -3,6 +3,7 @@ import { withApiAuthorization, handleApiError } from "@/lib/api";
 import { followUpService } from "@/services/follow-up.service";
 import { invalidateAfterMutation } from "@/lib/cache-tags";
 import { z } from "zod";
+import { ACTIVITY_INTEREST_VALUES } from "@/lib/activity-options";
 import { activityReasonSchema } from "@/lib/validation";
 
 const completeFollowUpSchema = z.object({
@@ -14,7 +15,7 @@ const completeFollowUpSchema = z.object({
   activity: z.object({
     action: z.enum(["CALL", "WHATSAPP"]),
     response: z.enum(["PICKED_UP", "NOT_PICKED_UP", "INVALID_NUMBER", "SWITCHED_OFF", "REPLIED", "NOT_REPLIED"]),
-    interest: z.enum(["INTERESTED", "NOT_INTERESTED"]).nullable(),
+    interest: z.enum(ACTIVITY_INTEREST_VALUES).nullable(),
     reason: activityReasonSchema.nullable().optional(),
     notes: z.string().trim().max(10000).nullable().optional(),
   }).superRefine((activity, ctx) => {

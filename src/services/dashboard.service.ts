@@ -3,6 +3,7 @@ import { startOfTodayUTC, endOfTodayUTC } from "@/lib/utils";
 import { reportService } from "./report.service";
 import { attentionService } from "./attention.service";
 import { salesFollowUpLeadScope } from "@/services/follow-up-policy";
+import { LEAD_STATUSES } from "@/lib/lead-constants";
 
 type ActivityMetricRow = {
   isTotal: boolean;
@@ -130,7 +131,7 @@ export class DashboardService {
         unassigned,
       },
       charts: {
-        statusBreakdown: ["NEW", "CONVERTED", "LOST", "SPAM", "ON_HOLD", "OLD"].map((status) => ({
+        statusBreakdown: LEAD_STATUSES.map(({ value: status }) => ({
           status,
           count: statusBreakdown.find((item) => item.status === status)?.count ?? 0,
         })),
@@ -275,7 +276,7 @@ export class DashboardService {
             WHERE (entry."type" = 'CALL' AND entry."action" = 'CALL' AND entry."response" IN ('NOT_PICKED_UP', 'SWITCHED_OFF', 'NO_RESPONSE'))
                OR (entry."type" = 'WHATSAPP' AND entry."action" = 'WHATSAPP' AND entry."response" IN ('NOT_REPLIED', 'NO_RESPONSE'))
           ) AS "noResponse",
-          COUNT(DISTINCT event."leadId") FILTER (WHERE entry."interest" = 'INTERESTED') AS "interested",
+          COUNT(DISTINCT event."leadId") FILTER (WHERE entry."interest" IN ('INTERESTED', 'DETAIL_SHARED', 'POSITIVE')) AS "interested",
           COUNT(DISTINCT event."leadId") FILTER (WHERE entry."interest" = 'NOT_INTERESTED') AS "notInterested"
         FROM "ActivityEntry" entry
         INNER JOIN "ActivityEvent" event ON event."id" = entry."eventId"

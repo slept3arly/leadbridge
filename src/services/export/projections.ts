@@ -21,10 +21,12 @@ export function resolveLeadProjection(requested?: readonly string[]): { columns:
     ...(has("priority") ? { priority: true } : {}),
     ...(has("category") ? { category: true } : {}),
     ...(has("city") ? { city: true } : {}),
+    ...(has("district") ? { district: true } : {}),
     ...(has("state") ? { state: true } : {}),
     ...(has("country") ? { country: true } : {}),
     ...(has("requirement") ? { requirement: true } : {}),
     createdAt: true,
+    ...(has("updatedAt") ? { updatedAt: true } : {}),
     ...(has("assignedTo") ? { assignedUser: { select: { name: true } } } : {}),
     ...(has("source") ? { source: { select: { name: true } } } : {}),
     ...(has("firstContactedAt") ? { firstContactedAt: true } : {}),
@@ -41,6 +43,7 @@ export function resolveLeadProjection(requested?: readonly string[]): { columns:
     ...(has("address") ? { address: true } : {}),
     ...(has("budget") ? { budget: true } : {}),
     ...(has("expectedValue") ? { expectedValue: true } : {}),
+    ...(has("wonAmount") ? { wonAmount: true } : {}),
     ...(has("currency") ? { currency: true } : {}),
     ...(has("lostReason") ? { lostReason: true } : {}),
     ...(has("campaign") ? { campaign: true } : {}),
@@ -59,7 +62,7 @@ export function resolveUserProjection(requested?: readonly string[]): { columns:
   const has = (id: string) => selected(columns, id);
   const select = {
     id: true,
-    name: true,
+    ...(has("name") ? { name: true } : {}),
     ...(has("email") ? { email: true } : {}),
     ...(has("role") ? { role: true } : {}),
     ...(has("salesPrivilege") ? { salesPrivilege: true } : {}),
@@ -68,9 +71,6 @@ export function resolveUserProjection(requested?: readonly string[]): { columns:
     ...(has("designation") ? { designation: true } : {}),
     ...(has("createdAt") ? { createdAt: true } : {}),
     ...(has("phone") ? { phone: true } : {}),
-    ...(has("banned") ? { banned: true } : {}),
-    ...(has("lastLoginAt") ? { lastLoginAt: true } : {}),
-    ...(has("updatedAt") ? { updatedAt: true } : {}),
   } satisfies Prisma.UserSelect;
   return { columns, select };
 }
@@ -80,11 +80,13 @@ export function resolveProviderProjection(requested?: readonly string[]): { colu
   const has = (id: string) => selected(columns, id);
   const select = {
     id: true,
-    name: true,
+    ...(has("name") ? { name: true } : {}),
     ...(has("slug") ? { slug: true } : {}),
     ...(has("sourceType") ? { sourceType: true } : {}),
     ...(has("active") ? { active: true } : {}),
     ...(has("createdAt") ? { createdAt: true } : {}),
+    ...(has("description") ? { description: true } : {}),
+    ...(has("priority") ? { priority: true } : {}),
     ...(has("updatedAt") ? { updatedAt: true } : {}),
   } satisfies Prisma.LeadSourceSelect;
   return { columns, select };
@@ -107,6 +109,7 @@ export function resolveSyncHistoryProjection(requested?: readonly string[]): { c
     ...(has("recordsCreated") ? { recordsCreated: true } : {}),
     ...(has("recordsUpdated") ? { recordsUpdated: true } : {}),
     ...(has("recordsSkipped") ? { recordsSkipped: true } : {}),
+    ...(has("errorDiagnostic") ? { errorMessage: true } : {}),
   } satisfies Prisma.ConnectorSyncRunSelect;
   return { columns, select };
 }

@@ -5,13 +5,20 @@ export const LEAD_STATUSES = [
   { value: "SPAM", label: "Junk" },
   { value: "ON_HOLD", label: "Paused" },
   { value: "OLD", label: "Old" },
+  { value: "REPEATED", label: "Repeated" },
 ] as const;
 
-export const SALES_EDITABLE_LEAD_STATUSES = [
-  { value: "NEW", label: "New" },
-  { value: "OLD", label: "Old" },
-  { value: "CONVERTED", label: "Converted" },
-] as const;
+export const SALES_EDITABLE_LEAD_STATUS_VALUES = ["NEW", "OLD", "CONVERTED", "REPEATED"] as const;
+const salesEditableStatusLabels: Record<(typeof SALES_EDITABLE_LEAD_STATUS_VALUES)[number], string> = {
+  NEW: "New",
+  OLD: "Old",
+  CONVERTED: "Converted",
+  REPEATED: "Repeated",
+};
+export const SALES_EDITABLE_LEAD_STATUSES = SALES_EDITABLE_LEAD_STATUS_VALUES.map((value) => ({
+  value,
+  label: salesEditableStatusLabels[value],
+}));
 
 export const LEAD_PRIORITIES = [
   { value: "LOW", label: "Low" },

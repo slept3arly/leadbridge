@@ -2,11 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { escapeCsv } from "../src/lib/csv";
 import { exportOperationLogSchema } from "../src/lib/export/output";
-import { EXPORT_CSV_HEADERS, serializeLeadCsvRow, serializeProviderCsvRow, serializeSyncRunCsvRow, serializeUserCsvRow } from "../src/services/export/csv-serialization";
+import { EXPORT_CSV_HEADERS, getExportCsvHeaders, serializeLeadCsvRow, serializeProviderCsvRow, serializeSyncRunCsvRow, serializeUserCsvRow } from "../src/services/export/csv-serialization";
 import { createCsvByteStream, type CsvExportRecord, type ExportStreamSummary } from "../src/services/export/csv-stream";
 import { ExportDeadline, awaitBeforeDeadline } from "../src/services/export/deadline";
 import { assertExportRowLimit } from "../src/services/export/limits";
 import { ServiceError } from "../src/lib/service-errors";
+import { EXPORT_FIELDS, getDefaultExportColumns } from "../src/lib/export/fields";
+import { LEGACY_EXPORT_COLUMNS } from "../src/lib/export/legacy-contract";
+import { sanitizeSyncErrorDiagnostic } from "../src/lib/sync-error";
+import { serializeLeadCsvRecords } from "../src/services/export/csv-serialization";
 
 async function* source(records: CsvExportRecord[], onYield?: (index: number) => void): AsyncGenerator<CsvExportRecord> {
   try {
@@ -23,42 +27,135 @@ function readText(chunk: Uint8Array): string {
   return new TextDecoder().decode(chunk);
 }
 
+function parseCsvRow(row: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < row.length; i++) {
+    const char = row[i];
+    if (char === '"') {
+      if (quoted && row[i + 1] === '"') { cell += '"'; i++; }
+      else quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(cell); cell = "";
+    } else if (char !== "\n" || quoted) cell += char;
+  }
+  cells.push(cell);
+  return cells;
+}
+
+test("live export defaults, metadata chips, legacy columns, and CSV headers share one contract", () => {
+  const headers = EXPORT_CSV_HEADERS;
+  for (const category of ["leads", "users", "providers", "sync-history"] as const) {
+    const fields = EXPORT_FIELDS[category];
+    const columns = LEGACY_EXPORT_COLUMNS[category];
+    const declaredHeaders = columns.map((id) => fields.find((field) => field.id === id)?.header);
+    assert.ok(declaredHeaders.every(Boolean), `${category} legacy columns resolve to declared fields`);
+    assert.deepEqual(getDefaultExportColumns(category), columns, `${category} defaults preserve live column order`);
+    assert.deepEqual(fields.filter((field) => field.defaultSelected).map((field) => field.id), columns);
+    assert.deepEqual(headers[category], declaredHeaders, `${category} chips and CSV headers agree`);
+  }
+  for (const category of ["users", "providers"] as const) {
+    for (const field of EXPORT_FIELDS[category].filter((item) => item.kind === "boolean" && item.defaultSelected)) {
+      assert.equal(field.representation, "Yes/No");
+    }
+  }
+});
+
 test("all live CSV categories have deterministic legacy headers and Product/Error compatibility", () => {
-  assert.deepEqual(EXPORT_CSV_HEADERS.leads, ["Lead Number", "Name", "Company", "Email", "Phone", "Status", "Priority", "City", "State", "Country", "Product", "Requirement", "Created At", "Assigned To", "Source"]);
+  assert.deepEqual(EXPORT_CSV_HEADERS.leads, ["S.No.", "Name", "Company", "Phone", "Status", "City", "District", "State", "Source"]);
   assert.deepEqual(EXPORT_CSV_HEADERS.users, ["Name", "Email", "Role", "Active", "Employee Code", "Designation", "Phone", "Created At"]);
   assert.deepEqual(EXPORT_CSV_HEADERS.providers, ["Name", "Slug", "Type", "Active", "Created At"]);
   assert.deepEqual(EXPORT_CSV_HEADERS["sync-history"], ["Run ID", "Connector", "Type", "Status", "Started At", "Completed At", "Records Seen", "Created", "Updated", "Skipped", "Error"]);
 
+  const leadColumns = ["serialNumber", "name", "product", "district"];
+  assert.deepEqual(getExportCsvHeaders("leads", leadColumns), ["S.No.", "Name", "District", "Product"]);
   const leadRow = serializeLeadCsvRow({
     leadNumber: "L-1", displayName: "Lead", company: null, email: null, phone: null,
     status: "NEW", priority: "LOW", city: null, state: null, country: "US", product: "Legacy Product",
     requirement: null, createdAt: new Date("2026-11-01T00:00:00.000Z"), assignedUser: null, source: null,
-  });
-  assert.equal(leadRow.split(",")[0], "L-1"); // Stored identifiers stay intact; schema has no reliable numeric sequence.
-  assert.deepEqual(leadRow.split(",").slice(9, 12), ["US", "Legacy Product", ""]);
+  }, leadColumns, 7);
+  assert.equal(parseCsvRow(leadRow).length, leadColumns.length);
+  assert.deepEqual(parseCsvRow(leadRow), ["7", "Lead", "Legacy Product", ""]);
+  assert.ok(!leadRow.includes("L-1"));
+
+  const selectedUser = parseCsvRow(serializeUserCsvRow({
+    name: "A", email: "a@example.test", role: "SALES", active: true, employeeCode: null, designation: null,
+    phone: "+1 555 123 4567", createdAt: new Date("2026-11-01T00:00:00.000Z"), salesPrivilege: "SENIOR",
+  }, ["name", "salesPrivilege"]));
+  assert.deepEqual(selectedUser, ["A", "SENIOR"]);
 
   const runRow = serializeSyncRunCsvRow({
     id: "run-1", connector: { name: "Mailbox", type: "GMAIL" }, status: "ERROR",
     startedAt: new Date("2026-11-01T00:00:00.000Z"), completedAt: null,
-    recordsSeen: 1, recordsCreated: 0, recordsUpdated: 0, recordsSkipped: 1,
+    recordsSeen: 1, recordsCreated: 0, recordsUpdated: 0, recordsSkipped: 1, errorMessage: null,
   });
-  assert.equal(runRow.trimEnd().split(",").at(-1), "");
-  assert.equal(runRow.includes("secret diagnostic"), false);
+  assert.equal(parseCsvRow(runRow).length, EXPORT_CSV_HEADERS["sync-history"].length);
+  assert.equal(parseCsvRow(runRow).at(-1), "");
+  const withError = parseCsvRow(serializeSyncRunCsvRow({
+    id: "run-2", connector: { name: "Mailbox", type: "GMAIL" }, status: "ERROR",
+    startedAt: new Date("2026-11-01T00:00:00.000Z"), completedAt: null,
+    recordsSeen: 1, recordsCreated: 0, recordsUpdated: 0, recordsSkipped: 1,
+    errorMessage: "Request failed: password=hunter2; Authorization: Bearer abc123; postgres://user:pass@db.local/app",
+  }));
+  assert.equal(withError.at(-1), "Request failed: password=[REDACTED]; Authorization: [REDACTED]; [REDACTED CONNECTION STRING]");
 });
 
-test("CSV encoding preserves quoting, CRLF, Unicode, null cells, and formula neutralization", () => {
+test("Leads S.No. begins at one and stays sequential across streamed query batches", async () => {
+  const rowsFromBatches = async function* () {
+    for (let index = 0; index < 251; index++) {
+      yield {
+        leadNumber: `L-${index + 1000}`, displayName: `Lead ${index + 1}`, company: null, email: null, phone: null,
+        status: "NEW", priority: "LOW", city: null, state: null, country: null, product: null, requirement: null,
+        createdAt: new Date("2026-01-01T00:00:00Z"), source: null,
+      };
+    }
+  };
+  const rows: string[][] = [];
+  for await (const record of serializeLeadCsvRecords(rowsFromBatches(), ["serialNumber", "name"])) {
+    rows.push(parseCsvRow(record.csv));
+  }
+  assert.deepEqual(rows[0], ["S.No.", "Name"]);
+  assert.deepEqual(rows[1], ["1", "Lead 1"]);
+  assert.deepEqual(rows[250], ["250", "Lead 250"]);
+  assert.deepEqual(rows[251], ["251", "Lead 251"]);
+  assert.equal(rows.flat().some((cell) => cell.startsWith("L-")), false);
+});
+
+test("CSV encoding preserves quoting, CRLF, Unicode, nulls and phone numbers while neutralizing formulas", () => {
   const row = serializeProviderCsvRow({ name: "Acme, \"Global\"\r\n世界", slug: "acme", sourceType: "WEB", active: true, createdAt: new Date("2026-11-01T00:00:00.000Z") });
   assert.ok(row.startsWith("\"Acme, \"\"Global\"\"\r\n世界\",acme,WEB,Yes,"));
   assert.ok(row.endsWith("2026-11-01T00:00:00.000Z\n"));
 
   const user = serializeUserCsvRow({ name: "=HYPERLINK(\"x\")", email: "é@example.test", role: "ADMIN", active: false, employeeCode: null, designation: null, phone: null, createdAt: new Date("2026-11-01T00:00:00.000Z") });
   assert.ok(user.startsWith("\"'=HYPERLINK(\"\"x\"\")\",é@example.test,ADMIN,No,,,"));
+  assert.equal(escapeCsv("+1 (555) 123-4567", "phone"), "+1 (555) 123-4567");
   assert.equal(escapeCsv("+SUM(1,1)"), "\"'+SUM(1,1)\"");
   assert.equal(escapeCsv("-cmd"), "'-cmd");
   assert.equal(escapeCsv("@SUM(1,1)"), "\"'@SUM(1,1)\"");
+  assert.equal(escapeCsv("=1+1"), "'=1+1");
   assert.equal(escapeCsv("\t=1+1"), "'\t=1+1");
+  assert.equal(escapeCsv("\r=1+1"), "\"'\r=1+1\"");
+  assert.equal(escapeCsv(-42), "-42");
+  assert.equal(escapeCsv("-42", "number"), "-42");
+  assert.equal(escapeCsv("-cmd", "number"), "'-cmd");
+  assert.equal(escapeCsv("=bad,\"value\"\nnext"), "\"'=bad,\"\"value\"\"\nnext\"");
   assert.equal(escapeCsv(42), "42");
   assert.equal(escapeCsv(null), "");
+  assert.equal(escapeCsv(""), "");
+
+  const phoneUser = parseCsvRow(serializeUserCsvRow({ name: "A", email: "a@example.test", role: "SALES", active: true, employeeCode: null, designation: null, phone: "+1 555 123 4567", createdAt: new Date("2026-11-01T00:00:00.000Z") }));
+  assert.equal(phoneUser.length, EXPORT_CSV_HEADERS.users.length);
+  assert.equal(phoneUser[3], "Yes");
+  assert.equal(phoneUser[6], "+1 555 123 4567");
+});
+
+test("sync diagnostics are safe for display and preserve absent or ordinary errors", () => {
+  assert.equal(sanitizeSyncErrorDiagnostic(null), "");
+  assert.equal(sanitizeSyncErrorDiagnostic("Remote returned 503"), "Remote returned 503");
+  assert.equal(sanitizeSyncErrorDiagnostic("api_key=abc123"), "api_key=[REDACTED]");
+  assert.equal(sanitizeSyncErrorDiagnostic("X-API-Key: abc123"), "X-API-Key: [REDACTED]");
+  assert.equal(sanitizeSyncErrorDiagnostic("failed with Bearer abc123"), "failed with [REDACTED]");
 });
 
 test("stream pulls rows incrementally without buffering the complete export", async () => {

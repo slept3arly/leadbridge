@@ -57,7 +57,34 @@ test("LeadService preserves import and legacy initial-activity creation behavior
       const persisted = await prisma.lead.findUnique({ where: { id: result.lead.id }, select: { status: true } });
       assert.equal(persisted?.status, "OLD");
       const historicalStatuses = await prisma.lead.groupBy({ by: ["status"], where: { id: { not: result.lead.id } }, _count: { id: true } });
-      assert.ok(historicalStatuses.every(({ status }) => ["NEW", "CONVERTED", "LOST", "SPAM", "ON_HOLD", "OLD"].includes(status)));
+      assert.ok(historicalStatuses.every(({ status }) => ["NEW", "CONVERTED", "LOST", "SPAM", "ON_HOLD", "OLD", "REPEATED"].includes(status)));
+    });
+
+    await t.test("REPEATED and new activity classifications persist", async () => {
+      const result = await leadService.create(leadSchema.parse({ ...leadInput("repeated-status"), status: "REPEATED" }), { id: salesId, role: "SALES", salesPrivilege: "SENIOR" });
+      assert.equal(result.status, "created");
+      if (result.status !== "created") return;
+      leadIds.push(result.lead.id);
+      assert.equal((await prisma.lead.findUnique({ where: { id: result.lead.id }, select: { status: true } }))?.status, "REPEATED");
+
+      for (const interest of ["DETAIL_SHARED", "POSITIVE"] as const) {
+        const event = await activityEventService.createEvent({
+          leadId: result.lead.id,
+          type: "INTERACTION",
+          actorId: salesId,
+          entries: [{ type: "CALL", action: "CALL", response: "PICKED_UP", interest }],
+        });
+        const entry = await prisma.activityEntry.findFirst({ where: { eventId: event.id }, select: { interest: true } });
+        assert.equal(entry?.interest, interest);
+      }
+      const reasonEvent = await activityEventService.createEvent({
+        leadId: result.lead.id,
+        type: "INTERACTION",
+        actorId: salesId,
+        entries: [{ type: "CALL", action: "CALL", response: "PICKED_UP", interest: "NOT_INTERESTED", reason: "CALL_CUT_HOLD" }],
+      });
+      const reasonEntry = await prisma.activityEntry.findFirst({ where: { eventId: reasonEvent.id }, select: { interest: true, reason: true } });
+      assert.deepEqual(reasonEntry, { interest: "NOT_INTERESTED", reason: "CALL_CUT_HOLD" });
     });
 
     await t.test("imported Product values persist and remain after an edit that omits Product", async () => {

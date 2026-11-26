@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   ActivityEntryType,
   ActivityEventType,
+  ActivityReason,
   ActionType,
   ConnectorHealthStatus,
   ConnectorScheduleType,
@@ -17,6 +18,7 @@ import {
   UserRole,
 } from "@/generated/prisma/enums";
 import { exportDateInputSchema, exportDateRangeSchema } from "@/lib/export/dates";
+import { canFilterLeadInterest } from "@/lib/export/lead-dependencies";
 
 export const EXPORT_FILTER_COMBINATION = {
   betweenGroups: "AND",
@@ -70,6 +72,7 @@ export const leadExportFiltersSchema = z.object({
   actions: multi(enumSchema(ActionType)).optional(),
   responses: multi(enumSchema(ResponseType)).optional(),
   interests: multi(enumSchema(InterestType)).optional(),
+  reasons: multi(enumSchema(ActivityReason)).optional(),
   activityDate: leadActivityDatePresetSchema.optional(),
   activityFrom: exportDateInputSchema.optional(),
   activityTo: exportDateInputSchema.optional(),
@@ -96,6 +99,17 @@ export const leadExportFiltersSchema = z.object({
     const from = Date.parse(fromDateOnly ? `${filters.activityFrom}T00:00:00.000Z` : filters.activityFrom);
     const to = Date.parse(toDateOnly ? `${filters.activityTo}T23:59:59.999Z` : filters.activityTo);
     if (from > to) ctx.addIssue({ code: "custom", path: ["activityTo"], message: "The activity end date must not precede the start date." });
+  }
+  if (filters.responses?.length && !canFilterLeadInterest(filters.responses)) {
+    if (filters.interests?.length) {
+      ctx.addIssue({ code: "custom", path: ["interests"], message: "Interest cannot be filtered when selected responses do not permit a contacted interaction." });
+    }
+    if (filters.reasons?.length) {
+      ctx.addIssue({ code: "custom", path: ["reasons"], message: "Reason cannot be filtered when selected responses do not permit a contacted interaction." });
+    }
+  }
+  if (filters.reasons?.length && !filters.interests?.includes("NOT_INTERESTED")) {
+    ctx.addIssue({ code: "custom", path: ["reasons"], message: "Reason can only be filtered when Interest includes Not Interested." });
   }
 });
 

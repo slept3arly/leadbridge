@@ -13,6 +13,7 @@ import {
 } from "../src/lib/activity-options";
 import { createLeadRequestSchema, followUpSchema, interactionActivitySchema, leadProgressRequestSchema } from "../src/lib/validation";
 import { leadExportFiltersSchema, followUpExportFiltersSchema } from "../src/lib/export/filters";
+import { ACTIVITY_REASON_OPTIONS } from "../src/lib/activity-reasons";
 
 const schema = readFileSync("prisma/schema.prisma", "utf8");
 
@@ -73,6 +74,7 @@ test("central label catalogs cover every workflow enum value without changing st
   assertCatalog("ActionType", ACTIVITY_ACTION_OPTIONS);
   assertCatalog("ResponseType", ACTIVITY_RESPONSE_OPTIONS);
   assertCatalog("InterestType", ACTIVITY_INTEREST_OPTIONS);
+  assertCatalog("ActivityReason", ACTIVITY_REASON_OPTIONS);
   assert.equal(LEAD_STATUSES.find(({ value }) => value === "LOST")?.label, "Lost");
   assert.equal(LEAD_STATUSES.find(({ value }) => value === "CONVERTED")?.label, "Converted");
   assert.deepEqual(LEAD_STATUSES, [
@@ -82,7 +84,12 @@ test("central label catalogs cover every workflow enum value without changing st
     { value: "SPAM", label: "Junk" },
     { value: "ON_HOLD", label: "Paused" },
     { value: "OLD", label: "Old" },
+    { value: "REPEATED", label: "Repeated" },
   ]);
+  assert.equal(ACTIVITY_INTEREST_OPTIONS.find(({ value }) => value === "NOT_INTERESTED")?.label, "Not interested");
+  assert.equal(ACTIVITY_INTEREST_OPTIONS.find(({ value }) => value === "DETAIL_SHARED")?.label, "Detail shared");
+  assert.equal(ACTIVITY_INTEREST_OPTIONS.find(({ value }) => value === "POSITIVE")?.label, "Positive");
+  assert.equal(ACTIVITY_REASON_OPTIONS.find(({ value }) => value === "CALL_CUT_HOLD")?.label, "Call cut/Hold");
   assert.equal(FOLLOW_UP_STATUSES.find(({ value }) => value === "PENDING")?.label, "To do");
   assert.deepEqual(getActivityResponseOptions("CALL").map(({ value }) => value), ["PICKED_UP", "NOT_PICKED_UP", "INVALID_NUMBER", "SWITCHED_OFF"]);
   assert.deepEqual(getActivityResponseOptions("WHATSAPP").map(({ value }) => value), ["REPLIED", "NOT_REPLIED"]);
@@ -91,13 +98,17 @@ test("central label catalogs cover every workflow enum value without changing st
   for (const status of LEAD_STATUSES) {
     assert.equal(leadExportFiltersSchema.safeParse({ status: [status.value] }).success, true, `${status.value} is export-filterable`);
   }
+  for (const option of ACTIVITY_INTEREST_OPTIONS) {
+    assert.equal(leadExportFiltersSchema.safeParse({ interests: [option.value] }).success, true, `${option.value} is export-filterable`);
+  }
+  for (const option of ACTIVITY_REASON_OPTIONS) {
+    assert.equal(leadExportFiltersSchema.safeParse({ reasons: [option.value], interests: ["NOT_INTERESTED"] }).success, true, `${option.value} is export-filterable`);
+  }
   const dashboard = readFileSync("src/services/dashboard.service.ts", "utf8");
   const salesDashboard = readFileSync("src/components/sales/sales-dashboard-client.tsx", "utf8");
   const adminReports = readFileSync("src/components/admin/admin-reports.tsx", "utf8");
-  for (const status of LEAD_STATUSES) {
-    assert.ok(dashboard.includes(`"${status.value}"`), `${status.value} is in dashboard status projection`);
-    assert.ok(salesDashboard.includes(`"${status.value}"`), `${status.value} is in Sales dashboard projection`);
-  }
+  assert.match(dashboard, /statusBreakdown: LEAD_STATUSES\.map/);
+  assert.match(salesDashboard, /PIPELINE_STATUSES = LEAD_STATUSES\.map/);
   assert.match(adminReports, /LEAD_STATUSES\.some\(\(status\) => status\.value === s\.status\)/);
   for (const priority of ["LOW", "MEDIUM", "HIGH", "URGENT", "COLD"]) {
     assert.equal(leadExportFiltersSchema.safeParse({ priority: [priority] }).success, true);

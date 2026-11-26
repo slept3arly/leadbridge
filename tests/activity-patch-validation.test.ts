@@ -63,3 +63,18 @@ test("activity PATCH accepts a valid interest update and skips outcome validatio
   );
   assert.equal(notesOnlyDoesNotValidateUnrelatedStoredFields, null);
 });
+
+test("activity PATCH accepts the added Interest classifications while keeping Not Interested reasons conditional", () => {
+  for (const interest of ["DETAIL_SHARED", "POSITIVE"] as const) {
+    const valid = validateActivityOutcomePatch(
+      { action: "CALL", response: "PICKED_UP", interest: "INTERESTED" },
+      { interest },
+    );
+    assert.equal(valid?.success, true, `${interest} is accepted`);
+  }
+  const notInterestedWithoutReason = validateActivityOutcomePatch(
+    { action: "CALL", response: "PICKED_UP", interest: "INTERESTED" },
+    { interest: "NOT_INTERESTED" },
+  );
+  assert.equal(notInterestedWithoutReason?.success, false);
+});

@@ -366,7 +366,7 @@ export class FollowUpService {
     activity?: {
       action: "CALL" | "WHATSAPP";
       response: "PICKED_UP" | "NOT_PICKED_UP" | "SWITCHED_OFF" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED" | "NOT_REPLIED";
-      interest?: "INTERESTED" | "NOT_INTERESTED" | null;
+      interest?: import("@/generated/prisma/client").InterestType | null;
       reason?: import("@/generated/prisma/client").ActivityReason | null;
       notes?: string | null;
     } | null;

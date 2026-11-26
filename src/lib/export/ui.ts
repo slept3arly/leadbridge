@@ -1,15 +1,18 @@
 import { EXPORT_CATEGORIES, EXPORT_CATEGORY_IDS, type ExportCategoryId } from "@/lib/export/registry";
-import { EXPORT_FIELDS } from "@/lib/export/fields";
+import { EXPORT_FIELDS, getDefaultExportColumns, resolveExportColumns } from "@/lib/export/fields";
 import { EXPORT_DATE_PRESETS, resolveExportDateRange, type ExportDatePreset } from "@/lib/export/dates";
 import { LEGACY_EXPORT_COLUMNS, LEGACY_EXPORT_QUERY_PARAMETERS } from "@/lib/export/legacy-contract";
 import { canExportCategory, type ExportActor } from "@/lib/export/policy";
-import { LEAD_CATEGORIES, LEAD_PRIORITIES, LEAD_STATUSES } from "@/lib/lead-constants";
-import { ACTIVITY_ACTION_OPTIONS, ACTIVITY_INTEREST_OPTIONS, ACTIVITY_RESPONSE_OPTIONS } from "@/lib/activity-options";
+import { LEAD_CATEGORIES, LEAD_PRIORITIES, LEAD_STATUSES, SALES_EDITABLE_LEAD_STATUSES } from "@/lib/lead-constants";
+import { ACTIVITY_ACTION_OPTIONS, ACTIVITY_INTEREST_OPTIONS, ACTIVITY_RESPONSE_OPTIONS, LEGACY_ACTIVITY_RESPONSE_OPTIONS } from "@/lib/activity-options";
+import { ACTIVITY_REASON_OPTIONS } from "@/lib/activity-reasons";
+import { canFilterLeadInterest, canFilterLeadReason } from "@/lib/export/lead-dependencies";
 
 export type ExportUiRole = "ADMIN" | "SALES";
 export type ExportUiActor = Pick<ExportActor, "id" | "role" | "salesPrivilege">;
 
 export type ExportWorkspaceSelection = {
+  columns: string[];
   status: string[];
   sourceIds: string[];
   actions: string[];
@@ -17,6 +20,7 @@ export type ExportWorkspaceSelection = {
   priorities: string[];
   categories: string[];
   interests: string[];
+  reasons: string[];
   assignedUserId: string;
   archived: "both" | "active" | "archived";
   search: string;
@@ -27,6 +31,18 @@ export type ExportWorkspaceSelection = {
   activityFrom: string;
   activityTo: string;
   connectorId: string;
+  userRole: "" | "ADMIN" | "SALES";
+  userActive: "all" | "true" | "false";
+  userBanned: "all" | "true" | "false";
+  userSalesPrivilege: "" | "JUNIOR" | "SENIOR";
+  userDesignation: string;
+  providerActive: "true" | "false" | "all";
+  providerType: string;
+  syncStatus: "" | "ACTIVE" | "INACTIVE" | "ERROR";
+  syncErrorOutcome: "any" | "with-error" | "without-error";
+  reportSourceIds: string[];
+  reportOwnerIds: string[];
+  reportStatuses: string[];
 };
 
 export type ExportQueryResult =
@@ -40,8 +56,9 @@ export function getAvailableExportCategories(actor: ExportUiActor) {
     .map((category) => EXPORT_CATEGORIES[category]);
 }
 
-export function createDefaultExportSelection(): ExportWorkspaceSelection {
+export function createDefaultExportSelection(category: ExportCategoryId = "leads"): ExportWorkspaceSelection {
   return {
+    columns: category === "leads" || category === "users" || category === "providers" ? getDefaultExportColumns(category) : [],
     status: [],
     sourceIds: [],
     actions: [],
@@ -49,8 +66,9 @@ export function createDefaultExportSelection(): ExportWorkspaceSelection {
     priorities: [],
     categories: [],
     interests: [],
+    reasons: [],
     assignedUserId: "",
-    archived: "both",
+    archived: "active",
     search: "",
     datePreset: "all-time",
     dateFrom: "",
@@ -59,7 +77,47 @@ export function createDefaultExportSelection(): ExportWorkspaceSelection {
     activityFrom: "",
     activityTo: "",
     connectorId: "",
+    userRole: "",
+    userActive: "all",
+    userBanned: "all",
+    userSalesPrivilege: "",
+    userDesignation: "",
+    providerActive: "true",
+    providerType: "",
+    syncStatus: "",
+    syncErrorOutcome: "any",
+    reportSourceIds: [],
+    reportOwnerIds: [],
+    reportStatuses: [],
   };
+}
+
+export function selectableColumns(category: ExportCategoryId) {
+  if (category !== "leads" && category !== "users" && category !== "providers") return [];
+  return EXPORT_FIELDS[category].filter((field) => field.selectable || field.mandatory);
+}
+
+export function clearSelectableColumns(category: ExportCategoryId): string[] {
+  return selectableColumns(category).filter((field) => field.mandatory).map((field) => field.id);
+}
+
+export function selectAllColumns(category: ExportCategoryId): string[] {
+  return selectableColumns(category).map((field) => field.id);
+}
+
+export function isCurrentExportCountRequest(requestId: number, currentRequestId: number): boolean {
+  return requestId === currentRequestId;
+}
+
+export function getLeadStatusGroups() {
+  return {
+    current: SALES_EDITABLE_LEAD_STATUSES,
+    legacy: LEAD_STATUSES.filter((status) => !SALES_EDITABLE_LEAD_STATUSES.some((current) => current.value === status.value)),
+  };
+}
+
+export function clearLeadExportFilters(selection: ExportWorkspaceSelection): ExportWorkspaceSelection {
+  return { ...createDefaultExportSelection("leads"), columns: selection.columns };
 }
 
 export function getCurrentCsvHeaders(category: ExportCategoryId): string[] {
@@ -131,18 +189,39 @@ export function buildExportQuery(
     if (value?.trim()) params.set(key, value.trim());
   };
 
+  if (category === "leads" || category === "users" || category === "providers") {
+    try {
+      params.set("columns", resolveExportColumns(category, selection.columns).join(","));
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "Choose valid CSV fields." };
+    }
+  }
+
   if (category === "leads") {
+    const allowedResponses = [...ACTIVITY_RESPONSE_OPTIONS, ...LEGACY_ACTIVITY_RESPONSE_OPTIONS];
     const allowedFilters = [
       [selection.status, LEAD_STATUSES, "lead status"],
       [selection.actions, ACTIVITY_ACTION_OPTIONS, "activity action"],
-      [selection.responses, ACTIVITY_RESPONSE_OPTIONS, "activity response"],
+      [selection.responses, allowedResponses, "activity response"],
       [selection.priorities, LEAD_PRIORITIES, "lead priority"],
       [selection.categories, LEAD_CATEGORIES, "lead category"],
       [selection.interests, ACTIVITY_INTEREST_OPTIONS, "activity interest"],
+      [selection.reasons, ACTIVITY_REASON_OPTIONS, "activity reason"],
     ] as const;
     for (const [selected, options, label] of allowedFilters) {
       const allowed = new Set<string>(options.map((item) => item.value));
       if (selected.some((value) => !allowed.has(value))) return { ok: false, error: `Choose a valid ${label}.` };
+    }
+    if (selection.responses.length && !canFilterLeadInterest(selection.responses)) {
+      if (selection.interests.length) {
+        return { ok: false, error: "Interest cannot be filtered when selected responses do not permit a contacted interaction." };
+      }
+      if (selection.reasons.length) {
+        return { ok: false, error: "Reason cannot be filtered when selected responses do not permit a contacted interaction." };
+      }
+    }
+    if (selection.reasons.length && !canFilterLeadReason(selection.responses, selection.interests)) {
+      return { ok: false, error: "Reason can only be filtered when Interest includes Not Interested." };
     }
     for (const [key, values] of [
       ["status", selection.status],
@@ -152,6 +231,7 @@ export function buildExportQuery(
       ["priority", selection.priorities],
       ["category", selection.categories],
       ["activityInterest", selection.interests],
+      ["activityReason", selection.reasons],
     ] as const) {
       if (values.length) add(key, [...new Set(values)].join(","));
     }
@@ -173,8 +253,28 @@ export function buildExportQuery(
     add("activityTo", activityDates.activityTo);
   }
 
+  if (category === "users") {
+    add("search", selection.search);
+    if (selection.userRole) add("role", selection.userRole);
+    if (selection.userActive !== "all") add("active", selection.userActive);
+    if (selection.userBanned !== "all") add("banned", selection.userBanned);
+    if (selection.userSalesPrivilege) add("salesPrivilege", selection.userSalesPrivilege);
+    add("designation", selection.userDesignation);
+    const dates = dateQueryValues(selection.datePreset, selection.dateFrom, selection.dateTo, now);
+    if (typeof dates === "string") return { ok: false, error: dates };
+    add("from", dates.from);
+    add("to", dates.to);
+  }
+
+  if (category === "providers") {
+    add("active", selection.providerActive);
+    add("sourceType", selection.providerType);
+  }
+
   if (category === "sync-history") {
     add("connectorId", selection.connectorId);
+    if (selection.syncStatus) add("status", selection.syncStatus);
+    if (selection.syncErrorOutcome !== "any") add("errorOutcome", selection.syncErrorOutcome);
     const dates = dateQueryValues(selection.datePreset, selection.dateFrom, selection.dateTo, now);
     if (typeof dates === "string") return { ok: false, error: dates };
     add("from", dates.from);
@@ -186,6 +286,9 @@ export function buildExportQuery(
     if (typeof dates === "string") return { ok: false, error: dates };
     add("from", dates.from);
     add("to", dates.to);
+    if (selection.reportSourceIds.length) add("source", [...new Set(selection.reportSourceIds)].join(","));
+    if (selection.reportOwnerIds.length) add("owner", [...new Set(selection.reportOwnerIds)].join(","));
+    if (selection.reportStatuses.length) add("status", [...new Set(selection.reportStatuses)].join(","));
   }
 
   const allowed = LEGACY_EXPORT_QUERY_PARAMETERS[category] as readonly string[];
@@ -247,17 +350,9 @@ export function getContextualExportParams(
     params.activityDate = "custom";
     if (current.get("dateFrom")) params.activityFrom = current.get("dateFrom")!;
     if (current.get("dateTo")) params.activityTo = current.get("dateTo")!;
-  } else if (!activityDate) {
+  } else if (activityDate !== "today" && activityDate !== "yesterday") {
     if (current.get("dateFrom")) params.from = current.get("dateFrom")!;
     if (current.get("dateTo")) params.to = current.get("dateTo")!;
-    const activityFilters = ["filter.activityAction", "filter.activityResponse", "filter.activityInterest"];
-    if (!activityDate && activityFilters.some((key) => current.get(key))) {
-      if (current.get("dateFrom") || current.get("dateTo")) {
-        params.activityDate = "custom";
-        if (current.get("dateFrom")) params.activityFrom = current.get("dateFrom")!;
-        if (current.get("dateTo")) params.activityTo = current.get("dateTo")!;
-      }
-    }
   }
   const archived = current.get("filter.archived");
   params.archived = archived === "true" ? "true" : "false";

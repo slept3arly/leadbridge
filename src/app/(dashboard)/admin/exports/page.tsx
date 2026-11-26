@@ -9,10 +9,17 @@ import { prisma } from "@/lib/prisma";
 
 export default async function AdminExportsPage() {
   const { user } = await requireSession("ADMIN");
-  const [salespeople, connectors, sources] = await Promise.all([
+  const [salespeople, connectors, sources, rawProviderTypes, rawDesignations] = await Promise.all([
     userService.listAssignable(),
     connectorService.list(),
     prisma.leadSource.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.leadSource.findMany({ distinct: ["sourceType"], orderBy: { sourceType: "asc" }, select: { sourceType: true } }),
+    prisma.user.findMany({
+      where: { isDeleted: false, designation: { not: null } },
+      distinct: ["designation"],
+      orderBy: { designation: "asc" },
+      select: { designation: true },
+    }),
   ]);
   const categories = getAvailableExportCategories(user).map(({ id, label, description, defaultDateField, columnSelection, kind }) => ({
     id, label, description, defaultDateField, columnSelection, kind,
@@ -27,6 +34,8 @@ export default async function AdminExportsPage() {
         salespeople={salespeople}
         connectors={connectors.map(({ id, name, type }) => ({ id, name, type }))}
         sources={sources}
+        providerTypes={rawProviderTypes.map((item) => item.sourceType)}
+        userDesignations={rawDesignations.map((item) => item.designation).filter((item): item is string => Boolean(item))}
       />
     </>
   );

@@ -61,7 +61,7 @@ test("category authorization policy matches Admin and Sales privilege matrix", (
 });
 
 test("date range contract validates custom boundaries and resolves consistent UTC calendar windows", () => {
-  assert.deepEqual(EXPORT_DATE_PRESETS, ["all-time", "today", "yesterday", "last-7-days", "last-30-days", "this-month", "previous-month", "custom"]);
+  assert.deepEqual(EXPORT_DATE_PRESETS, ["all-time", "today", "this-week", "yesterday", "last-7-days", "last-30-days", "this-month", "previous-month", "custom"]);
   assert.equal(exportDateRangeSchema.parse({}).preset, "all-time");
   assert.equal(exportDateRangeSchema.safeParse({ preset: "custom" }).success, false);
   assert.equal(exportDateRangeSchema.safeParse({ preset: "custom", custom: { from: "not-a-date", to: "2026-01-02" } }).success, false);
@@ -73,6 +73,7 @@ test("date range contract validates custom boundaries and resolves consistent UT
   const expected = {
     "all-time": [undefined, undefined],
     today: ["2026-03-15T00:00:00.000Z", "2026-03-16T00:00:00.000Z"],
+    "this-week": ["2026-03-09T00:00:00.000Z", "2026-03-16T00:00:00.000Z"],
     yesterday: ["2026-03-14T00:00:00.000Z", "2026-03-15T00:00:00.000Z"],
     "last-7-days": ["2026-03-09T00:00:00.000Z", "2026-03-16T00:00:00.000Z"],
     "last-30-days": ["2026-02-14T00:00:00.000Z", "2026-03-16T00:00:00.000Z"],
@@ -130,10 +131,20 @@ test("field allowlists have deterministic defaults, optional columns, and reject
     assert.deepEqual(defaults, fields.filter((item) => item.defaultSelected).map((item) => item.id));
     assert.deepEqual(optional, fields.filter((item) => !item.defaultSelected && item.selectable).map((item) => item.id));
   }
-  assert.deepEqual(getDefaultExportColumns("leads").slice(0, 4), ["leadNumber", "name", "company", "email"]);
+  assert.deepEqual(getDefaultExportColumns("leads"), ["serialNumber", "name", "company", "phone", "status", "city", "district", "state", "source"]);
+  assert.ok(EXPORT_FIELDS.leads.some((item) => item.id === "serialNumber" && item.mandatory && item.defaultSelected));
+  assert.ok(EXPORT_FIELDS.leads.some((item) => item.id === "district" && item.defaultSelected && item.selectable));
   assert.ok(EXPORT_FIELDS.leads.some((item) => item.id === "product" && !item.defaultSelected && item.selectable));
+  assert.ok(EXPORT_FIELDS.leads.some((item) => item.id === "category" && !item.defaultSelected && item.selectable));
+  assert.ok(EXPORT_FIELDS.users.some((item) => item.id === "salesPrivilege" && !item.defaultSelected && item.selectable));
+  assert.ok(EXPORT_FIELDS.users.some((item) => item.id === "phone" && item.defaultSelected && item.selectable));
+  assert.ok(EXPORT_FIELDS.users.some((item) => item.id === "banned" && !item.selectable));
+  assert.ok(EXPORT_FIELDS.providers.some((item) => item.id === "description" && item.selectable));
   assert.ok(EXPORT_CATEGORIES.notes.optionalFields.includes("content"));
-  assert.deepEqual(resolveExportColumns("leads", ["product", "name"]), ["name", "product"]);
+  assert.deepEqual(resolveExportColumns("leads", ["product", "name"]), ["serialNumber", "name", "product"]);
+  assert.throws(() => resolveExportColumns("leads", ["name", "name"]), /Duplicate export columns/);
+  assert.throws(() => resolveExportColumns("users", ["password"]), /Unsupported export column/);
+  assert.throws(() => resolveExportColumns("users", ["banned"]), /Unsupported export column/);
   assert.throws(() => resolveExportColumns("leads", ["rawPayload"]), /Unsupported export column/);
   assert.throws(() => resolveExportColumns("leads", ["customFields"]), /Unsupported export column/);
   assert.equal(EXPORT_CATEGORIES.connectors.restrictedFields.includes("raw connector configuration and secret-bearing values"), true);
@@ -142,13 +153,14 @@ test("field allowlists have deterministic defaults, optional columns, and reject
 test("request and output contracts accept CSV only and reject unavailable or unsafe selections", () => {
   const leadRequest = exportDownloadRequestSchema.safeParse({ category: "leads", filters: {}, columns: ["name", "product"] });
   assert.equal(leadRequest.success, true);
-  if (leadRequest.success) assert.deepEqual(leadRequest.data.columns, ["name", "product"]);
+  if (leadRequest.success) assert.deepEqual(leadRequest.data.columns, ["serialNumber", "name", "product"]);
   const reorderedRequest = exportDownloadRequestSchema.safeParse({ category: "leads", filters: {}, columns: ["product", "name"] });
   assert.equal(reorderedRequest.success, true);
-  if (reorderedRequest.success) assert.deepEqual(reorderedRequest.data.columns, ["name", "product"]);
+  if (reorderedRequest.success) assert.deepEqual(reorderedRequest.data.columns, ["serialNumber", "name", "product"]);
   assert.equal(exportDownloadRequestSchema.safeParse({ category: "leads", filters: {}, format: "xlsx" }).success, false);
   assert.equal(exportDownloadRequestSchema.safeParse({ category: "leads", filters: { unexpected: "value" } }).success, false);
   assert.equal(exportDownloadRequestSchema.safeParse({ category: "leads", filters: {}, columns: ["rawPayload"] }).success, false);
+  assert.equal(exportDownloadRequestSchema.safeParse({ category: "leads", filters: {}, columns: ["name", "name"] }).success, false);
   assert.equal(exportDownloadRequestSchema.safeParse({ category: "reports", filters: {}, columns: ["summary"] }).success, false);
   assert.equal(exportDownloadRequestSchema.safeParse({ category: "unknown", filters: {} }).success, false);
   assert.deepEqual(EXPORT_FORMATS, ["csv"]);
@@ -167,4 +179,42 @@ test("synchronous limits and row-grain metadata are explicit", () => {
   });
   assert.match(EXPORT_CATEGORIES.activities.rowGrain, /ActivityEntry/);
   assert.match(EXPORT_CATEGORIES.reports.rowGrain, /aggregate/);
+});
+
+test("lead filter contract validates activityReason and rejects contradictory response/interest/reason combinations", () => {
+  assert.equal(leadExportFiltersSchema.safeParse({
+    responses: ["PICKED_UP"],
+    interests: ["NOT_INTERESTED"],
+    reasons: ["LANGUAGE_BARRIER", "PERSONAL_USE"],
+  }).success, true);
+
+  assert.equal(leadExportFiltersSchema.safeParse({
+    responses: ["NOT_PICKED_UP", "NO_RESPONSE"],
+    interests: ["INTERESTED"],
+  }).success, false);
+
+  assert.equal(leadExportFiltersSchema.safeParse({
+    responses: ["NOT_PICKED_UP"],
+    reasons: ["LANGUAGE_BARRIER"],
+  }).success, false);
+
+  assert.equal(leadExportFiltersSchema.safeParse({
+    interests: ["INTERESTED"],
+    reasons: ["LANGUAGE_BARRIER"],
+  }).success, false);
+
+  assert.equal(leadExportFiltersSchema.safeParse({
+    reasons: ["LANGUAGE_BARRIER"],
+  }).success, false);
+
+  assert.equal(leadExportFiltersSchema.safeParse({
+    interests: ["INTERESTED", "NOT_INTERESTED"],
+    reasons: ["NO_CURRENT_REQUIREMENT"],
+  }).success, true);
+
+  assert.equal(leadExportFiltersSchema.safeParse({
+    responses: ["PICKED_UP"],
+    interests: ["NOT_INTERESTED"],
+    reasons: ["INVALID_REASON"],
+  }).success, false);
 });

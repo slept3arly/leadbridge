@@ -247,7 +247,7 @@ export class LeadService {
                   type: { in: ["CALL", "WHATSAPP"] as ("CALL" | "WHATSAPP")[] },
                   ...(query.filters.activityAction?.length ? { action: { in: query.filters.activityAction as ("CALL" | "WHATSAPP")[] } } : {}),
                   ...(query.filters.activityResponse?.length ? { response: { in: query.filters.activityResponse as ("PICKED_UP" | "NOT_PICKED_UP" | "SWITCHED_OFF" | "NO_RESPONSE" | "INVALID_NUMBER" | "REPLIED" | "NOT_REPLIED")[] } } : {}),
-                  ...(query.filters.activityInterest?.length ? { interest: { in: query.filters.activityInterest as ("INTERESTED" | "NOT_INTERESTED")[] } } : {}),
+                  ...(query.filters.activityInterest?.length ? { interest: { in: query.filters.activityInterest as import("@/generated/prisma/client").InterestType[] } } : {}),
                 },
               },
             },

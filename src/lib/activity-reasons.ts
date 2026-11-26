@@ -13,6 +13,7 @@ export const ACTIVITY_REASON_OPTIONS = [
   { value: "COSMETIC_PRODUCTS_AND_TREATMENTS", label: "Cosmetic Products & Treatments" },
   { value: "TRADITIONAL_CLASSICAL_HEALTHCARE_PRODUCTS", label: "Traditional / Classical Healthcare Products" },
   { value: "NUTRACEUTICALS_AND_DIETARY_SUPPLEMENTS", label: "Nutraceuticals & Dietary Supplements" },
+  { value: "CALL_CUT_HOLD", label: "Call cut/Hold" },
 ] as const;
 
 export const ACTIVITY_REASON_VALUES = ACTIVITY_REASON_OPTIONS.map((option) => option.value);

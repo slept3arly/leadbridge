@@ -3,6 +3,7 @@ import { z } from "zod";
 export const EXPORT_DATE_PRESETS = [
   "all-time",
   "today",
+  "this-week",
   "yesterday",
   "last-7-days",
   "last-30-days",
@@ -77,6 +78,10 @@ export function resolveExportDateRange(
   const today = utcStartOfDay(now);
   switch (parsed.preset) {
     case "today": return { from: today, toExclusive: addUtcDays(today, 1) };
+    case "this-week": {
+      const daysSinceMonday = (today.getUTCDay() + 6) % 7;
+      return { from: addUtcDays(today, -daysSinceMonday), toExclusive: addUtcDays(today, 1) };
+    }
     case "yesterday": return { from: addUtcDays(today, -1), toExclusive: today };
     case "last-7-days": return { from: addUtcDays(today, -6), toExclusive: addUtcDays(today, 1) };
     case "last-30-days": return { from: addUtcDays(today, -29), toExclusive: addUtcDays(today, 1) };

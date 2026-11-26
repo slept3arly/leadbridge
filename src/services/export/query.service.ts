@@ -43,8 +43,8 @@ import { iterateKeysetPages } from "@/services/export/keyset";
 
 export const EXPORT_QUERY_BATCH_SIZE = 250;
 
-async function runExportQuery<T>(query: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-  return prisma.$transaction(async (tx) => {
+async function runExportQuery<T>(database: typeof prisma, query: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return database.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT set_config('statement_timeout', ${`${EXPORT_QUERY_STATEMENT_TIMEOUT_MS}ms`}, true)`;
     return query(tx);
   }, { maxWait: EXPORT_QUERY_MAX_WAIT_MS, timeout: EXPORT_QUERY_TRANSACTION_TIMEOUT_MS });
@@ -65,18 +65,42 @@ function parseRequest<T extends z.ZodType>(schema: T, input: unknown): z.infer<T
 }
 
 export class ExportQueryService {
-  async openLeads(actor: ExportActor, input: unknown, columns?: readonly string[], legacyBounds?: ExportDateBounds, signal?: AbortSignal) {
+  constructor(private readonly database: typeof prisma = prisma) {}
+
+  private run<T>(query: (tx: Prisma.TransactionClient) => Promise<T>) {
+    return runExportQuery(this.database, query);
+  }
+
+  private prepareLeads(actor: ExportActor, input: unknown, columns?: readonly string[], legacyBounds?: ExportDateBounds) {
     authorizeExportCategory(actor, "leads");
     const filters = parseRequest(leadExportFiltersSchema, input);
     authorizeLeadExportFilters(actor, filters);
     const projection = project(() => resolveLeadProjection(columns));
-    const where = buildLeadExportWhere(filters, actor, legacyBounds);
-    const count = await runExportQuery((tx) => tx.lead.count({ where }));
+    return { projection, where: buildLeadExportWhere(filters, actor, legacyBounds) };
+  }
+
+  private prepareUsers(actor: ExportActor, input: unknown = {}, columns?: readonly string[], legacyBounds?: ExportDateBounds) {
+    authorizeExportCategory(actor, "users");
+    const filters = parseRequest(userExportFiltersSchema, input);
+    const projection = project(() => resolveUserProjection(columns));
+    return { projection, where: buildUserExportWhere(filters, legacyBounds) };
+  }
+
+  private prepareProviders(actor: ExportActor, input: unknown = {}, columns?: readonly string[]) {
+    authorizeExportCategory(actor, "providers");
+    const filters = parseRequest(providerExportFiltersSchema, input);
+    const projection = project(() => resolveProviderProjection(columns));
+    return { projection, where: buildProviderExportWhere(filters) };
+  }
+
+  async openLeads(actor: ExportActor, input: unknown, columns?: readonly string[], legacyBounds?: ExportDateBounds, signal?: AbortSignal) {
+    const { projection, where } = this.prepareLeads(actor, input, columns, legacyBounds);
+    const count = await this.run((tx) => tx.lead.count({ where }));
     assertExportRowLimit(count);
 
     const rows = iterateKeysetPages({
       count, signal, batchSize: EXPORT_QUERY_BATCH_SIZE,
-      fetchPage: (cursor: { createdAt: Date; id: string } | undefined, take) => runExportQuery((tx) => tx.lead.findMany({
+      fetchPage: (cursor: { createdAt: Date; id: string } | undefined, take) => this.run((tx) => tx.lead.findMany({
         where: buildLeadExportCursorWhere(where, cursor), select: projection.select,
         orderBy: buildLeadOrderBy(), take,
       })),
@@ -85,17 +109,14 @@ export class ExportQueryService {
     return { count, columns: projection.columns, rows };
   }
 
-  async openUsers(actor: ExportActor, input: unknown = {}, columns?: readonly string[], signal?: AbortSignal) {
-    authorizeExportCategory(actor, "users");
-    const filters = parseRequest(userExportFiltersSchema, input);
-    const projection = project(() => resolveUserProjection(columns));
-    const where = buildUserExportWhere(filters);
-    const count = await runExportQuery((tx) => tx.user.count({ where }));
+  async openUsers(actor: ExportActor, input: unknown = {}, columns?: readonly string[], signal?: AbortSignal, legacyBounds?: ExportDateBounds) {
+    const { projection, where } = this.prepareUsers(actor, input, columns, legacyBounds);
+    const count = await this.run((tx) => tx.user.count({ where }));
     assertExportRowLimit(count);
 
     const rows = iterateKeysetPages({
       count, signal, batchSize: EXPORT_QUERY_BATCH_SIZE,
-      fetchPage: (cursor: string | undefined, take) => runExportQuery((tx) => tx.user.findMany({
+      fetchPage: (cursor: string | undefined, take) => this.run((tx) => tx.user.findMany({
         where: buildUserExportCursorWhere(where, cursor), select: projection.select,
         orderBy: buildUserOrderBy(), take,
       })),
@@ -105,16 +126,13 @@ export class ExportQueryService {
   }
 
   async openProviders(actor: ExportActor, input: unknown = {}, columns?: readonly string[], signal?: AbortSignal) {
-    authorizeExportCategory(actor, "providers");
-    const filters = parseRequest(providerExportFiltersSchema, input);
-    const projection = project(() => resolveProviderProjection(columns));
-    const where = buildProviderExportWhere(filters);
-    const count = await runExportQuery((tx) => tx.leadSource.count({ where }));
+    const { projection, where } = this.prepareProviders(actor, input, columns);
+    const count = await this.run((tx) => tx.leadSource.count({ where }));
     assertExportRowLimit(count);
 
     const rows = iterateKeysetPages({
       count, signal, batchSize: EXPORT_QUERY_BATCH_SIZE,
-      fetchPage: (cursor: string | undefined, take) => runExportQuery((tx) => tx.leadSource.findMany({
+      fetchPage: (cursor: string | undefined, take) => this.run((tx) => tx.leadSource.findMany({
         where: buildProviderExportCursorWhere(where, cursor), select: projection.select,
         orderBy: buildProviderOrderBy(), take,
       })),
@@ -128,12 +146,12 @@ export class ExportQueryService {
     const filters = parseRequest(syncHistoryExportFiltersSchema, input);
     const projection = project(() => resolveSyncHistoryProjection(columns));
     const where = buildSyncHistoryExportWhere(filters, legacyBounds);
-    const count = await runExportQuery((tx) => tx.connectorSyncRun.count({ where }));
+    const count = await this.run((tx) => tx.connectorSyncRun.count({ where }));
     assertExportRowLimit(count);
 
     const rows = iterateKeysetPages({
       count, signal, batchSize: EXPORT_QUERY_BATCH_SIZE,
-      fetchPage: (cursor: { startedAt: Date; id: string } | undefined, take) => runExportQuery((tx) => tx.connectorSyncRun.findMany({
+      fetchPage: (cursor: { startedAt: Date; id: string } | undefined, take) => this.run((tx) => tx.connectorSyncRun.findMany({
         where: buildSyncHistoryExportCursorWhere(where, cursor), select: projection.select,
         orderBy: buildSyncHistoryOrderBy(), take,
       })),
@@ -149,8 +167,30 @@ export class ExportQueryService {
 
   async countReports(actor: ExportActor, input: unknown) {
     const filters = this.validateReports(actor, input);
-    const count = await prisma.lead.count({ where: buildReportLeadWhere(filters) });
+    const count = await this.run((tx) => tx.lead.count({ where: buildReportLeadWhere(filters) }));
     return { count, filters };
+  }
+
+  async countLeads(actor: ExportActor, input: unknown, legacyBounds?: ExportDateBounds) {
+    const { where } = this.prepareLeads(actor, input, undefined, legacyBounds);
+    return this.run((tx) => tx.lead.count({ where }));
+  }
+
+  async countUsers(actor: ExportActor, input: unknown = {}, legacyBounds?: ExportDateBounds) {
+    const { where } = this.prepareUsers(actor, input, undefined, legacyBounds);
+    return this.run((tx) => tx.user.count({ where }));
+  }
+
+  async countProviders(actor: ExportActor, input: unknown = {}) {
+    const { where } = this.prepareProviders(actor, input);
+    return this.run((tx) => tx.leadSource.count({ where }));
+  }
+
+  async countSyncHistory(actor: ExportActor, input: unknown, legacyBounds?: ExportDateBounds) {
+    authorizeExportCategory(actor, "sync-history");
+    const filters = parseRequest(syncHistoryExportFiltersSchema, input);
+    const where = buildSyncHistoryExportWhere(filters, legacyBounds);
+    return this.run((tx) => tx.connectorSyncRun.count({ where }));
   }
 }
 

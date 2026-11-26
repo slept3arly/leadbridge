@@ -22,7 +22,7 @@ import { formatDate, formatTime } from "@/lib/utils";
 import { useAccessibleDialog } from "@/hooks/use-accessible-dialog";
 import { followUpFormDate } from "@/lib/follow-up-form-date";
 import { buildLeadWorkspaceTimeline, organizeLeadWorkspaceFollowUps } from "@/lib/lead-workspace";
-import { ACTIVITY_ACTION_OPTIONS, getActivityResponseOptions, getActivityResponseLabel } from "@/lib/activity-options";
+import { ACTIVITY_ACTION_OPTIONS, ACTIVITY_INTEREST_OPTIONS, getActivityResponseOptions, getActivityResponseLabel } from "@/lib/activity-options";
 import { ACTIVITY_REASON_OPTIONS } from "@/lib/activity-reasons";
 
 function isResponded(response: string) {
@@ -263,8 +263,7 @@ function EditActivityModal({
               <label htmlFor="edit-activity-interest" className="text-sm font-medium text-[var(--color-ink)]">Interest</label>
               <Select id="edit-activity-interest" value={interest} disabled={!interestVisible} onChange={(e) => setInterest(e.target.value)}>
                 <option value="">Select interest</option>
-                <option value="INTERESTED">Interested</option>
-                <option value="NOT_INTERESTED">Not Interested</option>
+                {ACTIVITY_INTEREST_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </Select>
             </div>
             <div className="space-y-2"><label htmlFor="edit-activity-reason" className="text-sm font-medium text-[var(--color-ink)]">Reason</label><Select id="edit-activity-reason" value={reason} disabled={interest !== "NOT_INTERESTED"} onChange={(e) => setReason(e.target.value)}><option value="">Select reason</option>{ACTIVITY_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></div>

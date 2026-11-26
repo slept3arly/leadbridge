@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardContent, CardEmptyState } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
@@ -12,6 +13,7 @@ import { ExportButton } from "@/components/shared/export-button";
 import { SignOutButton } from "@/components/shared/sign-out-button";
 import { SkeletonCard, SkeletonTable } from "@/components/ui/loading";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { resolveExportDateRange, type ExportDatePreset } from "@/lib/export/dates";
 import { getStatusLabel, LEAD_STATUSES } from "@/lib/lead-constants";
 import { Users, Target, TrendingUp, BarChart3, Activity, Award, Flame, Star } from "lucide-react";
 
@@ -36,14 +38,23 @@ interface Insights {
   highestConversionMonth: TrendEntry | null;
 }
 
-type ReportRange = { from: string; to: string } | undefined;
+type ReportQueryParams = {
+  from?: string;
+  to?: string;
+  source?: string;
+  owner?: string;
+  status?: string;
+};
 
-function fetchReport(type: string, range: ReportRange, signal?: AbortSignal): Promise<{ data: unknown }> {
+type LookupOption = { id: string; name: string };
+
+function fetchReport(type: string, queryParams: ReportQueryParams, signal?: AbortSignal): Promise<{ data: unknown }> {
   const params = new URLSearchParams({ type });
-  if (range) {
-    params.set("from", range.from);
-    params.set("to", range.to);
-  }
+  if (queryParams.from) params.set("from", queryParams.from);
+  if (queryParams.to) params.set("to", queryParams.to);
+  if (queryParams.source) params.set("source", queryParams.source);
+  if (queryParams.owner) params.set("owner", queryParams.owner);
+  if (queryParams.status) params.set("status", queryParams.status);
   return fetch(`/api/reports?${params}`, { signal }).then((r) => { if (!r.ok) throw new Error(`Failed: ${r.statusText}`); return r.json(); });
 }
 
@@ -125,9 +136,22 @@ function ReportsLoading() {
   );
 }
 
-export function AdminReports({ initialRange }: { initialRange: { from: string; to: string } }) {
-  const [days, setDays] = useState("30");
-  const [reportRange, setReportRange] = useState<ReportRange>(initialRange);
+export function AdminReports({
+  initialRange,
+  salespeople = [],
+  sources: sourceOptions = [],
+}: {
+  initialRange: { from: string; to: string };
+  salespeople?: LookupOption[];
+  sources?: LookupOption[];
+}) {
+  const [preset, setPreset] = useState<ExportDatePreset>("last-30-days");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [sourceId, setSourceId] = useState("");
+  const [ownerId, setOwnerId] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [reportRange, setReportRange] = useState<{ from: string; to: string } | undefined>(initialRange);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -140,7 +164,14 @@ export function AdminReports({ initialRange }: { initialRange: { from: string; t
   const [statusBreakdown, setStatusBreakdown] = useState<StatusEntry[]>([]);
   const [trends, setTrends] = useState<TrendEntry[]>([]);
 
-  const fetchAll = useCallback(async (range: ReportRange) => {
+  const queryParams = useMemo<ReportQueryParams>(() => ({
+    ...(reportRange ? { from: reportRange.from, to: reportRange.to } : {}),
+    ...(sourceId ? { source: sourceId } : {}),
+    ...(ownerId ? { owner: ownerId } : {}),
+    ...(statusFilter ? { status: statusFilter } : {}),
+  }), [reportRange, sourceId, ownerId, statusFilter]);
+
+  const fetchAll = useCallback(async (params: ReportQueryParams) => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -149,12 +180,12 @@ export function AdminReports({ initialRange }: { initialRange: { from: string; t
 
     try {
       const [summaryRes, sourcesRes, assignmentsRes, activityRes, statusRes, trendsRes] = await Promise.all([
-        fetchReport("summary", range, controller.signal),
-        fetchReport("sources", range, controller.signal),
-        fetchReport("assignments", range, controller.signal),
-        fetchReport("activity", range, controller.signal),
-        fetchReport("status", range, controller.signal),
-        fetchReport("trends", range, controller.signal),
+        fetchReport("summary", params, controller.signal),
+        fetchReport("sources", params, controller.signal),
+        fetchReport("assignments", params, controller.signal),
+        fetchReport("activity", params, controller.signal),
+        fetchReport("status", params, controller.signal),
+        fetchReport("trends", params, controller.signal),
       ]);
       if (controller.signal.aborted) return;
       setSummary(summaryRes.data as SummaryData);
@@ -174,19 +205,46 @@ export function AdminReports({ initialRange }: { initialRange: { from: string; t
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void fetchAll(reportRange); }, 0);
+    if (preset === "custom" && (!customFrom || !customTo || customTo < customFrom)) return;
+    const timer = window.setTimeout(() => { void fetchAll(queryParams); }, 0);
     return () => window.clearTimeout(timer);
-  }, [reportRange, fetchAll]);
+  }, [preset, customFrom, customTo, queryParams, fetchAll]);
 
-  const handlePeriodChange = (value: string) => {
-    setDays(value);
-    if (value === "all") {
+  const handlePeriodChange = (nextPreset: ExportDatePreset) => {
+    setPreset(nextPreset);
+    if (nextPreset === "all-time") {
       setReportRange(undefined);
       return;
     }
-    const to = new Date();
-    const from = new Date(to.getTime() - Number(value) * 86400000);
-    setReportRange({ from: from.toISOString(), to: to.toISOString() });
+    if (nextPreset === "custom") {
+      if (customFrom && customTo && customTo >= customFrom) {
+        const resolved = resolveExportDateRange({ preset: "custom", custom: { from: customFrom, to: customTo } });
+        setReportRange({
+          from: resolved.from!.toISOString(),
+          to: new Date(resolved.toExclusive!.getTime() - 1).toISOString(),
+        });
+      }
+      return;
+    }
+    const resolved = resolveExportDateRange({ preset: nextPreset });
+    if (resolved.from && resolved.toExclusive) {
+      setReportRange({
+        from: resolved.from.toISOString(),
+        to: new Date(resolved.toExclusive.getTime() - 1).toISOString(),
+      });
+    }
+  };
+
+  const handleCustomDateChange = (nextFrom: string, nextTo: string) => {
+    setCustomFrom(nextFrom);
+    setCustomTo(nextTo);
+    if (nextFrom && nextTo && nextTo >= nextFrom) {
+      const resolved = resolveExportDateRange({ preset: "custom", custom: { from: nextFrom, to: nextTo } });
+      setReportRange({
+        from: resolved.from!.toISOString(),
+        to: new Date(resolved.toExclusive!.getTime() - 1).toISOString(),
+      });
+    }
   };
 
   const ins = deriveInsights(sources, assignments, trends);
@@ -217,34 +275,70 @@ export function AdminReports({ initialRange }: { initialRange: { from: string; t
   ];
   const actMax = Math.max(activity?.today ?? 0, activity?.thisWeek ?? 0, activity?.thisMonth ?? 0, 1);
 
-  const exportParams = reportRange;
+  const customRangeInvalid = preset === "custom" && Boolean(customFrom && customTo && customTo < customFrom);
+  const exportParams: Record<string, string> = {};
+  if (queryParams.from) exportParams.from = queryParams.from;
+  if (queryParams.to) exportParams.to = queryParams.to;
+  if (queryParams.source) exportParams.source = queryParams.source;
+  if (queryParams.owner) exportParams.owner = queryParams.owner;
+  if (queryParams.status) exportParams.status = queryParams.status;
 
   const reportsHeader = (
-    <Navbar
-      title="Reports"
-      subtitle="Lead totals use creation dates; activity uses its own time periods."
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <Select aria-label="Report period" value={days} onChange={(e) => handlePeriodChange(e.target.value)} className="w-36 py-1.5 text-xs">
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days</option>
-            <option value="90">Last 90 days</option>
-            <option value="365">Last year</option>
-            <option value="all">All time</option>
-          </Select>
-          <ResyncButton />
-          <ExportButton type="reports" params={exportParams} iconOnly />
-          <SignOutButton />
+    <>
+      <Navbar
+        title="Reports"
+        subtitle="Lead totals and monthly trends use UTC creation dates; activity uses fixed UTC today/7-day/30-day windows with the selected filters."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Select aria-label="Report period" value={preset} onChange={(e) => handlePeriodChange(e.target.value as ExportDatePreset)} className="w-40 py-1.5 text-xs">
+              <option value="today">Today (UTC)</option>
+              <option value="this-week">This Week (UTC)</option>
+              <option value="this-month">This Month (UTC)</option>
+              <option value="previous-month">Last Month (UTC)</option>
+              <option value="last-7-days">Last 7 Days (UTC)</option>
+              <option value="last-30-days">Last 30 Days (UTC)</option>
+              <option value="all-time">All Time</option>
+              <option value="custom">Custom Range</option>
+            </Select>
+            <Select aria-label="Filter by source" value={sourceId} onChange={(e) => setSourceId(e.target.value)} className="w-36 py-1.5 text-xs">
+              <option value="">All sources</option>
+              {sourceOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </Select>
+            <Select aria-label="Filter by owner" value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="w-40 py-1.5 text-xs">
+              <option value="">All owners</option>
+              {salespeople.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+            </Select>
+            <Select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-32 py-1.5 text-xs">
+              <option value="">All statuses</option>
+              {LEAD_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </Select>
+            <ResyncButton />
+            <ExportButton type="reports" params={exportParams} disabledReason={customRangeInvalid || (preset === "custom" && (!customFrom || !customTo)) ? "Choose a valid custom date range before exporting." : undefined} iconOnly />
+            <SignOutButton />
+          </div>
+        }
+      />
+      {preset === "custom" && (
+        <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-[var(--color-border)] bg-white p-3">
+          <div>
+            <label htmlFor="report-custom-from" className="mb-1 block text-xs font-medium text-[var(--color-muted)]">From (UTC)</label>
+            <Input id="report-custom-from" type="date" value={customFrom} onChange={(e) => handleCustomDateChange(e.target.value, customTo)} className="h-9 text-xs" />
+          </div>
+          <div>
+            <label htmlFor="report-custom-to" className="mb-1 block text-xs font-medium text-[var(--color-muted)]">To (UTC)</label>
+            <Input id="report-custom-to" type="date" value={customTo} onChange={(e) => handleCustomDateChange(customFrom, e.target.value)} className="h-9 text-xs" />
+          </div>
+          {customRangeInvalid && <p role="alert" className="text-xs text-[var(--color-danger)]">The end date must not precede the start date.</p>}
         </div>
-      }
-    />
+      )}
+    </>
   );
 
   if (error) {
     return (
       <>
         {reportsHeader}
-        <Card><CardContent className="space-y-4"><ErrorState message={error} /><Button variant="secondary" onClick={() => void fetchAll(reportRange)}>Try again</Button></CardContent></Card>
+        <Card><CardContent className="space-y-4"><ErrorState message={error} /><Button variant="secondary" onClick={() => void fetchAll(queryParams)}>Try again</Button></CardContent></Card>
       </>
     );
   }

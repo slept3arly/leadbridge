@@ -9,6 +9,7 @@ export type ExportFieldDefinition = {
   sensitivity: ExportSensitivity;
   defaultSelected: boolean;
   selectable: boolean;
+  mandatory?: boolean;
   relationProjection?: string;
   nullRepresentation: "empty";
   representation?: string;
@@ -21,7 +22,7 @@ const field = <Id extends string>(
   kind: ExportValueKind,
   sensitivity: ExportSensitivity,
   defaultSelected: boolean,
-  options: Partial<Pick<ExportFieldDefinition, "selectable" | "relationProjection" | "representation">> = {},
+  options: Partial<Pick<ExportFieldDefinition, "selectable" | "mandatory" | "relationProjection" | "representation">> = {},
 ): ExportFieldDefinition & { readonly id: Id } => ({
   id,
   header,
@@ -37,38 +38,42 @@ const field = <Id extends string>(
 /** Central field allowlist. Client requests may refer only to these stable IDs. */
 export const EXPORT_FIELDS = {
   leads: [
-    field("leadNumber", "Lead Number", "Lead.leadNumber", "text", "business", true),
+    field("serialNumber", "S.No.", "Generated sequential row number", "number", "operational", true, { mandatory: true }),
     field("name", "Name", "Lead.displayName", "text", "personal", true),
     field("company", "Company", "Lead.company", "text", "business", true),
-    field("email", "Email", "Lead.email", "text", "personal", true),
     field("phone", "Phone", "Lead.phone", "text", "personal", true),
     field("status", "Status", "Lead.status", "enum", "business", true, { representation: "Prisma enum value" }),
-    field("priority", "Priority", "Lead.priority", "enum", "business", true, { representation: "Prisma enum value" }),
-    field("category", "Category", "Lead.category", "enum", "business", true, { representation: "Prisma enum value" }),
     field("city", "City", "Lead.city", "text", "personal", true),
+    field("district", "District", "Lead.district", "text", "personal", true),
     field("state", "State", "Lead.state", "text", "personal", true),
-    field("country", "Country", "Lead.country", "text", "personal", true),
-    field("requirement", "Requirement", "Lead.requirement", "text", "sensitive", true),
-    field("createdAt", "Created At", "Lead.createdAt", "date-time", "business", true, { representation: "ISO-8601 UTC" }),
-    field("assignedTo", "Assigned To", "Lead.assignedUser.name", "text", "personal", true, { relationProjection: "assignedUser.name only" }),
     field("source", "Source", "Lead.source.name", "text", "business", true, { relationProjection: "source.name only" }),
+    field("leadNumber", "Lead Number", "Lead.leadNumber", "text", "business", false),
+    field("email", "Email", "Lead.email", "text", "personal", false),
     field("alternatePhone", "Alternate Phone", "Lead.alternatePhone", "text", "personal", false),
+    field("country", "Country", "Lead.country", "text", "personal", false),
+    field("priority", "Priority", "Lead.priority", "enum", "business", false, { representation: "Prisma enum value" }),
+    field("category", "Category", "Lead.category", "enum", "business", false, { representation: "Prisma enum value" }),
+    field("product", "Product", "Lead.product", "text", "business", false, { representation: "Legacy compatibility field" }),
+    field("requirement", "Requirement", "Lead.requirement", "text", "sensitive", false),
+    field("lostReason", "Lost Reason", "Lead.lostReason", "text", "sensitive", false),
+    field("assignedTo", "Assigned Salesperson", "Lead.assignedUser.name", "text", "personal", false, { relationProjection: "assignedUser.name only" }),
+    field("createdAt", "Created At", "Lead.createdAt", "date-time", "business", false, { representation: "ISO-8601 UTC" }),
+    field("updatedAt", "Updated At", "Lead.updatedAt", "date-time", "business", false, { representation: "ISO-8601 UTC" }),
     field("firstContactedAt", "First Contacted At", "Lead.firstContactedAt", "date-time", "business", false, { representation: "ISO-8601 UTC" }),
     field("lastContactedAt", "Last Contacted At", "Lead.lastContactedAt", "date-time", "business", false, { representation: "ISO-8601 UTC" }),
-    field("nextFollowUpAt", "Next Follow-up Due", "Lead.nextFollowUpAt", "date-time", "business", false, { representation: "ISO-8601 UTC" }),
-    field("lastFollowUpAt", "Last Follow-up At", "Lead.lastFollowUpAt", "date-time", "business", false, { representation: "ISO-8601 UTC" }),
+    field("nextFollowUpAt", "Next Follow-up Due", "Lead.nextFollowUpAt", "date-time", "business", false, { representation: "ISO-8601 UTC; maintained denormalized field" }),
+    field("lastFollowUpAt", "Last Follow-up At", "Lead.lastFollowUpAt", "date-time", "business", false, { representation: "ISO-8601 UTC; maintained denormalized field" }),
     field("closedAt", "Closed At", "Lead.closedAt", "date-time", "business", false, { representation: "ISO-8601 UTC" }),
     field("convertedAt", "Converted At", "Lead.convertedAt", "date-time", "business", false, { representation: "ISO-8601 UTC" }),
-    field("isArchived", "Archived", "Lead.isArchived", "boolean", "business", false, { representation: "true/false" }),
-    field("product", "Product", "Lead.product", "text", "business", false, { representation: "Legacy compatibility field" }),
+    field("isArchived", "Archived", "Lead.isArchived", "boolean", "business", false, { representation: "Yes/No" }),
+    field("address", "Address", "Lead.address", "text", "personal", false),
     field("industry", "Industry", "Lead.industry", "text", "business", false),
     field("website", "Website", "Lead.website", "text", "business", false),
     field("jobTitle", "Job Title", "Lead.jobTitle", "text", "personal", false),
-    field("address", "Address", "Lead.address", "text", "personal", false),
-    field("budget", "Budget", "Lead.budget", "number", "sensitive", false, { representation: "Decimal as base-10 string" }),
-    field("expectedValue", "Expected Value", "Lead.expectedValue", "number", "sensitive", false, { representation: "Decimal as base-10 string" }),
+    field("budget", "Budget", "Lead.budget", "number", "sensitive", false, { representation: "Base-10 decimal string" }),
+    field("expectedValue", "Expected Value", "Lead.expectedValue", "number", "sensitive", false, { representation: "Base-10 decimal string" }),
+    field("wonAmount", "Won Amount", "Lead.wonAmount", "number", "sensitive", false, { representation: "Base-10 decimal string" }),
     field("currency", "Currency", "Lead.currency", "text", "business", false),
-    field("lostReason", "Lost Reason", "Lead.lostReason", "text", "sensitive", false),
     field("campaign", "Campaign", "Lead.campaign", "text", "business", false),
     field("campaignId", "Campaign ID", "Lead.campaignId", "text", "business", false),
     field("utmSource", "UTM Source", "Lead.utmSource", "text", "business", false),
@@ -119,22 +124,24 @@ export const EXPORT_FIELDS = {
     field("name", "Name", "User.name", "text", "personal", true),
     field("email", "Email", "User.email", "text", "personal", true),
     field("role", "Role", "User.role", "enum", "operational", true),
-    field("salesPrivilege", "Sales Privilege", "User.salesPrivilege", "enum", "operational", true),
-    field("active", "Active", "User.active", "boolean", "operational", true, { representation: "true/false" }),
+    field("salesPrivilege", "Sales Privilege", "User.salesPrivilege", "enum", "operational", false),
+    field("active", "Active", "User.active", "boolean", "operational", true, { representation: "Yes/No" }),
     field("employeeCode", "Employee Code", "User.employeeCode", "text", "personal", true),
     field("designation", "Designation", "User.designation", "text", "personal", true),
+    field("phone", "Phone", "User.phone", "text", "personal", true),
     field("createdAt", "Created At", "User.createdAt", "date-time", "operational", true, { representation: "ISO-8601 UTC" }),
-    field("phone", "Phone", "User.phone", "text", "personal", false),
-    field("banned", "Banned", "User.banned", "boolean", "operational", false, { representation: "true/false" }),
-    field("lastLoginAt", "Last Login At", "User.lastLoginAt", "date-time", "sensitive", false, { representation: "ISO-8601 UTC" }),
-    field("updatedAt", "Updated At", "User.updatedAt", "date-time", "operational", false, { representation: "ISO-8601 UTC" }),
+    field("banned", "Banned", "User.banned", "boolean", "operational", false, { selectable: false, representation: "Yes/No" }),
+    field("lastLoginAt", "Last Login At", "User.lastLoginAt", "date-time", "sensitive", false, { selectable: false, representation: "ISO-8601 UTC" }),
+    field("updatedAt", "Updated At", "User.updatedAt", "date-time", "operational", false, { selectable: false, representation: "ISO-8601 UTC" }),
   ],
   providers: [
     field("name", "Name", "LeadSource.name", "text", "business", true),
     field("slug", "Slug", "LeadSource.slug", "text", "operational", true),
     field("sourceType", "Type", "LeadSource.sourceType", "text", "business", true),
-    field("active", "Active", "LeadSource.active", "boolean", "operational", true, { representation: "true/false" }),
+    field("active", "Active", "LeadSource.active", "boolean", "operational", true, { representation: "Yes/No" }),
     field("createdAt", "Created At", "LeadSource.createdAt", "date-time", "operational", true, { representation: "ISO-8601 UTC" }),
+    field("description", "Description", "LeadSource.description", "text", "business", false),
+    field("priority", "Routing Priority", "LeadSource.priority", "number", "operational", false),
     field("updatedAt", "Updated At", "LeadSource.updatedAt", "date-time", "operational", false, { representation: "ISO-8601 UTC" }),
   ],
   connectors: [
@@ -162,7 +169,7 @@ export const EXPORT_FIELDS = {
     field("recordsCreated", "Created", "ConnectorSyncRun.recordsCreated", "number", "operational", true),
     field("recordsUpdated", "Updated", "ConnectorSyncRun.recordsUpdated", "number", "operational", true),
     field("recordsSkipped", "Skipped", "ConnectorSyncRun.recordsSkipped", "number", "operational", true),
-    field("errorDiagnostic", "Error", "Sanitized sync diagnostic", "text", "operational", false, { representation: "Sanitized diagnostic only" }),
+    field("errorDiagnostic", "Error", "Sanitized sync diagnostic", "text", "operational", true, { representation: "Sanitized diagnostic only" }),
   ],
   reports: [
     field("summary", "Summary Metrics", "ReportService aggregates", "number", "business", true, { selectable: false }),
@@ -201,12 +208,14 @@ export function resolveExportColumns<C extends keyof typeof EXPORT_FIELDS>(
   requested?: readonly string[],
 ): string[] {
   const fields = EXPORT_FIELDS[category];
-  const selected = requested ?? getDefaultExportColumns(category);
-  if (selected.length === 0) throw new Error("At least one export column must be selected.");
-  const allowed = new Set<string>(fields.filter((item) => item.selectable).map((item) => item.id));
-  const unique = [...new Set(selected)];
-  const rejected = unique.filter((id) => !allowed.has(id));
+  const requestedColumns = requested ?? getDefaultExportColumns(category);
+  if (requestedColumns.length === 0) throw new Error("At least one export column must be selected.");
+  if (new Set(requestedColumns).size !== requestedColumns.length) throw new Error("Duplicate export columns are not allowed.");
+  const mandatory = fields.filter((item) => item.mandatory).map((item) => item.id);
+  const selected = [...new Set([...requestedColumns, ...mandatory])];
+  const allowed = new Set<string>(fields.filter((item) => item.selectable || item.mandatory).map((item) => item.id));
+  const rejected = selected.filter((id) => !allowed.has(id));
   if (rejected.length > 0) throw new Error(`Unsupported export column(s): ${rejected.join(", ")}`);
   const order = new Map<string, number>(fields.map((item, index) => [item.id, index]));
-  return unique.sort((a, b) => order.get(a)! - order.get(b)!);
+  return selected.sort((a, b) => order.get(a)! - order.get(b)!);
 }

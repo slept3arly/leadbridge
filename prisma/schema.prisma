@@ -24,6 +24,7 @@ enum LeadStatus {
   SPAM
   ON_HOLD
   OLD
+  REPEATED
 }
 
 enum LeadPriority {
@@ -66,6 +67,8 @@ enum ResponseType {
 enum InterestType {
   INTERESTED
   NOT_INTERESTED
+  DETAIL_SHARED
+  POSITIVE
 }
 
 enum ActivityReason {
@@ -83,6 +86,7 @@ enum ActivityReason {
   COSMETIC_PRODUCTS_AND_TREATMENTS
   TRADITIONAL_CLASSICAL_HEALTHCARE_PRODUCTS
   NUTRACEUTICALS_AND_DIETARY_SUPPLEMENTS
+  CALL_CUT_HOLD
 }
 
 enum LeadCategory {

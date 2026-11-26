@@ -11,6 +11,7 @@ import { ExportButton } from "@/components/shared/export-button";
 import { Filter, X, RotateCcw } from "lucide-react";
 import { useTableQuery, type TableQueryState } from "@/hooks/use-table-query";
 import { formatDate } from "@/lib/utils";
+import { createLeadTableDateBoundary } from "@/lib/lead-date-boundary";
 import { getContextualExportParamsFromState } from "@/lib/export/ui";
 import { ACTIVITY_ACTION_OPTIONS, ACTIVITY_INTEREST_OPTIONS, ACTIVITY_RESPONSE_OPTIONS } from "@/lib/activity-options";
 import {
@@ -122,7 +123,7 @@ export function SalesTableControls({
 
   const handleDateChange = (field: "dateFrom" | "dateTo", value: string) => {
     query.update({
-      [field]: value ? new Date(value + "T" + (field === "dateTo" ? "23:59:59" : "00:00:00")).toISOString() : undefined,
+      [field]: value ? createLeadTableDateBoundary(value, field).toISOString() : undefined,
       page: 1,
     });
   };

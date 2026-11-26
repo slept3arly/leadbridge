@@ -5,9 +5,12 @@ import { activityReasonSchema, createLeadRequestSchema, interactionActivitySchem
 import { resolveFollowUpAssignee } from "../src/services/follow-up-policy";
 import { LEGACY_EXPORT_COLUMNS, resolveLeadProjection } from "../src/services/export/projections";
 import { ACTIVITY_REASON_OPTIONS, getActivityReasonLabel } from "../src/lib/activity-reasons";
+import { ACTIVITY_INTEREST_OPTIONS } from "../src/lib/activity-options";
 import { getLeadDisplayName } from "../src/lib/lead-display";
 import { ExampleParser } from "../src/parsers/example-parser";
 import { LeadNormalizer } from "../src/runtime/lead-normalizer";
+import { EXPORT_FIELDS } from "../src/lib/export/fields";
+import { serializeLeadCsvRow } from "../src/services/export/csv-serialization";
 
 const validActivity = {
   action: "CALL",
@@ -77,6 +80,18 @@ test("new Reason values preserve the conditional NOT_INTERESTED rule and canonic
   assert.equal(interactionActivitySchema.safeParse({ ...validActivity, interest: "NOT_INTERESTED", reason: null }).success, false);
 });
 
+test("new Interest values and Call cut/Hold are accepted without changing Not Interested reason rules", () => {
+  assert.equal(ACTIVITY_INTEREST_OPTIONS.find(({ value }) => value === "NOT_INTERESTED")?.label, "Not interested");
+  for (const interest of ["DETAIL_SHARED", "POSITIVE"]) {
+    assert.ok(ACTIVITY_INTEREST_OPTIONS.some((option) => option.value === interest));
+    assert.equal(interactionActivitySchema.safeParse({ ...validActivity, interest }).success, true);
+  }
+  assert.equal(activityReasonSchema.safeParse("CALL_CUT_HOLD").success, true);
+  assert.equal(getActivityReasonLabel("CALL_CUT_HOLD"), "Call cut/Hold");
+  assert.equal(interactionActivitySchema.safeParse({ ...validActivity, interest: "NOT_INTERESTED", reason: "CALL_CUT_HOLD" }).success, true);
+  assert.equal(interactionActivitySchema.safeParse({ ...validActivity, interest: "DETAIL_SHARED", reason: "CALL_CUT_HOLD" }).success, false);
+});
+
 test("lead contact validation accepts either method, trims email, and normalizes empty optional values", () => {
   const emailOnly = manualLead({ name: "Email lead", email: "  person@example.test  ", phone: "" });
   assert.equal(emailOnly.success, true);
@@ -124,8 +139,9 @@ test("lead updates share email and phone validation without requiring contact de
 });
 
 test("lead writes accept only permitted statuses while historical enum values remain representable", () => {
-  for (const status of ["NEW", "CONVERTED", "OLD"]) {
+  for (const status of ["NEW", "CONVERTED", "OLD", "REPEATED"]) {
     assert.equal(manualLead({ name: `Create status ${status}`, phone: "1234567890", status }).success, true, `${status} is accepted by Create Lead API`);
+    assert.equal(leadPatchSchema.safeParse({ status }).success, true, `${status} is accepted by Lead PATCH`);
     assert.equal(leadSchema.safeParse({ name: "Status compatibility", status }).success, true, `${status} remains valid`);
     assert.equal(leadProgressRequestSchema.safeParse({
       ...validActivity,
@@ -204,15 +220,17 @@ test("connector mapping, CSV export compatibility, and historical Product labels
   const exporter = readFileSync("src/services/export/csv-serialization.ts", "utf8");
   const history = readFileSync("src/components/sales/daily-history.tsx", "utf8");
   const schema = readFileSync("prisma/schema.prisma", "utf8");
-  const exportHeader = exporter.match(/leads: \["Lead Number"[^\]]+\]/)?.[0];
   const legacyProjection = resolveLeadProjection(LEGACY_EXPORT_COLUMNS.leads).select;
 
   assert.match(connector, /product: lead\.product \?\? null/);
-  assert.equal(legacyProjection.product, true);
-  assert.match(exporter, /lead\.city, lead\.state, lead\.country, lead\.product, lead\.requirement/);
-  assert.ok(exportHeader);
-  assert.ok(exportHeader.indexOf('"Product"') > exportHeader.indexOf('"Country"'));
-  assert.ok(exportHeader.indexOf('"Product"') < exportHeader.indexOf('"Requirement"'));
+  assert.equal(legacyProjection.product, undefined, "unselected optional columns are not projected");
+  assert.equal(resolveLeadProjection([...LEGACY_EXPORT_COLUMNS.leads, "product"]).select.product, true);
+  assert.ok(EXPORT_FIELDS.leads.some((field) => field.id === "product" && field.selectable && !field.defaultSelected));
+  assert.match(exporter, /product: lead\.product/);
+  assert.equal(serializeLeadCsvRow({ leadNumber: "L-9", displayName: null, company: null, email: null, phone: null,
+    status: "NEW", priority: "LOW", city: null, state: null, country: null, product: "Legacy Product",
+    requirement: null, createdAt: new Date("2026-01-01T00:00:00Z"), source: null,
+  }, ["serialNumber", "product"], 1), "1,Legacy Product\n");
   assert.match(history, /product: "Product"/);
   assert.match(schema, /product\s+String\?/);
 });

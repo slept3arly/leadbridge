@@ -5,6 +5,8 @@ import { createLeadRequestSchema, manualLeadPatchSchema } from "../src/lib/valid
 import { parseListQuery } from "../src/lib/query-builder";
 import { leadExportFiltersSchema } from "../src/lib/export/filters";
 import { buildLeadExportWhere } from "../src/services/export/query-builders";
+import { EXPORT_FIELDS, getDefaultExportColumns } from "../src/lib/export/fields";
+import { getExportCsvHeaders, serializeLeadCsvRow } from "../src/services/export/csv-serialization";
 
 const initialActivity = { action: "CALL", response: "PICKED_UP", interest: "INTERESTED" };
 const manualCreate = (location: Record<string, unknown>) => createLeadRequestSchema.safeParse({
@@ -164,15 +166,20 @@ test("district list filtering is explicit and legacy city export filtering stays
   assert.doesNotMatch(exportWhereText, /"district"/);
 });
 
-test("connector imports keep city and CSV export contract remains unchanged", () => {
+test("connector imports keep city and District is a selectable default CSV field", () => {
   const connector = readFileSync("src/runtime/connector-runtime.ts", "utf8");
   const exportBuilder = readFileSync("src/services/export/query-builders.ts", "utf8");
   const serializer = readFileSync("src/services/export/csv-serialization.ts", "utf8");
-  const header = serializer.match(/leads: \[[^\]]+\]/)?.[0] ?? "";
   assert.match(connector, /city: lead\.city \?\? null/);
   assert.doesNotMatch(connector, /district:/);
   assert.match(exportBuilder, /if \(filters\.city\) clauses\.push\(\{ city:/);
-  assert.match(serializer, /lead\.city, lead\.state, lead\.country/);
-  assert.match(header, /"City"/);
-  assert.doesNotMatch(header, /"District"/);
+  assert.ok(EXPORT_FIELDS.leads.some((field) => field.id === "district" && field.defaultSelected && field.selectable));
+  assert.ok(getDefaultExportColumns("leads").includes("district"));
+  assert.deepEqual(getExportCsvHeaders("leads", ["district"]), ["S.No.", "District"]);
+  const row = serializeLeadCsvRow({ leadNumber: "L-10", displayName: null, company: null, email: null, phone: null,
+    status: "NEW", priority: "LOW", city: null, district: "  ", state: null, country: null, product: null,
+    requirement: null, createdAt: new Date("2026-01-01T00:00:00Z"), source: null,
+  }, ["serialNumber", "district"], 1);
+  assert.equal(row, "1,  \n");
+  assert.ok(serializer.includes("district: lead.district"));
 });

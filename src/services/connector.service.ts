@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import { sanitizeSyncErrorDiagnostic } from "@/lib/sync-error";
 import { containsSearch, listResult, pagination, type ListQuery } from "@/lib/query-builder";
 import { discoverGmailAccounts } from "@/connectors/environment";
+import type { SyncHistoryExportFilters } from "@/lib/export/filters";
+import { buildSyncHistoryExportWhere, buildSyncHistoryOrderBy, type ExportDateBounds } from "@/services/export/query-builders";
 
 export class ConnectorService {
   async list() {
@@ -49,7 +52,45 @@ export class ConnectorService {
   }
 
   async listSyncRuns(connectorId?: string) {
-    return prisma.connectorSyncRun.findMany({ where: connectorId ? { connectorId } : undefined, orderBy: { startedAt: "desc" }, take: 100, include: { connector: { select: { id: true, name: true, environmentKey: true } } } });
+    const runs = await prisma.connectorSyncRun.findMany({
+      where: connectorId ? { connectorId } : undefined,
+      orderBy: buildSyncHistoryOrderBy(),
+      take: 100,
+      include: { connector: { select: { id: true, name: true, environmentKey: true } } },
+    });
+    return runs.map((run) => ({
+      ...run,
+      errorMessage: run.errorMessage ? sanitizeSyncErrorDiagnostic(run.errorMessage) : null,
+    }));
+  }
+
+  async listSyncRunsPage(options: {
+    filters?: SyncHistoryExportFilters;
+    bounds?: ExportDateBounds;
+    limit?: number;
+    offset?: number;
+  } = {}) {
+    const limit = Math.min(100, Math.max(1, options.limit ?? 100));
+    const offset = Math.max(0, options.offset ?? 0);
+    const where = buildSyncHistoryExportWhere(
+      options.filters ?? { dateField: "startedAt", errorOutcome: "any" },
+      options.bounds,
+    );
+    const [runs, total] = await Promise.all([
+      prisma.connectorSyncRun.findMany({
+        where,
+        orderBy: buildSyncHistoryOrderBy(),
+        take: limit,
+        skip: offset,
+        include: { connector: { select: { id: true, name: true, type: true, environmentKey: true } } },
+      }),
+      prisma.connectorSyncRun.count({ where }),
+    ]);
+    const data = runs.map((run) => ({
+      ...run,
+      errorMessage: run.errorMessage ? sanitizeSyncErrorDiagnostic(run.errorMessage) : null,
+    }));
+    return { data, total, limit, offset, hasMore: offset + data.length < total };
   }
 }
 

@@ -9,7 +9,7 @@ import { getActivityInterestLabel, getActivityResponseLabel } from "@/lib/activi
 import { Card, CardEmptyState } from "@/components/ui/card";
 import { KpiCard } from "@/components/shared/kpi-card";
 import { Badge } from "@/components/ui/badge";
-import { getStatusLabel, getPriorityLabel, getCategoryLabel } from "@/lib/lead-constants";
+import { getStatusLabel, getPriorityLabel, getCategoryLabel, LEAD_STATUSES } from "@/lib/lead-constants";
 import { formatDateShort, formatTime } from "@/lib/utils";
 import { getLeadDisplayName } from "@/lib/lead-display";
 
@@ -62,7 +62,7 @@ interface SalesDashboardData {
   };
 }
 
-const PIPELINE_STATUSES = ["NEW", "CONVERTED", "LOST", "SPAM", "ON_HOLD", "OLD"];
+const PIPELINE_STATUSES = LEAD_STATUSES.map(({ value }) => value);
 
 const PRIORITY_ORDER = ["URGENT", "HIGH", "MEDIUM", "LOW", "COLD"];
 

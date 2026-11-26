@@ -3,17 +3,19 @@ import { ServiceError } from "@/lib/service-errors";
 import { isExportCategoryId, type ExportCategoryId } from "@/lib/export/registry";
 import {
   parseLegacyLeadExport,
+  parseLegacyExportColumns,
+  assertValidLegacyExportParameters,
   parseLegacyProviderExport,
   parseLegacyReportExport,
   parseLegacySyncExport,
   parseLegacyUserExport,
 } from "@/lib/export/legacy-compatibility";
-import { LEGACY_EXPORT_QUERY_PARAMETERS } from "@/lib/export/legacy-contract";
 import { exportService } from "@/services/export.service";
 import { ExportDeadline, awaitBeforeDeadline } from "@/services/export/deadline";
 import { createCsvByteStream, type ExportStreamSummary } from "@/services/export/csv-stream";
 import { logExportOperation } from "@/services/export/operation-log";
 import { authorizeExportCategory } from "@/services/export/authorization";
+import { LEGACY_EXPORT_QUERY_PARAMETERS } from "@/lib/export/legacy-contract";
 import { z } from "zod";
 
 function safeReason(error: unknown): "VALIDATION_FAILED" | "UNAUTHORIZED" | "CATEGORY_UNAVAILABLE" | "ROW_LIMIT" | "TIMEOUT" | "QUERY_FAILED" {
@@ -97,19 +99,17 @@ export const GET = withApiAuthorization(["ADMIN", "SALES"], async (request, _con
     .slice(0, 32);
 
   try {
-    const unknown = suppliedKeys.filter((key) => !allowedParams.includes(key));
-    if (unknown.length) throw new ServiceError(`Unknown export parameter(s): ${unknown.join(", ")}.`, 400);
-    const duplicates = allowedParams.filter((key) => searchParams.getAll(key).length > 1);
-    if (duplicates.length) throw new ServiceError(`Duplicate export parameter(s): ${duplicates.join(", ")}.`, 400);
+    authorizeExportCategory(session.user, type);
+    assertValidLegacyExportParameters(type, searchParams);
 
     const opened = await awaitBeforeDeadline((async () => {
       switch (type) {
         case "leads":
-          return exportService.openLeads(parseLegacyLeadExport(searchParams), session.user, deadline.signal);
+          return exportService.openLeads(parseLegacyLeadExport(searchParams), session.user, deadline.signal, parseLegacyExportColumns("leads", searchParams));
         case "users":
-          return exportService.openUsers(session.user, parseLegacyUserExport().filters, deadline.signal);
+          return exportService.openUsers(session.user, parseLegacyUserExport(searchParams), deadline.signal, parseLegacyExportColumns("users", searchParams));
         case "providers":
-          return exportService.openProviders(session.user, parseLegacyProviderExport().filters, deadline.signal);
+          return exportService.openProviders(session.user, parseLegacyProviderExport(searchParams).filters, deadline.signal, parseLegacyExportColumns("providers", searchParams));
         case "sync-history":
           return exportService.openSyncHistory(session.user, parseLegacySyncExport(searchParams), deadline.signal);
         case "reports":
